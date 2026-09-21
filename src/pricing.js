@@ -50,7 +50,7 @@ function currencyFrom(value) {
 function scaledCandidates(text) {
   const candidates = [];
   const pattern =
-    /(\d+(?:[.,]\d+)?)\s*(triệu|tr(?:iệu)?|million|mio|tỷ|billion)(?:\s*(VND|VNĐ|₫|đ|USD|US\$|\$|EUR|€|GBP|£))?/giu;
+    /(?<![\d.,])(\d{1,12}(?:[.,]\d{1,4})?)(?![\d.,])\s*(triệu|tr(?:iệu)?|million|mio|tỷ|billion)(?:\s*(VND|VNĐ|₫|đ|USD|US\$|\$|EUR|€|GBP|£))?/giu;
 
   for (const match of text.matchAll(pattern)) {
     const unit = match[2].toLocaleLowerCase('vi');
@@ -68,7 +68,7 @@ function scaledCandidates(text) {
 function explicitCurrencyCandidates(text) {
   const candidates = [];
   const currency = '(VND|VNĐ|₫|đ|USD|US\\$|\\$|EUR|€|GBP|£)';
-  const number = '(\\d[\\d.,\\s]*\\d|\\d)';
+  const number = '(?<!\\d)(\\d(?:[\\d.,\\s]{0,20}\\d)?)(?!\\d)';
   const patterns = [
     new RegExp(`${currency}\\s*${number}`, 'giu'),
     new RegExp(`${number}\\s*${currency}`, 'giu'),
@@ -96,7 +96,9 @@ export function parsePrice(text = '') {
   const candidates = [
     ...scaledCandidates(String(text)),
     ...explicitCurrencyCandidates(String(text)),
-  ].filter((candidate) => candidate.amount > 0);
+  ].filter(
+    (candidate) => Number.isFinite(candidate.amount) && candidate.amount > 0
+  );
 
   return (
     candidates.find((candidate) => candidate.currency === 'VND') ||

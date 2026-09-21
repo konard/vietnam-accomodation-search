@@ -26,6 +26,10 @@ describe('accommodation offer normalization', () => {
     });
   });
 
+  it('rejects oversized numeric tokens from untrusted listing text', () => {
+    expect(parsePrice(`${'9'.repeat(5_000)} million VND`)).toBe(null);
+  });
+
   it('prefers an explicitly quoted VND price and limits photos to ten', async () => {
     const offer = await normalizeOffer(
       {
