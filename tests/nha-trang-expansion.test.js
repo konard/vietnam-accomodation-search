@@ -345,6 +345,35 @@ describe('complete recent Telegram parsing', () => {
   });
 });
 
+describe('bounded official URL parsing', () => {
+  it('trims punctuation without pathological backtracking', () => {
+    const startedAt = globalThis.performance.now();
+    const parsed = parseTelegramOffer(
+      {
+        chat: { username: 'adversarial_input' },
+        date: '2026-09-20T00:00:00Z',
+        messageId: 2,
+        text: `Official website: https://hotel.example/${'!'.repeat(20_000)}x`,
+      },
+      { now: new Date('2026-09-21T00:00:00Z') }
+    );
+    const parsedTrailing = parseTelegramOffer(
+      {
+        chat: { username: 'adversarial_input' },
+        date: '2026-09-20T00:00:00Z',
+        messageId: 3,
+        text: 'Official website: https://hotel.example/stay!!!',
+      },
+      { now: new Date('2026-09-21T00:00:00Z') }
+    );
+    const durationMs = globalThis.performance.now() - startedAt;
+
+    expect(parsed.officialUrl?.endsWith('x')).toBe(true);
+    expect(parsedTrailing.officialUrl).toBe('https://hotel.example/stay');
+    expect(durationMs < 150).toBe(true);
+  });
+});
+
 describe('searchable normalized parameters', () => {
   it('parses repeated typed --filter options', () => {
     expect(

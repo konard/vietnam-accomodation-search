@@ -286,6 +286,14 @@ function detectLocation(text, fields) {
   );
 }
 
+function trimTrailingUrlPunctuation(value) {
+  let end = value.length;
+  while (end > 0 && '.,;!?'.includes(value[end - 1])) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
 function officialUrl(text) {
   const officialLabel =
     /(?:official(?:\s+(?:website|site))?|property\s+(?:website|site)|website|trang\s*(?:web\s*)?chính\s*thức|официальн\p{L}*\s+сайт)\s*[:：-]/iu;
@@ -296,7 +304,7 @@ function officialUrl(text) {
     }
     const value = line.slice((label.index || 0) + label[0].length);
     for (const match of value.matchAll(/https?:\/\/[^\s<>()]+/giu)) {
-      const candidate = match[0].replace(/[.,;!?]+$/u, '');
+      const candidate = trimTrailingUrlPunctuation(match[0]);
       const canonical = canonicalizeUrl(candidate);
       if (
         canonical &&
