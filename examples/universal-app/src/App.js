@@ -1,5 +1,5 @@
 import { createElement as h, useMemo, useState } from 'react';
-import { add, multiply } from '../../../src/index.js';
+import { add, multiply } from '../../../src/math.js';
 
 const repositoryUrl =
   import.meta.env.VITE_REPOSITORY_URL ??
