@@ -25,6 +25,12 @@ spelling, so the executable and npm package are named
   minimum stay, deposit, furnishing, pets, amenities, and owner contacts.
 - Preserves every labeled field and the complete raw message, including fields
   not yet understood by the normalizer.
+- Reconciles the same accommodation across official URLs, platform IDs, source
+  property IDs, and conservative listing fingerprints while preserving every
+  raw source variant.
+- Follows explicitly discovered accommodation websites for direct price
+  checks, persists per-source price history, and reports official-site price
+  increases and drops without mislabeling marketplace prices as official.
 - Prefers a listing's explicit VND price; otherwise, it converts supported
   currencies using a daily exchange-rate snapshot.
 - Returns one offer for `/search --cheapest` or up to 50 for
@@ -139,6 +145,13 @@ a lossless base64url JSON payload containing the original record. This produces
 portable Links Notation while preserving unknown fields for future parsing.
 Writes use a temporary file and atomic rename.
 
+Merged offers retain all source IDs, identifiers, raw variants, contacts,
+attributes, photos, and price observations. Learned identity aliases are saved,
+so future records can match any previously observed platform or official URL.
+A marketplace URL and an accommodation's official URL have distinct
+provenance; only a page visited as `official-web` produces an official price
+change event.
+
 The collector recognizes common property-card markup and public Telegram
 message markup. Sites can change their DOM or present consent/CAPTCHA pages;
 those sources are skipped for that pass. Deployments are responsible for
@@ -163,10 +176,16 @@ const offers = await application.service.search({
 Core services accept injected browser, storage, fetch, clock, and rate
 dependencies for deterministic testing.
 
+See [open-source competitor research](docs/COMPETITOR-RESEARCH.md) for the
+reproducible search snapshot and capability comparison, and
+[Issue 1 development notes](docs/ISSUE-1-DEVELOPMENT-NOTES.md) for the durable
+architecture, parser, security, and validation findings from the work logs.
+
 ## Contributing
 
 ```bash
 npm test
+npm run test:coverage
 npm run check
 bun test --timeout 30000
 deno test --allow-read
