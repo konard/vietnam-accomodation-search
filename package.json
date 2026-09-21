@@ -1,12 +1,12 @@
 {
-  "name": "@link-foundation/example-package-name",
+  "name": "vietnam-accomodation-search",
   "version": "0.11.30",
-  "description": "A JavaScript/TypeScript package template for AI-driven development",
+  "description": "Browser-driven Vietnam accommodation search with a Telegram bot",
   "type": "module",
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "bin": {
-    "example-package-name": "./bin/example-package-name.js"
+    "vietnam-accomodation-search": "./bin/vietnam-accomodation-search.js"
   },
   "files": [
     "bin/",
@@ -44,10 +44,11 @@
     "changeset:status": "changeset status --since=origin/main"
   },
   "keywords": [
-    "template",
-    "javascript",
-    "typescript",
-    "ai-driven"
+    "vietnam",
+    "accommodation",
+    "telegram-bot",
+    "browser-commander",
+    "links-notation"
   ],
   "author": "",
   "license": "Unlicense",
@@ -61,10 +62,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/link-foundation/js-ai-driven-development-pipeline-template.git"
+    "url": "git+https://github.com/konard/vietnam-accomodation-search.git"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "browser-commander": "^0.20.0",
+    "grammy": "^1.46.0",
+    "links-notation": "^0.20.0",
+    "playwright": "^1.63.0"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.7",

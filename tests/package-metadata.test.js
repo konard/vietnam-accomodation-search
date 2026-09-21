@@ -10,40 +10,50 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { runCli } from '../bin/example-package-name.js';
+import { runCli } from '../bin/vietnam-accomodation-search.js';
 
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 const lockJson = JSON.parse(readFileSync('package-lock.json', 'utf8'));
 
 describe('publishable package metadata', () => {
-  it('uses the real link-foundation example package name', () => {
-    expect(packageJson.name).toBe('@link-foundation/example-package-name');
+  it('uses the repository package identity', () => {
+    expect(packageJson.name).toBe('vietnam-accomodation-search');
     expect(packageJson.publishConfig).toEqual({ access: 'public' });
-    expect(lockJson.name).toBe('@link-foundation/example-package-name');
-    expect(lockJson.packages[''].name).toBe(
-      '@link-foundation/example-package-name'
-    );
+    expect(lockJson.name).toBe('vietnam-accomodation-search');
+    expect(lockJson.packages[''].name).toBe('vietnam-accomodation-search');
   });
 
   it('defines a globally installable CLI command', () => {
     expect(packageJson.bin).toEqual({
-      'example-package-name': './bin/example-package-name.js',
+      'vietnam-accomodation-search': './bin/vietnam-accomodation-search.js',
     });
-    expect(existsSync('bin/example-package-name.js')).toBe(true);
+    expect(existsSync('bin/vietnam-accomodation-search.js')).toBe(true);
   });
 
-  it('runs package functions through the CLI command', () => {
+  it('runs accommodation searches through the CLI command', async () => {
     const stdout = [];
     const stderr = [];
 
     expect(
-      runCli(['add', '2', '3'], {
+      await runCli(['search', '--cheapest', 'Da', 'Nang'], {
+        application: {
+          service: {
+            search: async () => [
+              {
+                price: { period: 'month' },
+                priceVnd: 5000000,
+                title: 'Studio',
+              },
+            ],
+          },
+        },
+        env: {},
         stderr: (line) => stderr.push(line),
         stdout: (line) => stdout.push(line),
       })
     ).toBe(0);
 
-    expect(stdout).toEqual(['5']);
+    expect(stdout[0]).toContain('5,000,000 VND/month');
     expect(stderr).toEqual([]);
   });
 
@@ -52,11 +62,11 @@ describe('publishable package metadata', () => {
       return;
     }
 
-    const tempRoot = mkdtempSync(join(tmpdir(), 'example-package-name-'));
-    const linkPath = join(tempRoot, 'example-package-name');
+    const tempRoot = mkdtempSync(join(tmpdir(), 'vietnam-accomodation-'));
+    const linkPath = join(tempRoot, 'vietnam-accomodation-search');
 
     try {
-      symlinkSync(resolve('bin/example-package-name.js'), linkPath);
+      symlinkSync(resolve('bin/vietnam-accomodation-search.js'), linkPath);
     } catch (error) {
       rmSync(tempRoot, { force: true, recursive: true });
 
@@ -69,14 +79,12 @@ describe('publishable package metadata', () => {
     }
 
     try {
-      const result = spawnSync(
-        process.execPath,
-        [linkPath, 'multiply', '6', '7'],
-        { encoding: 'utf8' }
-      );
+      const result = spawnSync(process.execPath, [linkPath, '--help'], {
+        encoding: 'utf8',
+      });
 
       expect(result.status).toBe(0);
-      expect(result.stdout.trim()).toBe('42');
+      expect(result.stdout).toContain('vietnam-accomodation-search');
       expect(result.stderr).toBe('');
     } finally {
       rmSync(tempRoot, { force: true, recursive: true });
