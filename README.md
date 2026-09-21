@@ -56,7 +56,7 @@ npm exec vietnam-accomodation-search -- bot
 Availability inquiries use a Telegram user session because bots cannot start a
 private conversation with arbitrary owners. Set `TELEGRAM_API_ID`,
 `TELEGRAM_API_HASH`, and an exported `TELEGRAM_USER_SESSION` string generated
-for that account with [mtcute](https://mtcute.dev/guide/intro/). The session is
+for that account with [mtcute](https://mtcute.dev/guide/). The session is
 equivalent to a password: never log it, commit it, or share it. The application
 opens it only for an explicitly requested inquiry and closes the client after
 the message is sent.
