@@ -13,14 +13,18 @@ spelling, so the executable and npm package are named
 
 ## What it does
 
-- Starts with the top 20 from 21 ranked web-service candidates and 21 public
-  Telegram-community candidates.
-- Refreshes both rankings with `/update_sources`, keeping the top 20 of each.
+- Starts with 20 ranked web services, 20 nationwide Telegram communities, and
+  20 additional Nha Trang-focused Telegram communities.
+- Refreshes all three rankings with `/update_sources`, keeping 20 in each
+  cohort and searching for similar sources in English, Russian, and Vietnamese.
 - Navigates each configured source's web UI rather than calling a private
   accommodation API.
-- Collects only the latest two months of Telegram history.
-- Parses English, Vietnamese, and Russian listing text with a permissive
-  accommodation schema.
+- Paginates public Telegram previews through the latest two months of history.
+- Parses English, Vietnamese, and Russian listing text into searchable fields
+  such as bedrooms, bathrooms, area, floor, district, availability date,
+  minimum stay, deposit, furnishing, pets, amenities, and owner contacts.
+- Preserves every labeled field and the complete raw message, including fields
+  not yet understood by the normalizer.
 - Prefers a listing's explicit VND price; otherwise, it converts supported
   currencies using a daily exchange-rate snapshot.
 - Returns one offer for `/search --cheapest` or up to 50 for
@@ -49,6 +53,14 @@ export TELEGRAM_BOT_TOKEN='replace-with-a-BotFather-token'
 npm exec vietnam-accomodation-search -- bot
 ```
 
+Availability inquiries use a Telegram user session because bots cannot start a
+private conversation with arbitrary owners. Set `TELEGRAM_API_ID`,
+`TELEGRAM_API_HASH`, and an exported `TELEGRAM_USER_SESSION` string generated
+for that account with [mtcute](https://mtcute.dev/guide/intro/). The session is
+equivalent to a password: never log it, commit it, or share it. The application
+opens it only for an explicitly requested inquiry and closes the client after
+the message is sent.
+
 The default cache directory is `.vietnam-accomodation-search/` in the current
 working directory. It contains `offers.lino`, `sources.lino`, and downloaded
 media. Do not commit it.
@@ -65,7 +77,10 @@ security boundary.
 /search Da Nang
 /search --cheapest Da Nang
 /search --cheapest 10 Nha Trang
+/search --cheapest 10 --filter bedrooms=2 --filter petsAllowed=true Nha Trang
+/search --filter labeledFields.электричество=счётчику Нячанг
 /update_sources
+/check_availability OFFER_ID [@owner]
 ```
 
 The first search, an explicit refresh, or a stale/incomplete cache triggers a
@@ -78,6 +93,7 @@ The same operations are available without Telegram:
 ```bash
 node bin/vietnam-accomodation-search.js search --cheapest 10 "Da Nang"
 node bin/vietnam-accomodation-search.js update-sources
+node bin/vietnam-accomodation-search.js check-availability OFFER_ID @owner
 ```
 
 ## Source ranking and evidence
@@ -87,12 +103,12 @@ and observation timestamp. Seed website ranks link to public traffic evidence;
 seed Telegram ranks link to the public channel or group preview where its
 audience is displayed.
 
-`/update_sources` launches a browser and performs a current Google web search
-for Vietnam accommodation services. Website candidates are reranked by their
-result position. Telegram candidates discovered in the search UI are combined
-with the seed set, then each public `t.me` preview is visited to read its
-current member or subscriber count. Only the highest 20 records of each type
-are saved.
+`/update_sources` launches a browser and performs current Google web searches
+for Vietnam accommodation services plus multilingual Nha Trang Telegram
+communities. Website candidates are reranked by their result position.
+Telegram candidates discovered in the search UI are combined with their seed
+cohort, then each public `t.me` preview is visited to read its current member or
+subscriber count. The highest 20 records in each cohort are saved.
 
 Popularity changes constantly, so the bundled list is a bootstrap candidate
 set rather than a permanent claim. The evidence attached to the persisted
@@ -100,15 +116,21 @@ source record is the authoritative snapshot for a particular deployment.
 
 ## Telegram access model
 
-The application needs only a Telegram bot token. Public channel history is
-read from Telegram's public web preview through browser-commander. Live group
-and channel posts are also ingested when Telegram delivers them to the bot.
+Search and ingestion need only a Telegram bot token. Public channel history is
+read from Telegram's public web preview through browser-commander, following
+older-message links until the two-month cutoff. Live group and channel posts
+are also ingested when Telegram delivers them to the bot.
 
 Telegram does not expose arbitrary private history to bots. To monitor a
 private community, add the bot there and grant the permissions needed to
 receive new posts; for groups, disable BotFather privacy mode if the bot must
 see ordinary messages. Messages posted before the bot joined must be forwarded
 or imported separately. These platform constraints are not bypassed.
+
+The optional user session is used only by `/check_availability` (or its CLI
+equivalent) to send a single private message. Searching never contacts an owner
+automatically. When a parsed post contains an `@username`, it is used by
+default; an explicit recipient can be supplied for listings without one.
 
 ## Data model and cache
 
