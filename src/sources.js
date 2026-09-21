@@ -16,7 +16,7 @@ function webSource(id, name, url, searchUrl, value, evidenceUrl) {
   };
 }
 
-function telegramSource(handle, name, value) {
+function telegramSource(handle, name, value, { focus } = {}) {
   return {
     id: `telegram:${handle.toLocaleLowerCase('en')}`,
     name,
@@ -29,7 +29,12 @@ function telegramSource(handle, name, value) {
       evidenceUrl: `https://t.me/${handle}`,
       observedAt: OBSERVED_AT,
     },
+    ...(focus ? { focus } : {}),
   };
+}
+
+function nhaTrangSource(handle, name, value) {
+  return telegramSource(handle, name, value, { focus: 'nha-trang' });
 }
 
 export const DEFAULT_WEB_SOURCES = [
@@ -227,6 +232,33 @@ export const DEFAULT_TELEGRAM_SOURCES = [
   telegramSource('dalat_rent', 'Da Lat Rent', 400),
 ];
 
+// This is intentionally a separate cohort from the nationwide seeds above. It
+// gives Nha Trang searches a full set of locally focused communities while
+// retaining broad Vietnam coverage. Audience values were observed from the
+// public Telegram previews on OBSERVED_AT.
+export const DEFAULT_NHA_TRANG_TELEGRAM_SOURCES = [
+  nhaTrangSource('arenda_v_nyachang', 'Аренда в Нячанге', 29_192),
+  nhaTrangSource('Vetnam_Arenda', 'Вьетнам Аренда', 14_350),
+  nhaTrangSource('Arenda_Nyachangg', 'Аренда Нячанг', 13_477),
+  nhaTrangSource('Arenda_Vetnam', 'Недвижимость Нячанг Дананг', 12_373),
+  nhaTrangSource('obyavlenia_vetnam', 'Объявления Вьетнам', 9_898),
+  nhaTrangSource('Arenda_Nyachang_Zhilye', 'Аренда жилья в Нячанге', 5_210),
+  nhaTrangSource('rentnhatrang', 'Rent Nha Trang', 4_540),
+  nhaTrangSource('NyachangArenda', 'Нячанг Аренда', 3_700),
+  nhaTrangSource('forrentNhatrang', 'For Rent Nha Trang', 2_390),
+  nhaTrangSource('nhatrang_pro_house', 'Nha Trang Pro House', 1_212),
+  nhaTrangSource('lowrentnt', 'Low Rent Nha Trang', 843),
+  nhaTrangSource('Nyachang_arenda_kvartir', 'Нячанг аренда квартир', 501),
+  nhaTrangSource('nhatranghouses', 'Nha Trang Houses', 473),
+  nhaTrangSource('NaChangAp', 'Nha Trang Apartments', 437),
+  nhaTrangSource('arendaotshahnoza', 'Аренда от Шахнозы', 316),
+  nhaTrangSource('oceanusarenda', 'Oceanus Аренда', 289),
+  nhaTrangSource('nhatrang_dsrent', 'Nha Trang DS Rent', 80),
+  nhaTrangSource('nhatrangrental', 'Nha Trang Rental', 29),
+  nhaTrangSource('nhatrang_newarenda', 'Нячанг Новая Аренда', 9_980),
+  nhaTrangSource('nhatrang_rent_sale', 'Nha Trang Rent & Sale', 4),
+];
+
 function rankAndLimit(sources, count) {
   const unique = new Map();
   for (const source of sources) {
@@ -237,6 +269,16 @@ function rankAndLimit(sources, count) {
     .slice(0, count);
 }
 
+function assignFocus(source, focus) {
+  const selected = { ...source };
+  if (focus) {
+    selected.focus = focus;
+  } else {
+    delete selected.focus;
+  }
+  return selected;
+}
+
 export class SourceRegistry {
   constructor({ store, discover } = {}) {
     this.store = store;
@@ -245,29 +287,59 @@ export class SourceRegistry {
 
   async list(type) {
     const stored = (await this.store?.loadSources?.()) || [];
-    const sources = stored.length
-      ? stored
-      : [
-          ...rankAndLimit(DEFAULT_WEB_SOURCES, 20),
-          ...rankAndLimit(DEFAULT_TELEGRAM_SOURCES, 20),
-        ];
+    const sources = [
+      ...rankAndLimit(
+        [
+          ...DEFAULT_WEB_SOURCES,
+          ...stored.filter((source) => source.type === 'web'),
+        ],
+        20
+      ),
+      ...rankAndLimit(
+        [
+          ...DEFAULT_TELEGRAM_SOURCES,
+          ...stored.filter(
+            (source) => source.type === 'telegram' && !source.focus
+          ),
+        ],
+        20
+      ),
+      ...rankAndLimit(
+        [
+          ...DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
+          ...stored.filter((source) => source.focus === 'nha-trang'),
+        ],
+        20
+      ),
+    ];
     return type ? sources.filter((source) => source.type === type) : sources;
   }
 
   async update({ count = 20 } = {}) {
     const current = await this.list();
-    const discoverType = async (type, defaults) => {
+    const discoverType = async (type, defaults, { focus } = {}) => {
       const found =
-        (await this.discover?.(type, { candidates: defaults })) || [];
-      const fallback = current.filter((source) => source.type === type);
-      return rankAndLimit(found.length ? found : fallback, count);
+        (await this.discover?.(type, { candidates: defaults, focus })) || [];
+      const fallback = current.filter(
+        (source) =>
+          source.type === type && (source.focus || undefined) === focus
+      );
+      const selected = found.length ? found : fallback;
+      return rankAndLimit(
+        selected.map((source) => assignFocus(source, focus)),
+        count
+      );
     };
-    const [web, telegram] = await Promise.all([
+    const [web, telegram, nhaTrang] = await Promise.all([
       discoverType('web', DEFAULT_WEB_SOURCES),
       discoverType('telegram', DEFAULT_TELEGRAM_SOURCES),
+      discoverType('telegram', DEFAULT_NHA_TRANG_TELEGRAM_SOURCES, {
+        focus: 'nha-trang',
+      }),
     ]);
+    const telegramSources = [...telegram, ...nhaTrang];
 
-    await this.store?.saveSources?.([...web, ...telegram]);
-    return { web, telegram };
+    await this.store?.saveSources?.([...web, ...telegramSources]);
+    return { web, telegram: telegramSources };
   }
 }

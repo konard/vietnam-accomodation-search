@@ -18,7 +18,7 @@ function fakeBot() {
 }
 
 describe('Telegram bot commands', () => {
-  it('registers /search and /update_sources', () => {
+  it('registers search, source update, and availability commands', () => {
     const bot = fakeBot();
     registerTelegramHandlers(bot, {
       registry: { update: async () => ({ web: [], telegram: [] }) },
@@ -27,6 +27,34 @@ describe('Telegram bot commands', () => {
 
     expect(bot.commands.has('search')).toBe(true);
     expect(bot.commands.has('update_sources')).toBe(true);
+    expect(bot.commands.has('check_availability')).toBe(true);
+  });
+
+  it('sends an availability inquiry only after an explicit command', async () => {
+    const bot = fakeBot();
+    const checks = [];
+    const replies = [];
+    registerTelegramHandlers(bot, {
+      availabilityService: {
+        check: async (offerId, options) => {
+          checks.push({ offerId, options });
+          return { offerId, recipient: '@owner' };
+        },
+      },
+      registry: { update: async () => ({ web: [], telegram: [] }) },
+      service: { search: async () => [] },
+    });
+
+    expect(checks).toEqual([]);
+    await bot.commands.get('check_availability')({
+      match: 'offer-1 @owner',
+      reply: async (text) => replies.push(text),
+    });
+
+    expect(checks).toEqual([
+      { offerId: 'offer-1', options: { recipient: '@owner' } },
+    ]);
+    expect(replies[0]).toContain('Availability inquiry sent');
   });
 
   it('answers /search --cheapest 10 with ordered offers', async () => {

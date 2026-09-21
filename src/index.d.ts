@@ -18,6 +18,29 @@ export interface AccommodationSource {
   url: string;
   searchUrl: string;
   popularity: PopularityEvidence;
+  focus?: 'nha-trang';
+}
+
+export interface AccommodationAttributes {
+  propertyId?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  areaM2?: number;
+  floor?: number;
+  district?: string;
+  availableFrom?: string;
+  minimumStayMonths?: number;
+  depositMonths?: number;
+  furnished?: boolean;
+  petsAllowed?: boolean;
+  amenities?: string[];
+  labeledFields?: Record<string, string[]>;
+  [key: string]: unknown;
+}
+
+export interface AccommodationContacts {
+  telegram: string[];
+  phone: string[];
 }
 
 export interface AccommodationOffer {
@@ -27,6 +50,8 @@ export interface AccommodationOffer {
   title: string;
   kind?: string;
   location?: string;
+  attributes?: AccommodationAttributes;
+  contacts?: AccommodationContacts;
   price: Price | null;
   priceVnd: number | null;
   url?: string;
@@ -45,6 +70,7 @@ export interface AccommodationOffer {
 
 export interface SearchOptions {
   cheapest?: boolean;
+  filters?: Record<string, boolean | number | string>;
   limit?: number;
   query?: string;
   refresh?: boolean;
@@ -69,7 +95,8 @@ export declare function parseTelegramOffer(
 ): AccommodationOffer | null;
 export declare function parseSearchCommand(
   input?: string
-): Required<Pick<SearchOptions, 'cheapest' | 'limit' | 'query'>>;
+): Required<Pick<SearchOptions, 'cheapest' | 'limit' | 'query'>> &
+  Pick<SearchOptions, 'filters'>;
 export declare function buildSearchUrl(
   source: Pick<AccommodationSource, 'searchUrl'>,
   query?: string
@@ -91,6 +118,7 @@ export declare function deduplicateOffers(
 
 export declare const DEFAULT_WEB_SOURCES: AccommodationSource[];
 export declare const DEFAULT_TELEGRAM_SOURCES: AccommodationSource[];
+export declare const DEFAULT_NHA_TRANG_TELEGRAM_SOURCES: AccommodationSource[];
 
 export declare class ExchangeRateProvider {
   constructor(options?: { fetchImpl?: typeof fetch; maxAgeMs?: number });
@@ -139,13 +167,40 @@ export declare class BrowserSourceDiscoverer {
   constructor(options?: Record<string, unknown>);
   discover(
     type: 'web' | 'telegram',
-    options: { candidates: AccommodationSource[] }
+    options: { candidates: AccommodationSource[]; focus?: 'nha-trang' }
   ): Promise<AccommodationSource[]>;
 }
 
 export declare class SearchService {
   constructor(options: Record<string, unknown>);
   search(options?: SearchOptions): Promise<AccommodationOffer[]>;
+}
+
+export declare function createAvailabilityMessage(
+  offer: Pick<AccommodationOffer, 'title' | 'url'>
+): string;
+
+export declare class TelegramAvailabilityService {
+  constructor(options?: {
+    apiHash?: string;
+    apiId?: number | string;
+    clientFactory?: (options: {
+      apiHash: string;
+      apiId: number;
+    }) => Promise<Record<string, unknown>>;
+    now?: () => Date;
+    session?: string;
+    store?: Pick<LinksStore, 'listOffers'>;
+  });
+  check(
+    offerId: string,
+    options?: { message?: string; recipient?: string }
+  ): Promise<{
+    messageId?: number;
+    offerId: string;
+    recipient: string;
+    sentAt: string;
+  }>;
 }
 
 export declare function registerTelegramHandlers(
@@ -158,7 +213,13 @@ export declare function createTelegramBot(
 ): Promise<Record<string, unknown>>;
 export declare function createApplication(options?: Record<string, unknown>): {
   collector: BrowserCollector;
-  createBot: (token: string) => Promise<Record<string, unknown>>;
+  createAvailabilityService: (
+    credentials?: Record<string, unknown>
+  ) => TelegramAvailabilityService;
+  createBot: (
+    token: string,
+    credentials?: Record<string, unknown>
+  ) => Promise<Record<string, unknown>>;
   mediaCache: MediaCache;
   rateProvider: ExchangeRateProvider;
   registry: SourceRegistry;

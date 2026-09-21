@@ -68,6 +68,7 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@mtcute/node": "^0.32.2",
     "browser-commander": "^0.20.0",
     "grammy": "^1.46.0",
     "links-notation": "^0.20.0",

@@ -6,6 +6,7 @@ import { SearchService } from './search-service.js';
 import { BrowserSourceDiscoverer } from './source-discovery.js';
 import { SourceRegistry } from './sources.js';
 import { createTelegramBot } from './telegram-bot.js';
+import { TelegramAvailabilityService } from './telegram-user.js';
 
 export function createApplication(options = {}) {
   const directory = options.directory || '.vietnam-accomodation-search';
@@ -52,8 +53,19 @@ export function createApplication(options = {}) {
 
   return {
     collector,
-    createBot: (token) =>
-      createTelegramBot(token, { rateProvider, registry, service, store }),
+    createAvailabilityService: (credentials = {}) =>
+      new TelegramAvailabilityService({ ...credentials, store }),
+    createBot: (token, credentials = {}) =>
+      createTelegramBot(token, {
+        availabilityService: new TelegramAvailabilityService({
+          ...credentials,
+          store,
+        }),
+        rateProvider,
+        registry,
+        service,
+        store,
+      }),
     mediaCache,
     rateProvider,
     registry,

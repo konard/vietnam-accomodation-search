@@ -35,6 +35,8 @@ export function normalizeOffer(input, options = {}) {
     ),
     ...optional('kind', compact(input.kind)),
     ...optional('location', compact(input.location)),
+    ...optional('attributes', input.attributes),
+    ...optional('contacts', input.contacts),
     price,
     priceVnd: convertToVnd(price, rates),
     ...optional('url', url),

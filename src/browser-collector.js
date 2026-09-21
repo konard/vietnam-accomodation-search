@@ -69,6 +69,23 @@ function telegramMessage(item, source) {
   };
 }
 
+function messageId(row) {
+  const value = row.url?.match(/\/(\d+)(?:\?.*)?$/u)?.[1];
+  return value ? Number(value) : undefined;
+}
+
+function cutoffDate(now) {
+  const cutoff = new Date(now);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - 2);
+  return cutoff;
+}
+
+function beforeUrl(url, id) {
+  const parsed = new globalThis.URL(url);
+  parsed.searchParams.set('before', String(id));
+  return parsed.toString();
+}
+
 export class BrowserCollector {
   constructor({
     browserLaunchOptions,
@@ -86,12 +103,52 @@ export class BrowserCollector {
     this.rates = rates || { VND: 1 };
   }
 
+  async collectTelegramRows(commander, source, query) {
+    const firstUrl = buildSearchUrl(source, query);
+    const rowsByUrl = new Map();
+    const visited = new Set();
+    const cutoff = cutoffDate(this.now());
+    let url = firstUrl;
+
+    for (let page = 0; page < 200 && !visited.has(url); page += 1) {
+      visited.add(url);
+      await commander.goto({ url, waitForNetworkIdle: false });
+      const rows =
+        (await commander.evaluate(extractPageListings, 'telegram')) || [];
+      for (const row of rows) {
+        const key = row.url || `${row.date || ''}\n${row.text || ''}`;
+        rowsByUrl.set(key, row);
+      }
+      if (!rows.length) {
+        break;
+      }
+
+      const dates = rows
+        .map((row) => new Date(row.date))
+        .filter((date) => Number.isFinite(date.getTime()));
+      if (dates.some((date) => date <= cutoff)) {
+        break;
+      }
+      const ids = rows.map(messageId).filter(Number.isFinite);
+      if (!ids.length) {
+        break;
+      }
+      url = beforeUrl(firstUrl, Math.min(...ids));
+    }
+    return [...rowsByUrl.values()];
+  }
+
   async collectSource(commander, source, query, rates) {
-    await commander.goto({
-      url: buildSearchUrl(source, query),
-      waitForNetworkIdle: false,
-    });
-    const rows = await commander.evaluate(extractPageListings, source.type);
+    let rows;
+    if (source.type === 'telegram') {
+      rows = await this.collectTelegramRows(commander, source, query);
+    } else {
+      await commander.goto({
+        url: buildSearchUrl(source, query),
+        waitForNetworkIdle: false,
+      });
+      rows = await commander.evaluate(extractPageListings, source.type);
+    }
     const offers = [];
 
     for (const row of rows || []) {

@@ -40,7 +40,8 @@ async function sendOfferPhotos(context, offers) {
 }
 
 export function registerTelegramHandlers(bot, dependencies) {
-  const { rateProvider, registry, service, store } = dependencies;
+  const { availabilityService, rateProvider, registry, service, store } =
+    dependencies;
 
   bot.command('search', async (context) => {
     try {
@@ -50,7 +51,31 @@ export function registerTelegramHandlers(bot, dependencies) {
       await sendOfferPhotos(context, offers);
     } catch (error) {
       await context.reply(
-        `${error.message}\nUsage: /search [--cheapest [1-50]] [location]`
+        `${error.message}\nUsage: /search [--cheapest [1-50]] [--filter field=value] [location]`
+      );
+    }
+  });
+
+  bot.command('check_availability', async (context) => {
+    try {
+      if (!availabilityService) {
+        throw new Error(
+          'Telegram user availability checks are not configured.'
+        );
+      }
+      const [offerId, recipient] = String(context.match || '')
+        .trim()
+        .split(/\s+/u);
+      if (!offerId) {
+        throw new Error('An offer ID is required.');
+      }
+      const result = await availabilityService.check(offerId, { recipient });
+      await context.reply(
+        `Availability inquiry sent to ${result.recipient} for ${result.offerId}.`
+      );
+    } catch (error) {
+      await context.reply(
+        `${error.message}\nUsage: /check_availability OFFER_ID [@owner]`
       );
     }
   });

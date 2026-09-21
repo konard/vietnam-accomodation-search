@@ -6,16 +6,18 @@ function extractSearchLinks() {
 
 function extractTelegramAudience() {
   return (
-    globalThis.document.querySelector('.tgme_page_extra')?.textContent || ''
+    globalThis.document.querySelector(
+      '.tgme_page_extra, .tgme_channel_info_counter .counter_value'
+    )?.textContent || ''
   ).trim();
 }
 
 function compactAudience(value) {
-  const match = value.match(/([\d.,]+)\s*([KMB])?/iu);
+  const match = value.match(/([\d\s.,]+)\s*([KMB])?/iu);
   if (!match) {
     return null;
   }
-  const amount = Number(match[1].replaceAll(',', ''));
+  const amount = Number(match[1].replace(/[\s,]/gu, ''));
   const scale = { K: 1_000, M: 1_000_000, B: 1_000_000_000 }[
     match[2]?.toUpperCase()
   ];
@@ -62,32 +64,50 @@ export class BrowserSourceDiscoverer {
     });
   }
 
-  async findTelegramCandidates(commander, candidates) {
-    const searchUrl =
-      'https://www.google.com/search?q=site%3At.me+Vietnam+apartment+rent+Telegram';
-    await commander.goto({ url: searchUrl, waitForNetworkIdle: false });
-    const links = await commander.evaluate(extractSearchLinks);
+  async findTelegramCandidates(commander, candidates, { focus } = {}) {
+    const queries = focus
+      ? [
+          'site:t.me Nha Trang apartment rent Telegram',
+          'site:t.me Нячанг аренда жилье',
+          'site:t.me Nha Trang thuê căn hộ',
+        ]
+      : ['site:t.me Vietnam apartment rent Telegram'];
+    const links = [];
+    for (const query of queries) {
+      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+      await commander.goto({ url: searchUrl, waitForNetworkIdle: false });
+      links.push(...(await commander.evaluate(extractSearchLinks)));
+    }
     const byHandle = new Map(
-      candidates.map((source) => [telegramHandle(source.url), source])
+      candidates.map((source) => [
+        telegramHandle(source.url)?.toLocaleLowerCase('en'),
+        source,
+      ])
     );
     for (const link of links) {
       const handle = telegramHandle(link);
-      if (handle && !byHandle.has(handle)) {
-        byHandle.set(handle, {
+      const normalized = handle?.toLocaleLowerCase('en');
+      if (handle && !byHandle.has(normalized)) {
+        byHandle.set(normalized, {
           id: `telegram:${handle.toLocaleLowerCase('en')}`,
           name: handle,
           type: 'telegram',
           url: `https://t.me/${handle}`,
           searchUrl: `https://t.me/s/${handle}`,
           popularity: candidates.at(-1)?.popularity,
+          ...(focus ? { focus } : {}),
         });
       }
     }
     return [...byHandle.values()];
   }
 
-  async rankTelegram(commander, candidates) {
-    const discovered = await this.findTelegramCandidates(commander, candidates);
+  async rankTelegram(commander, candidates, { focus } = {}) {
+    const discovered = await this.findTelegramCandidates(
+      commander,
+      candidates,
+      { focus }
+    );
     const ranked = [];
     for (const source of discovered) {
       let audience = null;
@@ -104,6 +124,7 @@ export class BrowserSourceDiscoverer {
       }
       ranked.push({
         ...source,
+        ...(focus ? { focus } : {}),
         popularity: {
           metric: 'members-or-subscribers',
           value: audience ?? source.popularity?.value ?? 0,
@@ -115,7 +136,7 @@ export class BrowserSourceDiscoverer {
     return ranked;
   }
 
-  async discover(type, { candidates }) {
+  async discover(type, { candidates, focus } = {}) {
     const runtime = await loadRuntime(this.browserRuntime);
     const { browser, page } = await runtime.launchBrowser({
       engine: 'playwright',
@@ -125,7 +146,7 @@ export class BrowserSourceDiscoverer {
     const commander = runtime.makeBrowserCommander({ page });
     try {
       return type === 'telegram'
-        ? await this.rankTelegram(commander, candidates)
+        ? await this.rankTelegram(commander, candidates, { focus })
         : await this.rankWeb(commander, candidates);
     } finally {
       await commander.destroy();

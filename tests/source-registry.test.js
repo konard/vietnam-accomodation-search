@@ -31,9 +31,10 @@ describe('ranked accommodation sources', () => {
         loadSources: async () => [],
         saveSources: async (sources) => saved.push(sources),
       },
-      discover: async (type) =>
+      discover: async (type, { focus }) =>
         Array.from({ length: 25 }, (_, index) => ({
-          id: `${type}-${index}`,
+          id: `${type}-${focus || 'general'}-${index}`,
+          ...(focus ? { focus } : {}),
           name: `${type} ${index}`,
           type,
           url:
@@ -52,9 +53,11 @@ describe('ranked accommodation sources', () => {
     const updated = await registry.update({ count: 20 });
 
     expect(updated.web.length).toBe(20);
-    expect(updated.telegram.length).toBe(20);
+    expect(updated.telegram.length).toBe(40);
     expect(updated.web[0].popularity.value).toBe(24);
     expect(updated.telegram[0].popularity.value).toBe(24);
+    expect(updated.telegram.filter((source) => source.focus).length).toBe(20);
+    expect(saved[0].length).toBe(60);
     expect(saved.length).toBe(1);
   });
 });

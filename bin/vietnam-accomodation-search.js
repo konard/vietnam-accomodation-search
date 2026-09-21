@@ -16,7 +16,8 @@ function usage() {
     'Commands:',
     '  bot                         Start the Telegram bot',
     '  search [--cheapest [N]] Q  Search and cache accommodation offers',
-    '  update-sources              Refresh the top 20 source lists',
+    '  update-sources              Refresh all ranked source cohorts',
+    '  check-availability ID [@U] Send an availability inquiry as a user',
   ].join('\n');
 }
 
@@ -36,7 +37,11 @@ export async function runCli(
       return 0;
     }
     if (command === 'bot') {
-      const bot = await application.createBot(env.TELEGRAM_BOT_TOKEN);
+      const bot = await application.createBot(env.TELEGRAM_BOT_TOKEN, {
+        apiHash: env.TELEGRAM_API_HASH,
+        apiId: env.TELEGRAM_API_ID,
+        session: env.TELEGRAM_USER_SESSION,
+      });
       await bot.start();
       return 0;
     }
@@ -49,6 +54,22 @@ export async function runCli(
       const updated = await application.registry.update({ count: 20 });
       stdout(
         `Updated ${updated.web.length} web and ${updated.telegram.length} Telegram sources.`
+      );
+      return 0;
+    }
+    if (command === 'check-availability') {
+      const [offerId, recipient] = rest;
+      if (!offerId) {
+        throw new Error('An offer ID is required.');
+      }
+      const availabilityService = application.createAvailabilityService({
+        apiHash: env.TELEGRAM_API_HASH,
+        apiId: env.TELEGRAM_API_ID,
+        session: env.TELEGRAM_USER_SESSION,
+      });
+      const result = await availabilityService.check(offerId, { recipient });
+      stdout(
+        `Availability inquiry sent to ${result.recipient} for ${result.offerId}.`
       );
       return 0;
     }
