@@ -126,6 +126,67 @@ describe('Nha Trang source coverage', () => {
 });
 
 describe('complete recent Telegram parsing', () => {
+  it('normalizes advanced occupancy, fees, coordinates, and contact fields', async () => {
+    const offer = await parseTelegramOffer(
+      {
+        chat: { username: 'advanced_nha_trang' },
+        date: '2026-09-20T10:00:00Z',
+        messageId: 88,
+        text: [
+          'Studio Ocean View — mã NT-AB_88',
+          'Location - Vĩnh Hải, Nha Trang',
+          'Bedrooms: studio; Bathrooms: 1; Beds: 2; Guests: 3',
+          'Rating: 4.8 (126 reviews)',
+          'GPS: 12.2683, 109.2019',
+          'Check-in: 14:00; Check-out: 11:30',
+          'Wi-Fi, air conditioning, kitchen, washing machine, elevator, gym',
+          'Utilities included. Agency fee: 50%.',
+          'Price: 900 USD/month',
+          'Contact: owner@example.com, https://t.me/ocean_owner',
+          'Marketplace: https://booking.example/hotel/ocean',
+          'Official: https://ocean-home.example/stay?utm_source=telegram',
+        ].join('\n'),
+      },
+      {
+        now: new Date('2026-09-21T00:00:00Z'),
+        rates: { USD: 26_000 },
+      }
+    );
+
+    for (const [key, value] of Object.entries({
+      agencyFeePercent: 50,
+      bathrooms: 1,
+      bedrooms: 0,
+      beds: 2,
+      checkIn: '14:00',
+      checkOut: '11:30',
+      guests: 3,
+      latitude: 12.2683,
+      longitude: 109.2019,
+      propertyId: 'NT-AB_88',
+      rating: 4.8,
+      reviewCount: 126,
+      utilitiesIncluded: true,
+    })) {
+      expect(offer.attributes[key]).toBe(value);
+    }
+    expect(offer.attributes.amenities).toEqual([
+      'air-conditioning',
+      'elevator',
+      'gym',
+      'kitchen',
+      'sea-view',
+      'washing-machine',
+      'wifi',
+    ]);
+    expect(offer.contacts.email).toEqual(['owner@example.com']);
+    expect(offer.contacts.telegram).toEqual(['ocean_owner']);
+    expect(offer.location).toBe('Vĩnh Hải, Nha Trang');
+    expect(offer.officialUrl).toBe('https://ocean-home.example/stay');
+  });
+});
+
+describe('complete recent Telegram parsing', () => {
   it('extracts searchable Russian listing details and contacts', async () => {
     const offer = await parseTelegramOffer(
       {

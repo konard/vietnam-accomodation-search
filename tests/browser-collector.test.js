@@ -22,6 +22,7 @@ describe('browser-driven collection', () => {
       destroy: async () => events.push('commander.destroy'),
       evaluate: async () => [
         {
+          attributes: { propertyId: 'hotel-42' },
           title: 'Beach room',
           text: 'Beach room - 500,000 VND/night',
           url: 'https://booking.example/room/1',
@@ -59,6 +60,8 @@ describe('browser-driven collection', () => {
     expect(launchOptions.args).toEqual(['--no-sandbox']);
     expect(offers.length).toBe(1);
     expect(offers[0].raw.text).toContain('500,000 VND');
+    expect(offers[0].identifiers).toEqual({ booking: 'hotel-42' });
+    expect(offers[0].officialUrl).toBe(undefined);
     expect(events.slice(-2)).toEqual(['commander.destroy', 'browser.close']);
   });
 
@@ -105,5 +108,53 @@ describe('browser-driven collection', () => {
 
     expect(offers.length).toBe(1);
     expect(offers[0].sourceId).toBe('working');
+  });
+
+  it('checks explicitly discovered accommodation websites for direct prices', async () => {
+    let currentUrl = '';
+    const collector = new BrowserCollector({
+      browserRuntime: {
+        launchBrowser: async () => ({
+          browser: { close: async () => {} },
+          page: {},
+        }),
+        makeBrowserCommander: () => ({
+          destroy: async () => {},
+          goto: async ({ url }) => {
+            currentUrl = url;
+          },
+          evaluate: async (operation) =>
+            operation.name === 'extractOfficialListing'
+              ? {
+                  text: 'Direct price 450,000 VND/night',
+                  title: 'Ocean Home direct',
+                }
+              : [
+                  {
+                    officialUrl: 'https://ocean-home.example/stay',
+                    text: 'Marketplace listing without a public price',
+                    title: 'Ocean Home',
+                    url: 'https://market.example/ocean-home',
+                  },
+                ],
+        }),
+      },
+      now: () => new Date('2026-09-21T00:00:00Z'),
+    });
+
+    const offers = await collector.collect([
+      {
+        id: 'market',
+        searchUrl: 'https://market.example/search?q={query}',
+        type: 'web',
+      },
+    ]);
+
+    expect(currentUrl).toBe('https://ocean-home.example/stay');
+    expect(offers.length).toBe(2);
+    expect(offers[0].priceVnd).toBe(null);
+    expect(offers[1].sourceId).toBe('official:ocean-home.example');
+    expect(offers[1].sourceType).toBe('official-web');
+    expect(offers[1].priceVnd).toBe(450_000);
   });
 });

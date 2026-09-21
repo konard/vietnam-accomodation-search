@@ -2,6 +2,8 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Link, Parser, formatLinks } from 'links-notation';
 
+import { deduplicateOffers } from './offers.js';
+
 function encodeJson(value) {
   const bytes = new globalThis.TextEncoder().encode(JSON.stringify(value));
   let binary = '';
@@ -100,13 +102,10 @@ export class LinksStore {
   }
 
   async saveOffers(incoming) {
-    const unique = new Map(
-      (await this.listOffers()).map((offer) => [offer.id, offer])
-    );
-    for (const offer of incoming) {
-      unique.set(offer.id, offer);
-    }
-    const offers = [...unique.values()].sort(
+    const offers = deduplicateOffers([
+      ...(await this.listOffers()),
+      ...incoming,
+    ]).sort(
       (left, right) =>
         new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
     );

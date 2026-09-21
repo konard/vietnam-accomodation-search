@@ -155,3 +155,94 @@ describe('accommodation search service', () => {
     expect(results.map((offer) => offer.id)).toEqual(['nha-trang']);
   });
 });
+
+describe('merged accommodation search service', () => {
+  it('searches merged Telegram variants and normalized array fields', async () => {
+    const store = memoryStore([
+      {
+        attributes: {
+          amenities: ['pool', 'sea-view'],
+          labeledFields: { neighborhood: ['Vĩnh Hải'] },
+        },
+        collectedAt: '2026-09-21T00:00:00.000Z',
+        id: 'matching',
+        priceVnd: 600_000,
+        sourceType: 'telegram',
+        title: 'Rental',
+        variants: [{ raw: { caption: 'Căn hộ Nha Trang gần biển' } }],
+      },
+      {
+        collectedAt: '2026-09-21T00:00:00.000Z',
+        id: 'different',
+        priceVnd: 500_000,
+        raw: { text: 'Da Nang room' },
+        sourceType: 'telegram',
+        title: 'Other rental',
+      },
+    ]);
+    const service = new SearchService({
+      collector: { collect: async () => [] },
+      now: () => new Date('2026-09-21T00:30:00Z'),
+      registry: { list: async () => [] },
+      store,
+    });
+
+    const results = await service.search({
+      filters: { amenities: 'SEA', neighborhood: 'vinh hai' },
+      query: 'nha trang',
+      refresh: false,
+    });
+    expect(results.map((offer) => offer.id)).toEqual(['matching']);
+  });
+
+  it('recognizes all source aliases in a merged cached offer', async () => {
+    let collections = 0;
+    const store = memoryStore([
+      {
+        collectedAt: '2026-09-21T00:00:00.000Z',
+        id: 'merged',
+        priceVnd: 500_000,
+        sourceIds: ['web-a', 'telegram-a'],
+        title: 'Merged room',
+      },
+    ]);
+    const service = new SearchService({
+      collector: {
+        collect: async () => {
+          collections += 1;
+          return [];
+        },
+      },
+      now: () => new Date('2026-09-21T01:00:00Z'),
+      registry: {
+        list: async () => [{ id: 'web-a' }, { id: 'telegram-a' }],
+      },
+      store,
+    });
+
+    expect((await service.search()).length).toBe(1);
+    expect(collections).toBe(0);
+  });
+
+  it('saves cache metadata again after media eviction', async () => {
+    let saves = 0;
+    const store = {
+      listOffers: async () => [],
+      saveOffers: async () => {
+        saves += 1;
+      },
+    };
+    const service = new SearchService({
+      collector: { collect: async () => [] },
+      mediaCache: {
+        cacheOffers: async (offers) => offers,
+        enforceBudget: async () => ({ removed: ['old-photo'] }),
+      },
+      registry: { list: async () => [] },
+      store,
+    });
+
+    await service.search();
+    expect(saves).toBe(2);
+  });
+});

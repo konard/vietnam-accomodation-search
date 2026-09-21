@@ -10,7 +10,7 @@ function normalizeRecipient(value) {
   return `@${username}`;
 }
 
-async function createMtcuteClient({ apiHash, apiId }) {
+export async function createMtcuteClient({ apiHash, apiId }) {
   const { MemoryStorage, TelegramClient } = await import('@mtcute/node');
   return new TelegramClient({
     apiHash,

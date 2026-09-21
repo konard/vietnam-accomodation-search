@@ -11,7 +11,13 @@ export {
   serializeSources,
 } from './links-store.js';
 export { MediaCache } from './media-cache.js';
-export { deduplicateOffers, normalizeOffer } from './offers.js';
+export { parseLabeledFields, parseListingText } from './listing-parser.js';
+export {
+  canonicalizeOfferUrl,
+  deduplicateOffers,
+  normalizeOffer,
+  offerIdentityKeys,
+} from './offers.js';
 export { ExchangeRateProvider, convertToVnd, parsePrice } from './pricing.js';
 export { SearchService } from './search-service.js';
 export { BrowserSourceDiscoverer } from './source-discovery.js';

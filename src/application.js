@@ -8,10 +8,17 @@ import { SourceRegistry } from './sources.js';
 import { createTelegramBot } from './telegram-bot.js';
 import { TelegramAvailabilityService } from './telegram-user.js';
 
+function noSandboxRequested() {
+  return (
+    typeof globalThis.Deno === 'undefined' &&
+    globalThis.process?.env?.BROWSER_NO_SANDBOX === '1'
+  );
+}
+
 export function createApplication(options = {}) {
   const directory = options.directory || '.vietnam-accomodation-search';
   const maxBytes = options.maxBytes || 10 * 1024 ** 3;
-  const noSandbox = globalThis.process?.env?.BROWSER_NO_SANDBOX === '1';
+  const noSandbox = noSandboxRequested();
   const browserLaunchOptions =
     options.browserLaunchOptions ||
     (noSandbox ? { args: ['--no-sandbox', '--disable-setuid-sandbox'] } : {});

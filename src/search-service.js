@@ -12,14 +12,18 @@ function normalizedQuery(value) {
 }
 
 function isForQuery(offer, query) {
+  const queries = offer.searchQueries || [offer.searchQuery];
   return (
-    !offer.searchQuery ||
-    normalizedQuery(offer.searchQuery) === normalizedQuery(query)
+    queries.every((value) => !value) ||
+    queries.some(
+      (value) => value && normalizedQuery(value) === normalizedQuery(query)
+    )
   );
 }
 
 function telegramOfferMatches(offer, query) {
-  if (offer.sourceType !== 'telegram' || !query.trim()) {
+  const sourceTypes = offer.sourceTypes || [offer.sourceType];
+  if (!sourceTypes.includes('telegram') || !query.trim()) {
     return true;
   }
   const searchable = [
@@ -27,6 +31,10 @@ function telegramOfferMatches(offer, query) {
     offer.location,
     offer.raw?.text,
     offer.raw?.caption,
+    ...(offer.variants || []).flatMap((variant) => [
+      variant.raw?.text,
+      variant.raw?.caption,
+    ]),
   ]
     .filter(Boolean)
     .join(' ')
@@ -84,7 +92,7 @@ function sourceCoverageIsComplete(offers, sources, query) {
   const covered = new Set(
     offers
       .filter((offer) => isForQuery(offer, query))
-      .map((offer) => offer.sourceId)
+      .flatMap((offer) => offer.sourceIds || [offer.sourceId])
   );
   return sources.every((source) => covered.has(source.id));
 }

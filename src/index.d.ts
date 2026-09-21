@@ -28,25 +28,75 @@ export interface AccommodationAttributes {
   areaM2?: number;
   floor?: number;
   district?: string;
+  beds?: number;
+  guests?: number;
   availableFrom?: string;
   minimumStayMonths?: number;
   depositMonths?: number;
   furnished?: boolean;
   petsAllowed?: boolean;
+  utilitiesIncluded?: boolean;
+  agencyFeePercent?: number;
+  rating?: number;
+  reviewCount?: number;
+  checkIn?: string;
+  checkOut?: string;
+  latitude?: number;
+  longitude?: number;
   amenities?: string[];
   labeledFields?: Record<string, string[]>;
   [key: string]: unknown;
 }
 
 export interface AccommodationContacts {
+  email?: string[];
   telegram: string[];
   phone: string[];
+}
+
+export interface PriceObservation {
+  amount?: number;
+  currency?: string;
+  period?: Price['period'];
+  priceVnd: number;
+  sourceId: string;
+  sourceType?: 'web' | 'official-web' | 'telegram';
+  observedAt: string;
+  url?: string;
+  official: boolean;
+}
+
+export interface PriceChange {
+  sourceId: string;
+  direction: 'down' | 'up';
+  previousPriceVnd: number;
+  currentPriceVnd: number;
+  deltaVnd: number;
+  percent: number;
+  detectedAt: string;
+  url?: string;
+}
+
+export interface AccommodationOfferVariant {
+  id: string;
+  sourceId: string;
+  sourceType?: 'web' | 'official-web' | 'telegram';
+  title: string;
+  url?: string;
+  officialUrl?: string;
+  price: Price | null;
+  priceVnd: number | null;
+  postedAt?: string;
+  collectedAt: string;
+  raw: unknown;
 }
 
 export interface AccommodationOffer {
   id: string;
   sourceId: string;
-  sourceType?: 'web' | 'telegram';
+  sourceIds?: string[];
+  sourceType?: 'web' | 'official-web' | 'telegram';
+  sourceTypes?: Array<'web' | 'official-web' | 'telegram'>;
   title: string;
   kind?: string;
   location?: string;
@@ -55,11 +105,19 @@ export interface AccommodationOffer {
   price: Price | null;
   priceVnd: number | null;
   url?: string;
+  officialUrl?: string;
+  identifiers?: Record<string, string>;
+  identityKeys?: string[];
   searchQuery?: string;
+  searchQueries?: string[];
   photos: string[];
   postedAt?: string;
   collectedAt: string;
   raw: unknown;
+  variants?: AccommodationOfferVariant[];
+  priceHistory?: PriceObservation[];
+  priceChanges?: PriceChange[];
+  priceChange?: PriceChange;
   cachedPhotos?: Array<{
     cachedAt: string;
     path: string;
@@ -89,6 +147,20 @@ export declare function normalizeOffer(
   input: Partial<AccommodationOffer> & { text?: string },
   options?: { now?: Date; rates?: Record<string, number> }
 ): AccommodationOffer;
+export declare function canonicalizeOfferUrl(
+  value?: string
+): string | undefined;
+export declare function offerIdentityKeys(offer: AccommodationOffer): string[];
+export declare function parseLabeledFields(
+  text?: string
+): Record<string, string[]>;
+export declare function parseListingText(text?: string): {
+  attributes: AccommodationAttributes;
+  contacts: AccommodationContacts;
+  kind: string;
+  location?: string;
+  officialUrl?: string;
+};
 export declare function parseTelegramOffer(
   message: Record<string, unknown>,
   options?: { now?: Date; rates?: Record<string, number> }

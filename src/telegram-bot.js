@@ -6,6 +6,16 @@ function formatPrice(offer) {
   return `${Math.round(offer.priceVnd).toLocaleString('en-US')} VND${period}`;
 }
 
+function formatPriceChange(offer) {
+  const change = offer.priceChange;
+  if (!change) {
+    return undefined;
+  }
+  return `Price ${change.direction} ${Math.abs(change.deltaVnd).toLocaleString(
+    'en-US'
+  )} VND on ${change.sourceId}`;
+}
+
 export function formatSearchResults(offers) {
   if (!offers.length) {
     return 'No current offers with a comparable price were found.';
@@ -15,6 +25,7 @@ export function formatSearchResults(offers) {
       [
         `${index + 1}. ${offer.title}`,
         formatPrice(offer),
+        formatPriceChange(offer),
         offer.location,
         offer.url,
       ]
