@@ -136,7 +136,7 @@ function definedProperties(properties) {
 
 function extractAttributes(text, fields) {
   const propertyId = text.match(
-    /(?:\bID|код|mã)\s*[#:№-]?\s*([A-ZА-Я]?\d{1,12})/iu
+    /(?:\bID|код|mã)\s{0,8}[#:№-]?\s{0,8}([A-ZА-Я]?\d{1,12})/iu
   )?.[1];
   const bedrooms = matchedNumber(text, [
     /(\d{1,2})\s*(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)/iu,
@@ -148,7 +148,7 @@ function extractAttributes(text, fields) {
     /(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:m²|m2|м²|кв\.?\s*м)/iu,
   ]);
   const floor = matchedNumber(text, [
-    /(?:floor|этаж|tầng)\s*[:#-]?\s*(\d{1,3})/iu,
+    /(?:floor|этаж|tầng)\s{0,8}[:#-]?\s{0,8}(\d{1,3})/iu,
     /(\d{1,3})\s*(?:floor|этаж)/iu,
   ]);
   const minimumStayMonths = matchedNumber(text, [

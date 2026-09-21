@@ -208,6 +208,24 @@ describe('complete recent Telegram parsing', () => {
     ]);
   });
 
+  it('parses adversarial whitespace in bounded time', () => {
+    const startedAt = globalThis.performance.now();
+    for (const prefix of ['этаж', 'mã']) {
+      parseTelegramOffer(
+        {
+          chat: { username: 'adversarial_input' },
+          date: '2026-09-20T00:00:00Z',
+          messageId: 1,
+          text: `${prefix}${' '.repeat(10_000)}!`,
+        },
+        { now: new Date('2026-09-21T00:00:00Z') }
+      );
+    }
+    const durationMs = globalThis.performance.now() - startedAt;
+
+    expect(durationMs < 150).toBe(true);
+  });
+
   it('paginates public previews until reaching the two-month cutoff', async () => {
     const navigated = [];
     let currentUrl = '';
