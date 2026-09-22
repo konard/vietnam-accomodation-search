@@ -154,6 +154,34 @@ describe('Telegram service lifecycle', () => {
     expect(runtime.exitCode).toBe(22);
     expect(runtime.health('live').status).toBe('stopped');
   });
+
+  it('bounds polling and scheduler stop operations within the same deadline', async () => {
+    const runtime = new TelegramRuntime({
+      bot: {
+        api: { getMe: async () => ({ id: 1 }) },
+        start: async ({ onStart }) => onStart(),
+        stop: () => new Promise(() => {}),
+      },
+      drainDeadlineMs: 10,
+      healthPort: null,
+      logger: { info: () => {} },
+      scheduler: { start: () => {}, stop: () => new Promise(() => {}) },
+    });
+    await runtime.start();
+
+    const error = await (async () => {
+      try {
+        await runtime.stop('signal');
+      } catch (caught) {
+        return caught;
+      }
+      return undefined;
+    })();
+
+    expect(error instanceof AggregateError).toBe(true);
+    expect(error.errors[0].message).toContain('polling or subscription');
+    expect(runtime.exitCode).toBe(22);
+  });
 });
 
 describe('persisted update deduplication', () => {

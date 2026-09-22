@@ -260,14 +260,14 @@ function validKind(kind) {
   return kind;
 }
 
-async function staleLock(path) {
+export async function staleLock(path, statPath = stat) {
   let owner;
   try {
     owner = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8'));
   } catch (error) {
     if (error.code === 'ENOENT' || error instanceof SyntaxError) {
       try {
-        return Date.now() - (await stat(path)).mtimeMs >= 1000;
+        return Date.now() - (await statPath(path)).mtimeMs >= 1000;
       } catch (statError) {
         if (statError.code === 'ENOENT') {
           return false;

@@ -21,6 +21,7 @@ import {
   serializeRecords,
 } from '../src/index.js';
 import { durableWrite, sha256 } from '../src/link-cli-mirror.js';
+import { staleLock } from '../src/links-store.js';
 
 describe('canonical associative storage', () => {
   it('round-trips typed nested and unknown fields as two-value links', () => {
@@ -457,6 +458,31 @@ describe('canonical associative storage', () => {
       expect(await store.loadRecords('presets')).toEqual([
         { id: 'recovered-orphan' },
       ]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('surfaces unexpected lock metadata inspection failures', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'failed-lock-stat-'));
+    const lock = join(directory, '.write.lock');
+    await mkdir(lock);
+    const inspectionError = Object.assign(new Error('permission denied'), {
+      code: 'EACCES',
+    });
+    try {
+      let error;
+      try {
+        await staleLock(lock, async () => {
+          throw inspectionError;
+        });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBe(inspectionError);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
