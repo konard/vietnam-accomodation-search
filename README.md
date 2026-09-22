@@ -1,380 +1,207 @@
-# js-ai-driven-development-pipeline-template
+# Vietnam accommodation search
 
-A comprehensive template for AI-driven JavaScript/TypeScript development with full CI/CD pipeline support.
+A Telegram bot and command-line search service that compares accommodation
+offers from popular booking websites and public Telegram communities in
+Vietnam. It drives real browser pages through
+[browser-commander](https://www.npmjs.com/package/browser-commander),
+normalizes multilingual listings, converts prices to VND, and persists the
+source records in [Links Notation](https://www.npmjs.com/package/links-notation).
 
-This repository publishes the real test package
-`@link-foundation/example-package-name` so the template release pipeline is
-validated end to end with npm trusted publishing.
+The repository name intentionally retains the original `accomodation`
+spelling, so the executable and npm package are named
+`vietnam-accomodation-search`.
 
-## Features
+## What it does
 
-- **Multi-runtime support**: Works with Bun, Node.js, and Deno
-- **Universal testing**: Uses [test-anywhere](https://github.com/link-foundation/test-anywhere) for cross-runtime tests
-- **Automated releases**: Changesets-based versioning with GitHub Actions
-- **Optional Docker Hub publishing**: Docker images can be published after the matching npm version is visible
-- **Universal app example**: React UI for the package API with GitHub Pages, Electron, and Capacitor build paths
-- **Code quality**: ESLint + Prettier with pre-commit hooks via Husky
-- **Package manager agnostic**: Works with bun, npm, yarn, pnpm, and deno
-- **Broken link checks**: Automated link validation with [lychee](https://github.com/lycheeverse/lychee-action) and Web Archive fallback suggestions
+- Starts with 20 ranked web services, 20 nationwide Telegram communities, and
+  20 additional Nha Trang-focused Telegram communities.
+- Refreshes all three rankings with `/update_sources`, keeping 20 in each
+  cohort and searching for similar sources in English, Russian, and Vietnamese.
+- Navigates each configured source's web UI rather than calling a private
+  accommodation API.
+- Paginates public Telegram previews through the latest two months of history.
+- Parses English, Vietnamese, and Russian listing text into searchable fields
+  such as bedrooms, bathrooms, area, floor, district, availability date,
+  minimum stay, deposit, furnishing, pets, amenities, and owner contacts.
+- Preserves every labeled field and the complete raw message, including fields
+  not yet understood by the normalizer.
+- Reconciles the same accommodation across official URLs, platform IDs, source
+  property IDs, and conservative listing fingerprints while preserving every
+  raw source variant.
+- Follows explicitly discovered accommodation websites for direct price
+  checks, persists per-source price history, and reports official-site price
+  increases and drops without mislabeling marketplace prices as official.
+- Prefers a listing's explicit VND price; otherwise, it converts supported
+  currencies using a daily exchange-rate snapshot.
+- Returns one offer for `/search --cheapest` or up to 50 for
+  `/search --cheapest N`.
+- Keeps complete raw records in a `.lino` link store for future parsers.
+- Caches at most ten photos per offer under a shared 10 GiB budget. Eviction
+  removes only local files; the original photo URL stays in the offer record.
 
 ## Quick Start
 
-### Using This Template
-
-1. Click "Use this template" on GitHub to create a new repository
-2. Clone your new repository
-3. Update `package.json` with your package name and description
-4. Install dependencies: `bun install`
-5. Start developing!
-
-### Development
+Node.js 22 or newer is required.
 
 ```bash
-# Install dependencies
-bun install
-
-# Run tests
-bun test --timeout 30000
-
-# Or with other runtimes:
-npm test
-deno test --allow-read
-
-# Lint code
-bun run lint
-
-# Format code
-bun run format
-
-# Check all (lint + format + file size)
-bun run check
-
-# Build the universal React example app
-npm install --prefix examples/universal-app
-npm run example:web:build
-npm run example:desktop:package
-
-# Try the CLI locally
-node bin/example-package-name.js add 2 3
+npm install
+npx playwright install chromium
+cp .env.example .env
 ```
-
-## Project Structure
-
-```
-.
-├── .changeset/           # Changeset configuration
-├── .github/workflows/    # GitHub Actions CI/CD
-├── .husky/               # Git hooks (pre-commit)
-├── examples/             # Usage examples
-│   └── universal-app/    # React + GitHub Pages + Electron + Capacitor app
-├── scripts/              # Build and release scripts
-├── src/                  # Source code
-│   ├── index.js          # Main entry point
-│   └── index.d.ts        # TypeScript definitions
-├── tests/                # Test files
-├── .eslintrc.js          # ESLint configuration
-├── .prettierrc           # Prettier configuration
-├── bunfig.toml           # Bun configuration
-├── deno.json             # Deno configuration
-└── package.json          # Node.js package manifest
-```
-
-## Design Choices
-
-### Multi-Runtime Support
-
-This template is designed to work seamlessly with all major JavaScript runtimes:
-
-- **Bun**: Primary runtime with highest performance, uses native test support (`bun test`)
-- **Node.js**: Alternative runtime, uses built-in test runner (`node --test`)
-- **Deno**: Secure runtime with built-in TypeScript support (`deno test`)
-
-The [test-anywhere](https://github.com/link-foundation/test-anywhere) framework provides a unified testing API that works identically across all runtimes.
-
-### Package Manager Agnostic
-
-While `package.json` is the source of truth for dependencies, the template supports:
-
-- **bun**: Primary choice, uses `bun.lockb`
-- **npm**: Uses `package-lock.json`
-- **yarn**: Uses `yarn.lock`
-- **pnpm**: Uses `pnpm-lock.yaml`
-- **deno**: Uses `deno.json` for configuration
-
-Note: `package-lock.json` is not committed by default to allow any package manager.
-
-### Universal App Example
-
-The template includes `examples/universal-app`, a Vite React app that imports
-`add` and `multiply` from `src/index.js` and renders a visual calculator UI.
-The same static build is used by:
-
-- GitHub Pages (`npm run example:web:build`)
-- Electron desktop packaging (`npm run example:desktop:package`)
-- Capacitor Android/iOS sync (`npm run example:mobile:sync`)
-
-The example app has its own `package.json` and lockfile so template users can
-opt into the frontend stack without adding React, Electron, or Capacitor to the
-library package itself.
-
-See [examples/universal-app/README.md](examples/universal-app/README.md) for
-local web, desktop, Android, and iOS testing instructions.
-
-### Code Quality
-
-- **ESLint**: Configured with recommended rules + Prettier integration
-- **Prettier**: Consistent code formatting
-- **Husky + lint-staged**: Pre-commit hooks ensure code quality
-- **File size limit**: Files must stay under 1500 lines for maintainability (enforced via ESLint and CI)
-
-### Release Workflow
-
-The release workflow uses [Changesets](https://github.com/changesets/changesets) for version management:
-
-1. **Creating a changeset**: Run `bun run changeset` to document changes
-2. **PR validation**: CI checks for valid changeset in each PR
-3. **Automated versioning**: Merging to `main` triggers version bump
-4. **npm publishing**: Automated via OIDC trusted publishing (no tokens needed)
-5. **Optional Docker Hub publishing**: When configured, waits for the exact npm version and tags the Docker image with that version
-6. **GitHub releases**: Auto-created with formatted release notes
-
-> **First release of a brand-new package**: OIDC trusted publishing cannot
-> create a package that does not exist yet (the first publish fails with
-> `E404`, because a trusted publisher can only be configured for an existing
-> package). To bootstrap, add a repository secret named `NPM_TOKEN` (a
-> granular/automation token with publish access). The release workflow passes
-> it as `NODE_AUTH_TOKEN` automatically. Once the package exists and OIDC
-> trusted publishing is configured on npmjs.com, the token becomes optional and
-> can be removed.
-
-#### Manual Releases
-
-Two manual release modes are available via GitHub Actions:
-
-- **Instant release**: Immediately bump version and publish
-- **Changeset PR**: Create a PR with changeset for review
-
-### CI/CD Pipeline
-
-The GitHub Actions workflow (`.github/workflows/release.yml`) implements a fast-fail pipeline:
-
-**Fast checks** (~7-30s each, run first for fastest feedback):
-
-1. **Test compilation**: Syntax-checks all `.mjs` files with `node --check`
-2. **Lint, format & secrets scan**: ESLint, Prettier, jscpd, and [secretlint](https://github.com/secretlint/secretlint) for credential leak detection
-3. **File line limits**: Enforces the 1500-line limit on JavaScript (`.js`, `.mjs`, `.cjs`) and Markdown (`.md`) files plus `release.yml`
-4. **Changeset check**: Validates PR has exactly one changeset (added by that PR)
-5. **Version check**: Blocks manual version changes in `package.json`
-6. **Documentation validation**: Checks required doc files (doc line limits are enforced by the file line limits check)
-
-**Slow checks** (only run after all fast checks pass):
-
-7. **Test matrix**: 3 runtimes × 3 OS = 9 test combinations
-8. **Broken link checks**: Validates all links in Markdown/HTML files (separate workflow)
-
-**Release** (on merge to main):
-
-9. **Changeset merge**: Combines multiple pending changesets at release time
-10. **Release**: Automated versioning and npm publishing
-11. **Optional Docker publish**: Publishes Docker Hub `latest` and npm-version tags after the npm package is visible
-
-#### Reasonable Timeouts
-
-Every CI job declares an explicit `timeout-minutes` so hung steps fail
-in minutes instead of reaching the GitHub Actions default of six hours.
-Fast checks use 5-10 minute caps, release jobs use 30 minutes, and the
-link checker uses 10 minutes for external network variance.
-
-That cap is a backstop, never the deadline: GitHub reports a job it
-kills as **cancelled**, not **failed**. Long steps therefore own an
-explicit budget via `scripts/run-with-budget-warning.sh`, which warns at
-70% of the budget and fails the step with exit code 124 when it expires.
-See [CI-TIMEOUT-BUDGETS.md](docs/CI-TIMEOUT-BUDGETS.md).
-
-Individual tests are also capped inside supported runners:
-`npm test` runs `node --test --test-timeout=30000`, and the CI Bun
-runner uses `bun test --timeout 30000`. Both bound a _single test_, not
-the suite, which is why the suite budget above exists. Deno does not
-provide a single global per-test timeout flag, so Deno tests are
-protected by their step budget and the matrix job backstop.
-
-See [BEST-PRACTICES.md](docs/BEST-PRACTICES.md) for detailed explanations of each practice.
-
-#### Robust Changeset Handling
-
-The CI/CD pipeline is designed to handle concurrent PRs gracefully:
-
-- **PR Validation**: Only validates changesets **added by the current PR**, not pre-existing ones from other merged PRs. This prevents false failures when multiple PRs merge before a release cycle completes.
-
-- **Release-time Merging**: If multiple changesets exist when releasing, they are automatically merged into a single changeset with:
-  - The highest version bump type (major > minor > patch)
-  - All descriptions preserved in chronological order
-
-This design decouples PR validation from the need to pull changes from the default branch, reducing conflicts and ensuring that even if CI/CD fails, all unpublished changesets will still get published when the error is resolved.
-
-### Deploying the example app
-
-The `example-app.yml` workflow deploys the universal example app to GitHub
-Pages on every push to `main`. Before the first run on `main` in a new
-repository created from this template, open **Settings → Pages** and set
-**Source = GitHub Actions**. This is a one-time manual step and cannot be
-configured from a workflow because the Pages source defaults to
-_Deploy from a branch_. Without it, the `pages-deploy` job fails on
-`actions/deploy-pages` with `Get Pages site failed` /
-`Failed to create deployment`. After flipping the source, the workflow
-provisions the Pages site on its first run.
-
-### Auto-regenerated preview screenshots
-
-The same `example-app.yml` workflow contains a `preview-regen` job that boots
-the built example app in a headless Chromium via
-[`browser-commander`](https://www.npmjs.com/package/browser-commander) +
-Playwright and writes fresh screenshots to
-`docs/screenshots/example-app/example-app-{locale}-{theme}.png` on every
-push to `main` (and on `workflow_dispatch`). Any drift is committed back to
-`main` so README/site images never go stale between releases. Screenshot-only
-pushes do not match this workflow's path filter, while a protected-branch
-fallback PR remains eligible for its required checks. The job runs in the
-official Playwright container with the browser already installed, avoiding CI
-stalls from live Chromium downloads.
-
-The same script is available locally:
-
-```bash
-npm install --prefix examples/universal-app
-npm run example:web:preview-images
-# Verbose probe of <html data-theme>, <html lang>, and PNG signatures:
-PREVIEW_VERBOSE=1 npm run example:web:preview-images
-```
-
-The matrix defaults to `{en, ru} × {light, dark}`. The shipped example app
-has no localization or theme toggle yet, so every cell currently renders
-the same UI — when a fork adds either, the matrix produces real per-cell
-variants without script edits.
-
-### Broken Link Checker
-
-The link checker workflow (`.github/workflows/links.yml`) validates all links in Markdown and HTML files:
-
-1. **Detection**: Uses [lychee](https://github.com/lycheeverse/lychee-action) to scan all `*.md` and `*.html` files
-2. **Web Archive fallback**: For any broken links found, automatically checks the [Wayback Machine](https://web.archive.org) for archived versions
-3. **Actionable suggestions**: Reports one of three outcomes for each broken link:
-   - **Archived**: Suggests the Web Archive URL as a replacement
-   - **Not archived**: Clearly reports the link is unrecoverable
-4. **Scheduled checks**: Runs weekly to catch links that break over time (even if no files changed)
-5. **Issue creation**: On scheduled runs, creates a GitHub Issue with the full broken links report
-
-Add regex patterns to `.lycheeignore` to exclude URLs from checks (e.g., local dev URLs, example.com, known rate-limited sites).
 
 ## Configuration
 
-### Updating Package Name
+Export the bot token before starting the process. The CLI does not load `.env`
+itself, so use your process manager or shell to provide it.
 
-After creating a repository from this template, update the package name in:
+```bash
+export TELEGRAM_BOT_TOKEN='replace-with-a-BotFather-token'
+npm exec vietnam-accomodation-search -- bot
+```
 
-1. `package.json`: replace `"@link-foundation/example-package-name"` with your package name
-2. `.changeset/config.json`: Package references
+Availability inquiries use a Telegram user session because bots cannot start a
+private conversation with arbitrary owners. Set `TELEGRAM_API_ID`,
+`TELEGRAM_API_HASH`, and an exported `TELEGRAM_USER_SESSION` string generated
+for that account with [mtcute](https://mtcute.dev/guide/). The session is
+equivalent to a password: never log it, commit it, or share it. The application
+opens it only for an explicitly requested inquiry and closes the client after
+the message is sent.
 
-Release scripts derive the package name from `package.json` at runtime, so no
-script-level package-name constants need to be edited during template adoption.
+The default cache directory is `.vietnam-accomodation-search/` in the current
+working directory. It contains `offers.lino`, `sources.lino`, and downloaded
+media. Do not commit it.
 
-### Protected-Branch Release Pull Requests
+Chromium sandboxing remains enabled by default. In a locked-down container
+where unprivileged user namespaces are unavailable, set
+`BROWSER_NO_SANDBOX=1` to pass the browser command-line fallback documented by
+browser-commander. Use that setting only when the surrounding container is the
+security boundary.
 
-If `main` requires pull requests and the `Pipeline Status` check, configure a
-repository secret named `RELEASE_PR_TOKEN`. It must be a fine-grained PAT for
-an automation actor other than the workflow's built-in `GITHUB_TOKEN`, scoped
-to this repository with Contents and Pull requests write access and Checks read
-access. The release and generated-preview fallbacks use it to open the PR, wait
-for the PR's own checks, and merge only after they pass. The manual
-changeset-PR mode uses it for the same reason. Teams that generate short-lived
-GitHub App installation tokens can wire that action output to the same workflow
-inputs instead of storing a PAT.
+## Telegram commands
 
-Repositories that allow the release workflow to push directly to `main` do not
-exercise the fallback, but manual changeset PR creation still requires this
-secret.
+```text
+/search Da Nang
+/search --cheapest Da Nang
+/search --cheapest 10 Nha Trang
+/search --cheapest 10 --filter bedrooms=2 --filter petsAllowed=true Nha Trang
+/search --filter labeledFields.электричество=счётчику Нячанг
+/update_sources
+/check_availability OFFER_ID [@owner]
+```
 
-### Optional Docker Hub Publishing
+The first search, an explicit refresh, or a stale/incomplete cache triggers a
+browser pass over every configured source. Later searches use the cache for up
+to six hours. One inaccessible source is logged and skipped without discarding
+results from the other sources.
 
-Docker publishing is disabled by default. To enable it for a project that ships
-a Docker image, add a `Dockerfile` and configure these GitHub Actions settings:
+The same operations are available without Telegram:
 
-| Setting              | Type               | Description                                                                           |
-| -------------------- | ------------------ | ------------------------------------------------------------------------------------- |
-| `DOCKERHUB_IMAGE`    | Variable           | Docker Hub image name, for example `namespace/image`. This enables Docker publishing. |
-| `DOCKERHUB_USERNAME` | Variable           | Docker Hub username used by `docker/login-action`.                                    |
-| `DOCKERHUB_TOKEN`    | Secret             | Docker Hub access token used for registry authentication.                             |
-| `DOCKER_CONTEXT`     | Variable, optional | Docker build context. Defaults to `.`.                                                |
-| `DOCKERFILE`         | Variable, optional | Dockerfile path. Defaults to `./Dockerfile`.                                          |
+```bash
+node bin/vietnam-accomodation-search.js search --cheapest 10 "Da Nang"
+node bin/vietnam-accomodation-search.js update-sources
+node bin/vietnam-accomodation-search.js check-availability OFFER_ID @owner
+```
 
-When enabled, the release workflow waits until the exact published npm version
-is visible in the npm registry, then publishes Docker Hub tags for `latest` and
-that same version. The Docker build also receives `NPM_PACKAGE_VERSION` as a
-build argument so Dockerfiles can install the matching published package.
+## Source ranking and evidence
 
-### ESLint Rules
+Every source record contains a popularity metric, numeric value, evidence URL,
+and observation timestamp. Seed website ranks link to public traffic evidence;
+seed Telegram ranks link to the public channel or group preview where its
+audience is displayed.
 
-Customize ESLint in `eslint.config.js`. Current configuration:
+`/update_sources` launches a browser and performs current Google web searches
+for Vietnam accommodation services plus multilingual Nha Trang Telegram
+communities. Website candidates are reranked by their result position.
+Telegram candidates discovered in the search UI are combined with their seed
+cohort, then each public `t.me` preview is visited to read its current member or
+subscriber count. The highest 20 records in each cohort are saved.
 
-- ES Modules support
-- Prettier integration
-- No console restrictions (common in CLI tools)
-- Strict equality enforcement
-- Async/await best practices
-- **Strict unused variables rule**: No exceptions - all unused variables, arguments, and caught errors must be removed (no `_` prefix exceptions)
+Popularity changes constantly, so the bundled list is a bootstrap candidate
+set rather than a permanent claim. The evidence attached to the persisted
+source record is the authoritative snapshot for a particular deployment.
 
-### Prettier Options
+## Telegram access model
 
-Configured in `.prettierrc`:
+Search and ingestion need only a Telegram bot token. Public channel history is
+read from Telegram's public web preview through browser-commander, following
+older-message links until the two-month cutoff. Live group and channel posts
+are also ingested when Telegram delivers them to the bot.
 
-- Single quotes
-- Semicolons
-- 2-space indentation
-- 80-character line width
-- ES5 trailing commas
-- LF line endings
+Telegram does not expose arbitrary private history to bots. To monitor a
+private community, add the bot there and grant the permissions needed to
+receive new posts; for groups, disable BotFather privacy mode if the bot must
+see ordinary messages. Messages posted before the bot joined must be forwarded
+or imported separately. These platform constraints are not bypassed.
 
-## Scripts Reference
+The optional user session is used only by `/check_availability` (or its CLI
+equivalent) to send a single private message. Searching never contacts an owner
+automatically. When a parsed post contains an `@username`, it is used by
+default; an explicit recipient can be supplied for listings without one.
 
-| Script                               | Description                                           |
-| ------------------------------------ | ----------------------------------------------------- |
-| `bun test --timeout 30000`           | Run tests with Bun and a 30s per-test cap             |
-| `npm test`                           | Run tests with Node.js and a 30s per-test cap         |
-| `bun run lint`                       | Check code with ESLint                                |
-| `bun run lint:fix`                   | Fix ESLint issues automatically                       |
-| `bun run format`                     | Format code with Prettier                             |
-| `bun run format:check`               | Check formatting without changing files               |
-| `bun run check`                      | Run all checks (lint + format)                        |
-| `npm run example:web:dev`            | Start the universal app Vite dev server               |
-| `npm run example:web:build`          | Build the universal app static web bundle             |
-| `npm run example:web:preview-images` | Regenerate preview screenshots via browser-commander  |
-| `npm run example:desktop:package`    | Package the Electron desktop app locally              |
-| `npm run example:mobile:sync`        | Build and sync the app bundle into Capacitor projects |
-| `bun run changeset`                  | Create a new changeset                                |
+## Data model and cache
+
+Offers keep normalized links for identity, source, URL, and VND price alongside
+a lossless base64url JSON payload containing the original record. This produces
+portable Links Notation while preserving unknown fields for future parsing.
+Writes use a temporary file and atomic rename.
+
+Merged offers retain all source IDs, identifiers, raw variants, contacts,
+attributes, photos, and price observations. Learned identity aliases are saved,
+so future records can match any previously observed platform or official URL.
+A marketplace URL and an accommodation's official URL have distinct
+provenance; only a page visited as `official-web` produces an official price
+change event.
+
+The collector recognizes common property-card markup and public Telegram
+message markup. Sites can change their DOM or present consent/CAPTCHA pages;
+those sources are skipped for that pass. Deployments are responsible for
+respecting each source's terms, robots policy, and rate limits.
+
+## Library usage
+
+```js
+import { createApplication } from 'vietnam-accomodation-search';
+
+const application = createApplication({
+  directory: '/var/lib/vietnam-accommodation-search',
+});
+
+const offers = await application.service.search({
+  cheapest: true,
+  limit: 10,
+  query: 'Da Nang',
+});
+```
+
+Core services accept injected browser, storage, fetch, clock, and rate
+dependencies for deterministic testing.
+
+See [open-source competitor research](docs/COMPETITOR-RESEARCH.md) for the
+reproducible search snapshot and capability comparison, and
+[Issue 1 development notes](docs/ISSUE-1-DEVELOPMENT-NOTES.md) for the durable
+architecture, parser, security, and validation findings from the work logs.
 
 ## Contributing
 
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guidelines.
+```bash
+npm test
+npm run test:coverage
+npm run check
+bun test --timeout 30000
+deno test --allow-read
+```
 
-Quick steps:
+The legacy universal calculator example remains as a pipeline fixture for web,
+desktop, and mobile build validation. Its Auto-regenerated preview screenshots
+can be refreshed with:
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Make your changes
-4. Create a changeset: `bun run changeset`
-5. Commit your changes (pre-commit hooks will run automatically)
-6. Push and create a Pull Request
+```bash
+npm run example:web:preview-images
+```
 
-## Best Practices
-
-This template implements CI/CD best practices for AI-driven development. See [BEST-PRACTICES.md](docs/BEST-PRACTICES.md) for details on:
-
-- File size limits for AI readability
-- Automated formatting and linting
-- Multi-runtime and cross-platform testing
-- Changeset-based versioning
-- Concurrency control for CI/CD pipelines
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the complete validation and
+release workflow.
 
 ## License
 
-[Unlicense](LICENSE) - Public Domain
+Released under the [Unlicense](LICENSE).

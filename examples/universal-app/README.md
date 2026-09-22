@@ -1,8 +1,9 @@
 # Universal Example App
 
-This example turns the package functions in `src/index.js` into a React UI and
-uses the same build output for GitHub Pages, Electron desktop packages, and
-Capacitor mobile projects.
+This example turns the dependency-free package functions in `src/math.js` into
+a React UI and uses the same build output for GitHub Pages, Electron desktop
+packages, and Capacitor mobile projects. The isolated entry point keeps the
+server-side search and browser automation dependencies out of client bundles.
 
 ![Universal example app preview](../../docs/screenshots/example-app/example-app.png)
 

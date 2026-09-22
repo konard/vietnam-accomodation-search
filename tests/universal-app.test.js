@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 const exampleRoot = 'examples/universal-app';
 const packageJsonPath = `${exampleRoot}/package.json`;
 const appSourcePath = `${exampleRoot}/src/App.js`;
+const browserSafeMathPath = 'src/math.js';
 const viteConfigPath = `${exampleRoot}/vite.config.js`;
 const capacitorConfigPath = `${exampleRoot}/capacitor.config.json`;
 const workflowPath = '.github/workflows/example-app.yml';
@@ -47,12 +48,15 @@ describe('universal React example app', () => {
 
   it('renders a visual UI using the package add and multiply functions', () => {
     const appSource = readText(appSourcePath);
+    const mathSource = readText(browserSafeMathPath);
 
-    expect(appSource).toContain("from '../../../src/index.js'");
+    expect(appSource).toContain("from '../../../src/math.js'");
     expect(appSource).toContain('add(parsedLeft, parsedRight)');
     expect(appSource).toContain('multiply(parsedLeft, parsedRight)');
     expect(appSource).toContain('Addition');
     expect(appSource).toContain('Multiplication');
+    expect(mathSource).not.toContain('browser-commander');
+    expect(mathSource).not.toContain('node:');
   });
 
   it('shares the Vite build output with Capacitor and GitHub Pages', () => {

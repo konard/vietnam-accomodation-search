@@ -1,5 +1,5 @@
 ---
-'@link-foundation/example-package-name': patch
+'vietnam-accomodation-search': patch
 ---
 
 Fix every open CI correctness and resilience issue in the pipeline: scope the

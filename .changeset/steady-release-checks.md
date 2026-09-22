@@ -1,5 +1,5 @@
 ---
-'@link-foundation/example-package-name': patch
+'vietnam-accomodation-search': patch
 ---
 
 Make protected-branch release fallbacks wait for real pull-request checks with
