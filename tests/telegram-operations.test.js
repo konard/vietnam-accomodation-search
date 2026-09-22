@@ -596,7 +596,9 @@ describe('Telegram user authentication', () => {
       expect(await readFile(sessionFile, 'utf8')).toBe(
         'exported-secret-session'
       );
-      expect((await stat(sessionFile)).mode & 0o777).toBe(0o600);
+      if (process.platform !== 'win32') {
+        expect((await stat(sessionFile)).mode & 0o777).toBe(0o600);
+      }
       expect(destroyed).toBe(1);
     } finally {
       await rm(directory, { force: true, recursive: true });
