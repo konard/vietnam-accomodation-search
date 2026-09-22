@@ -399,6 +399,7 @@ describe('use-m load survives a stalled connection', () => {
     let error;
     try {
       await loadUse({
+        fetchImpl: globalThis.fetch,
         url,
         attempts: 1,
         timeoutMs: 300,
@@ -409,6 +410,7 @@ describe('use-m load survives a stalled connection', () => {
     } finally {
       server.close();
     }
+    expect(error instanceof Error).toBe(true);
     expect(error.message.includes(url)).toBe(true);
     expect(Date.now() - started < 10000).toBe(true);
   });
