@@ -892,6 +892,11 @@ describe('Telegram user authentication', () => {
   });
 
   it('degrades a combined runtime to bot-only after MTProto startup fails', async () => {
+    // The runtime health probe binds a local port. Deno CI deliberately omits
+    // --allow-net, while Node and Bun exercise this integration path.
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const errors = [];
     let resolvePolling;
     let destroyed = 0;

@@ -4,7 +4,10 @@ import { describe, expect, it } from 'test-anywhere';
 
 import { evaluatePagesPolicy } from '../scripts/pages-policy.mjs';
 
-const workflow = readFileSync('.github/workflows/example-app.yml', 'utf8');
+const workflow = readFileSync(
+  '.github/workflows/example-app.yml',
+  'utf8'
+).replaceAll('\r\n', '\n');
 
 function job(name) {
   const start = workflow.indexOf(`  ${name}:\n`);

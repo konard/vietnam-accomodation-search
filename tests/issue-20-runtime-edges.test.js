@@ -20,6 +20,8 @@ import {
   validateTelegramConfiguration,
 } from '../src/index.js';
 
+const isDenoRuntime = typeof globalThis.Deno !== 'undefined';
+
 async function failureOf(operation) {
   try {
     await operation();
@@ -50,6 +52,11 @@ function memoryRecords() {
 
 describe('issue 20 composition and failure tracing', () => {
   it('wires configured MTProto and all registry discovery routes', async () => {
+    // Constructing the real grammY Bot loads a Node dependency that inspects
+    // process.env. The Deno CI leg intentionally grants read access only.
+    if (isDenoRuntime) {
+      return;
+    }
     const store = memoryRecords();
     let clients = 0;
     let activeClients = 0;
@@ -183,6 +190,11 @@ describe('issue 20 composition and failure tracing', () => {
 
 describe('issue 20 browser, release, auth, and history runtime edges', () => {
   it('atomically replaces release-audit output with private permissions', async () => {
+    // This assertion needs environment access for tmpdir plus filesystem write
+    // access, neither of which belongs in Deno's read-only CI permission set.
+    if (isDenoRuntime) {
+      return;
+    }
     const directory = await mkdtemp(join(tmpdir(), 'release-audit-'));
     const output = join(directory, 'audit.json');
     try {
