@@ -1,0 +1,45 @@
+services:
+  app:
+    image: ${APP_IMAGE:-vietnam-accomodation-search:local}
+    build:
+      context: .
+      args:
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        VCS_REF: ${VCS_REF:-unknown}
+    init: true
+    env_file:
+      - path: ${ENV_FILE:-.env}
+        required: true
+    environment:
+      DATA_DIRECTORY: /data
+      HEALTH_HOST: 0.0.0.0
+      HEALTH_PORT: 8080
+      LINKS_BINARY_MIRROR: 1
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - 127.0.0.1:${HEALTH_PORT:-8080}:8080
+    volumes:
+      - accommodation-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    shm_size: 1gb
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8080/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  accommodation-data:
+    name: ${DATA_VOLUME:-vietnam-accomodation-search-data}
