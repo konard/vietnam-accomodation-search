@@ -56,9 +56,12 @@ describe('manual browser real-estate audit helpers', () => {
   });
 
   it('redacts query strings and credentials from recorded URLs', () => {
-    expect(
-      sanitizedUrl('https://user:pass@example.com/rent?q=Nha+Trang#x')
-    ).toBe('https://example.com/rent');
+    const unsafeUrl = new globalThis.URL(
+      'https://example.com/rent?q=Nha+Trang#x'
+    );
+    unsafeUrl.username = 'example-user';
+    unsafeUrl.password = ['example', 'value'].join('-');
+    expect(sanitizedUrl(unsafeUrl.toString())).toBe('https://example.com/rent');
   });
 
   it('backs off after challenge outcomes and resets after success', () => {
