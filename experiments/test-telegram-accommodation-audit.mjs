@@ -5,6 +5,7 @@ import { describe, expect, it } from 'test-anywhere';
 
 import {
   anonymizeListing,
+  assertManualLocalRun,
   classifyAccommodationPost,
   expectedDetails,
   isNhaTrangSource,
@@ -16,6 +17,13 @@ import {
 } from './telegram-accommodation-audit-lib.mjs';
 
 describe('Telegram accommodation audit helpers', () => {
+  it('refuses to start the real-data E2E audit in CI/CD', () => {
+    expect(() => assertManualLocalRun({ CI: 'true' })).toThrow(
+      /manual\/local/iu
+    );
+    expect(() => assertManualLocalRun({})).not.toThrow();
+  });
+
   it('keeps a multilingual, anonymized parser conformance corpus', async () => {
     const fixtures = JSON.parse(
       await readFile(

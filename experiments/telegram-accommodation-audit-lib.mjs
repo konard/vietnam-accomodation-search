@@ -65,6 +65,22 @@ export const DEFAULT_DISCOVERY_QUERIES = [
   'Nha Trang phòng trọ',
 ];
 
+export function assertManualLocalRun(environment = {}) {
+  const ciMarkers = [
+    'CI',
+    'GITHUB_ACTIONS',
+    'GITLAB_CI',
+    'BUILDKITE',
+    'CIRCLECI',
+    'JENKINS_URL',
+  ];
+  if (ciMarkers.some((name) => environment[name])) {
+    throw new Error(
+      'Real-data Telegram E2E is manual/local-only and refuses to run in CI/CD.'
+    );
+  }
+}
+
 function unquote(value) {
   const trimmed = value.trim();
   const quote = trimmed[0];

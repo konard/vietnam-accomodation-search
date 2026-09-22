@@ -10,6 +10,7 @@ import { parseTelegramOffer, serializeOffers } from '../src/index.js';
 import {
   DEFAULT_DISCOVERY_QUERIES,
   anonymizeListing,
+  assertManualLocalRun,
   classifyAccommodationPost,
   countBy,
   isNhaTrangSource,
@@ -517,6 +518,7 @@ export async function runAudit(options) {
 }
 
 async function main() {
+  assertManualLocalRun(process.env);
   const options = parseArguments(process.argv.slice(2));
   const report = await runAudit(options);
   const output = `${JSON.stringify(report, null, 2)}\n`;

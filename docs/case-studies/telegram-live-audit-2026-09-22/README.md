@@ -32,6 +32,8 @@ its privacy and classification helpers are in
 [`experiments/telegram-accommodation-audit-lib.mjs`](../../../experiments/telegram-accommodation-audit-lib.mjs),
 and its offline regression coverage is in
 [`experiments/test-telegram-accommodation-audit.mjs`](../../../experiments/test-telegram-accommodation-audit.mjs).
+The live runner is manual/local-only, refuses common CI/CD environments, and is
+not selected by the repository's unit/integration test scripts or workflows.
 
 ## Results
 
@@ -132,3 +134,5 @@ it does not exercise a transactional `link-cli` binary mirror.
   explicit session formats and safe GramJS/mtcute migration.
 - [#16](https://github.com/konard/vietnam-accomodation-search/issues/16):
   next-release privacy-safe revalidation.
+- [#18](https://github.com/konard/vietnam-accomodation-search/issues/18):
+  correlated stage/segment traces and manual-only real-data E2E isolation.
