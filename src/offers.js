@@ -216,10 +216,16 @@ export function normalizeOffer(input, options = {}) {
       text.split(/\r?\n/u)[0],
       'Accommodation'
     ),
+    ...optional('intent', firstPresent(compact(input.intent), 'rental-offer')),
     ...optional('kind', firstPresent(compact(input.kind), parsed.kind)),
+    ...optional('language', firstPresent(input.language, parsed.language)),
     ...optional(
       'location',
       firstPresent(compact(input.location), parsed.location)
+    ),
+    ...optional(
+      'locationProvenance',
+      firstPresent(input.locationProvenance, parsed.locationProvenance)
     ),
     ...optional('attributes', attributes),
     ...optional('contacts', contacts),
@@ -478,9 +484,13 @@ export function deduplicateOffers(offers) {
 export function removeOfferMessageVariants(offer, sourceId, messageIds) {
   const matches = (variant) => {
     const provenance = variant.provenance;
+    const variantMessageIds = [
+      provenance?.messageId,
+      ...(provenance?.messageIds || []),
+    ].filter((value) => value !== undefined);
     return (
       String(provenance?.sourceId || variant.sourceId) === String(sourceId) &&
-      messageIds.has(String(provenance?.messageId))
+      variantMessageIds.some((messageId) => messageIds.has(String(messageId)))
     );
   };
   const variants = variantsFrom(offer);

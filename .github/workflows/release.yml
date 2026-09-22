@@ -66,6 +66,7 @@ jobs:
     outputs:
       js-changed: ${{ steps.changes.outputs.js-changed }}
       docs-changed: ${{ steps.changes.outputs.docs-changed }}
+      pending-changeset: ${{ steps.changes.outputs.pending-changeset }}
       any-code-changed: ${{ steps.changes.outputs.any-code-changed }}
     steps:
       - uses: actions/checkout@v6

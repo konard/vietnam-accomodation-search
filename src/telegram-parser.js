@@ -40,7 +40,16 @@ export function parseTelegramOffer(message, options = {}) {
   }
 
   const username = message.chat?.username;
-  const details = parseListingText(text);
+  const details = parseListingText(text, { referenceDate: postedAt });
+  const location = details.location || message.inheritedLocation;
+  const locationProvenance = details.location
+    ? details.locationProvenance
+    : message.inheritedLocation
+      ? {
+          method: 'source-inherited',
+          source: message.inheritedLocationSource || message.sourceId,
+        }
+      : details.locationProvenance;
   return normalizeOffer(
     {
       sourceId: firstPresent(
@@ -50,8 +59,10 @@ export function parseTelegramOffer(message, options = {}) {
       sourceType: 'telegram',
       title,
       text,
+      intent: 'rental-offer',
       kind: details.kind,
-      location: details.location,
+      location,
+      locationProvenance,
       attributes: details.attributes,
       contacts: details.contacts,
       officialUrl: details.officialUrl,

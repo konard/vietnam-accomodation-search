@@ -9,6 +9,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/update-preview-images.mjs'
+      - 'scripts/pages-policy.mjs'
       - '.github/workflows/example-app.yml'
   push:
     branches:
@@ -19,6 +20,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/update-preview-images.mjs'
+      - 'scripts/pages-policy.mjs'
       - '.github/workflows/example-app.yml'
   workflow_dispatch:
 
@@ -33,8 +35,44 @@ env:
   GIT_CONFIG_VALUE_0: main
 
 jobs:
+  # Pages is optional by default. Set EXAMPLE_APP_PAGES_POLICY=required to
+  # make deployment a release gate. This read-only preflight runs before any
+  # package install and tells an administrator exactly how to enable Pages;
+  # pull requests never inspect or mutate repository settings.
+  pages-policy:
+    name: GitHub Pages policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}-pages-policy
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pages: read
+    outputs:
+      deploy: ${{ steps.policy.outputs.status == 'enabled' }}
+      reason: ${{ steps.policy.outputs.reason }}
+      status: ${{ steps.policy.outputs.status }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+
+      - name: Evaluate Pages policy before expensive builds
+        id: policy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAGES_REQUIRED: ${{ vars.EXAMPLE_APP_PAGES_POLICY == 'required' }}
+        run: node scripts/pages-policy.mjs
+
   web-build:
     name: Build web app
+    needs: [pages-policy]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
@@ -53,7 +91,7 @@ jobs:
           cache-dependency-path: examples/universal-app/package-lock.json
 
       - name: Configure GitHub Pages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: needs.pages-policy.outputs.deploy == 'true'
         uses: actions/configure-pages@v6
 
       - name: Install app dependencies
@@ -62,7 +100,7 @@ jobs:
       - name: Build app
         run: npm run example:web:build
         env:
-          GITHUB_PAGES: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          GITHUB_PAGES: ${{ needs.pages-policy.outputs.deploy == 'true' }}
           VITE_REPOSITORY_URL: https://github.com/${{ github.repository }}
 
       - name: Upload web build artifact
@@ -73,18 +111,17 @@ jobs:
           if-no-files-found: error
 
       - name: Upload GitHub Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: needs.pages-policy.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: examples/universal-app/dist
 
-  # Requires Settings → Pages → Source = GitHub Actions to be set once
-  # in the repository before this job can succeed. See README → "Deploying
-  # the example app". The Pages source cannot be configured from a workflow.
+  # Deployment is separate from the always-visible web build artifact. The
+  # policy preflight prevents a late deploy-pages 404 when Pages is required.
   pages-deploy:
     name: Deploy GitHub Pages
-    needs: [web-build]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [pages-policy, web-build]
+    if: needs.pages-policy.outputs.deploy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
@@ -103,6 +140,7 @@ jobs:
 
   desktop-package:
     name: Package desktop app (${{ matrix.os }})
+    needs: [pages-policy]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     concurrency:
@@ -154,6 +192,7 @@ jobs:
 
   android-build:
     name: Build Android app
+    needs: [pages-policy]
     if: github.event_name == 'workflow_dispatch' && vars.EXAMPLE_APP_ENABLE_ANDROID_BUILD == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -201,6 +240,7 @@ jobs:
 
   ios-build:
     name: Build iOS app
+    needs: [pages-policy]
     if: github.event_name == 'workflow_dispatch' && vars.EXAMPLE_APP_ENABLE_IOS_BUILD == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
@@ -233,6 +273,7 @@ jobs:
   # the current UI. Issue: #62. Implementation: scripts/update-preview-images.mjs.
   preview-regen:
     name: Regenerate Preview Images
+    needs: [pages-policy]
     runs-on: ubuntu-24.04
     container:
       # Keep this release in sync with the playwright package version below.
@@ -355,6 +396,7 @@ jobs:
     if: >-
       !cancelled()
     needs:
+      - pages-policy
       - web-build
       - pages-deploy
       - desktop-package

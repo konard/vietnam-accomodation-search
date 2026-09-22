@@ -323,7 +323,11 @@ export function registerTelegramHandlers(bot, dependencies) {
   bot.command('update_sources', async (context) => {
     try {
       accessPolicy?.authorize(context, { privileged: true });
-      const updated = await registry.update({ count: 20 });
+      const updated = await registry.update({
+        focusCount: 40,
+        telegramCount: 20,
+        webCount: 20,
+      });
       await context.reply(
         `Updated ${updated.web.length} web and ${updated.telegram.length} Telegram sources.`
       );
@@ -396,6 +400,8 @@ export async function createTelegramBot(token, dependencies) {
       logger: dependencies.logger,
       presets: dependencies.presetService,
       search: (options) => dependencies.service.search(options),
+      store: dependencies.store,
+      traceRecorder: dependencies.traceRecorder,
     });
   }
   registerTelegramHandlers(bot, {

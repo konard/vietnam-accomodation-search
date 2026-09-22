@@ -1,3 +1,5 @@
+import { SESSION_FORMAT, nativeSessionPayload } from './session-envelope.js';
+
 function normalizeRecipient(value) {
   const username = String(value || '')
     .trim()
@@ -35,6 +37,7 @@ export class TelegramAvailabilityService {
     now,
     router,
     session,
+    sessionFormat = SESSION_FORMAT,
     store,
   } = {}) {
     this.apiHash = apiHash;
@@ -43,6 +46,7 @@ export class TelegramAvailabilityService {
     this.now = now || (() => new Date());
     this.router = router;
     this.session = session;
+    this.sessionFormat = sessionFormat;
     this.store = store;
   }
 
@@ -85,11 +89,14 @@ export class TelegramAvailabilityService {
         sentAt: this.now().toISOString(),
       };
     }
+    const session = nativeSessionPayload(this.session, this.sessionFormat);
     const client = await this.clientFactory(credentials);
     let failure;
     let result;
     try {
-      await client.start({ session: this.session });
+      await client.start({
+        session,
+      });
       const sent = await client.sendText(
         destination,
         message || createAvailabilityMessage(offer)

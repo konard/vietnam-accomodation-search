@@ -528,6 +528,20 @@ describe('canonical associative storage', () => {
     }
   });
 
+  it('treats a lock removed during stale inspection as active elsewhere', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const missing = Object.assign(new Error('lock disappeared'), {
+      code: 'ENOENT',
+    });
+    expect(
+      await staleLock('/already-removed-lock', async () => {
+        throw missing;
+      })
+    ).toBe(false);
+  });
+
   it('coordinates concurrent writers in separate processes', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;

@@ -1,4 +1,5 @@
 import { deduplicateOffers } from './offers.js';
+import { TraceRecorder } from './trace.js';
 
 function isFresh(offer, now, maxAgeMs) {
   const collectedAt = new Date(offer.collectedAt).getTime();
@@ -180,6 +181,7 @@ export class SearchService {
     now,
     registry,
     store,
+    traceRecorder,
   }) {
     this.collector = collector;
     this.maxAgeMs = maxAgeMs;
@@ -187,6 +189,8 @@ export class SearchService {
     this.now = now || (() => new Date());
     this.registry = registry;
     this.store = store;
+    this.trace = traceRecorder || new TraceRecorder({ now, store });
+    this.traceSequence = 0;
   }
 
   shouldRefresh(offers, sources, refresh, query) {
@@ -201,6 +205,7 @@ export class SearchService {
     );
   }
 
+  // eslint-disable-next-line complexity -- Search owns one correlated lifecycle across refresh, cache, ranking, and trace outcomes.
   async search(options = {}) {
     const {
       cheapest = false,
@@ -208,36 +213,72 @@ export class SearchService {
       limit = 10,
       query = '',
       refresh,
+      traceRunId,
     } = options;
-    let offers = await this.store.listOffers();
-    const sources = await this.registry.list();
+    const runId =
+      traceRunId ||
+      `search:${this.now().toISOString()}:${(this.traceSequence += 1)}`;
+    this.trace.record({ runId, stage: 'search', status: 'start' });
+    try {
+      let offers = await this.store.listOffers();
+      const sources = await this.registry.list();
+      const shouldRefresh = this.shouldRefresh(offers, sources, refresh, query);
 
-    if (this.shouldRefresh(offers, sources, refresh, query)) {
-      let collected = await this.collector.collect(sources, query);
-      if (this.mediaCache) {
-        collected = await this.mediaCache.cacheOffers(collected);
-      }
-      await this.store.saveOffers(collected);
-      const budget = await this.mediaCache?.enforceBudget(collected);
-      if (budget?.removed.length) {
+      if (shouldRefresh) {
+        let collected = await this.collector.collect(sources, query, {
+          runId,
+          traceRecorder: this.trace,
+        });
+        if (this.mediaCache) {
+          collected = await this.mediaCache.cacheOffers(collected);
+        }
         await this.store.saveOffers(collected);
+        const budget = await this.mediaCache?.enforceBudget(collected);
+        if (budget?.removed.length) {
+          await this.store.saveOffers(collected);
+        }
+        offers = await this.store.listOffers();
       }
-      offers = await this.store.listOffers();
-    }
 
-    const unique = deduplicateOffers(offers).filter(
-      (offer) =>
-        Number.isFinite(offer.priceVnd) &&
-        isForQuery(offer, query) &&
-        telegramOfferMatches(offer, query) &&
-        matchesFilters(offer, filters) &&
-        matchesNamedFilters(offer, options)
-    );
-    unique.sort((left, right) =>
-      cheapest
-        ? left.priceVnd - right.priceVnd
-        : new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
-    );
-    return unique.slice(0, limit);
+      const unique = deduplicateOffers(offers).filter(
+        (offer) =>
+          Number.isFinite(offer.priceVnd) &&
+          isForQuery(offer, query) &&
+          telegramOfferMatches(offer, query) &&
+          matchesFilters(offer, filters) &&
+          matchesNamedFilters(offer, options)
+      );
+      unique.sort((left, right) =>
+        cheapest
+          ? left.priceVnd - right.priceVnd
+          : new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
+      );
+      const result = unique.slice(0, limit);
+      this.trace.record({
+        runId,
+        stage: 'search',
+        status: 'success',
+        metadata: {
+          candidates: unique.length,
+          refresh: shouldRefresh,
+          returned: result.length,
+          sources: sources.length,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.trace.record({
+        runId,
+        stage: 'search',
+        status:
+          error?.name === 'AbortError' || error?.code === 'ABORT_ERR'
+            ? 'cancelled'
+            : 'failure',
+        metadata: { code: error?.code, message: error?.message },
+      });
+      throw error;
+    } finally {
+      await this.trace.persist();
+    }
   }
 }

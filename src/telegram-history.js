@@ -1,4 +1,8 @@
 import { parseTelegramOffer } from './telegram-parser.js';
+import {
+  assembleTelegramAlbums,
+  classifyTelegramPost,
+} from './telegram-pipeline.js';
 
 function twoMonthsBefore(date) {
   const cutoff = new Date(date);
@@ -59,11 +63,19 @@ export class TelegramHistoryCollector {
       }
     }
     const offers = [];
-    for (const message of byMessage.values()) {
+    for (const message of assembleTelegramAlbums([...byMessage.values()])) {
+      const classification = classifyTelegramPost(message.text, {
+        targetLocation:
+          message.source.focus === 'nha-trang' ? 'nha-trang' : null,
+      });
+      if (!classification.eligible) {
+        continue;
+      }
       const offer = await parseTelegramOffer(
         {
           ...message,
-          messageId: message.messageId ?? message.id,
+          messageId: message.messageIds[0],
+          photos: message.mediaIds,
           sourceId: message.source.id,
         },
         { now, rates }
@@ -72,7 +84,8 @@ export class TelegramHistoryCollector {
         offer.provenance = {
           editedAt: message.editDate,
           groupedId: message.groupedId,
-          messageId: message.messageId ?? message.id,
+          messageIds: message.messageIds,
+          relevance: classification,
           sourceId: message.source.id,
           topicId: message.topicId,
           transport: 'mtproto',

@@ -13,6 +13,7 @@ import {
   preflightTelegram,
   redactTelegramValue,
   retryTelegramOperation,
+  sessionPayload,
   validateTelegramConfiguration,
 } from '../src/index.js';
 import { runCli } from '../bin/vietnam-accomodation-search.js';
@@ -544,6 +545,26 @@ describe('Telegram user authentication', () => {
     ).toThrow();
     expect(validateTelegramConfiguration({})).toEqual({ mode: 'bot-only' });
     expect(
+      validateTelegramConfiguration({ apiId: '1', botToken: 'bot-token' })
+    ).toEqual({
+      mode: 'bot-only',
+      userUnavailable:
+        'Incomplete Telegram user credentials; missing TELEGRAM_API_HASH, TELEGRAM_USER_SESSION.',
+    });
+    expect(
+      validateTelegramConfiguration({
+        apiHash: 'hash',
+        apiId: '1',
+        botToken: 'bot-token',
+        session: 'foreign',
+        sessionFormat: 'gramjs/string-session-v1',
+      })
+    ).toEqual({
+      mode: 'bot-only',
+      userUnavailable:
+        'Telegram session format gramjs/string-session-v1 cannot be converted losslessly. Re-login explicitly with mtcute, validate the pinned account, then revoke the old session.',
+    });
+    expect(
       validateTelegramConfiguration({
         apiHash: 'hash',
         apiId: '1',
@@ -593,7 +614,7 @@ describe('Telegram user authentication', () => {
       const identity = await service.login();
       expect(identity).toEqual({ id: 42, username: 'rental_bot' });
       expect(requested).toEqual(['+84123456789', '12345', '2fa']);
-      expect(await readFile(sessionFile, 'utf8')).toBe(
+      expect(sessionPayload(await readFile(sessionFile, 'utf8'))).toBe(
         'exported-secret-session'
       );
       if (process.platform !== 'win32') {
@@ -630,7 +651,7 @@ describe('Telegram user authentication', () => {
     expect(destroyed).toBe(true);
   });
 
-  it('routes auth CLI actions without constructing the application or accepting argv 2FA', async () => {
+  it('routes auth CLI actions without constructing the application or accepting argv secrets', async () => {
     const calls = [];
     const output = [];
     const authFactory = (options) => ({
@@ -642,23 +663,19 @@ describe('Telegram user authentication', () => {
     });
     expect(
       await runCli(
-        [
-          'telegram',
-          'auth',
-          'login',
-          '--phone',
-          '+84123',
-          '--code',
-          '12345',
-          '--session-stdout',
-        ],
+        ['telegram', 'auth', 'login', '--phone', '+84123', '--session-stdout'],
         {
           authFactory,
-          env: { TELEGRAM_API_HASH: 'hash', TELEGRAM_API_ID: '1' },
+          env: {
+            TELEGRAM_API_HASH: 'hash',
+            TELEGRAM_API_ID: '1',
+            TELEGRAM_LOGIN_CODE: '12345',
+          },
           stdout: (line) => output.push(line),
         }
       )
     ).toBe(0);
+    expect(calls[0].input.code).toBe('12345');
     expect(calls[0].input.password).toBe(undefined);
     expect(output[0]).toContain('TELEGRAM_USER_SESSION=explicit-secret');
 
@@ -671,6 +688,14 @@ describe('Telegram user authentication', () => {
       })
     ).toBe(1);
     expect(errors[0]).toContain('never accepted');
+    expect(
+      await runCli(['telegram', 'auth', 'login', '--code', '12345'], {
+        authFactory,
+        env: {},
+        stderr: (line) => errors.push(line),
+      })
+    ).toBe(1);
+    expect(errors[1]).toContain('never accepted');
 
     let constructed = 0;
     expect(
@@ -761,6 +786,7 @@ describe('Telegram user authentication', () => {
         apiHash: 'hash-from-file',
         apiId: '71',
         session: 'session-from-file',
+        sessionFormat: 'mtcute/session-string-v1',
       });
     } finally {
       await rm(directory, { force: true, recursive: true });
@@ -820,14 +846,21 @@ describe('Telegram user authentication', () => {
     }
   });
 
-  it('rejects partial runtime credentials before constructing Telegram services', async () => {
+  it('keeps Bot API capability available when user credentials are partial', async () => {
     let constructed = 0;
     const errors = [];
     expect(
       await runCli(['bot'], {
         application: {
-          createBot: async () => {
+          createBot: async (_token, credentials) => {
             constructed += 1;
+            expect(credentials).toEqual({
+              apiHash: undefined,
+              apiId: undefined,
+              session: undefined,
+              sessionFormat: 'mtcute/session-string-v1',
+            });
+            throw new Error('stop after bot construction');
           },
         },
         env: {
@@ -837,8 +870,76 @@ describe('Telegram user authentication', () => {
         stderr: (line) => errors.push(line),
       })
     ).toBe(1);
-    expect(constructed).toBe(0);
+    expect(constructed).toBe(1);
+    expect(errors[0]).toContain('continuing in bot-only mode');
     expect(errors[0]).toContain('TELEGRAM_API_HASH');
+    expect(errors[1]).toBe('stop after bot construction');
+  });
+
+  it('still rejects broken user credentials for ingest-only mode', async () => {
+    const errors = [];
+    expect(
+      await runCli(['telegram', 'ingest'], {
+        application: {},
+        env: {
+          TELEGRAM_API_ID: '1',
+          TELEGRAM_BOT_TOKEN: 'bot-token',
+        },
+        stderr: (line) => errors.push(line),
+      })
+    ).toBe(1);
+    expect(errors[0]).toContain('TELEGRAM_API_HASH');
+  });
+
+  it('degrades a combined runtime to bot-only after MTProto startup fails', async () => {
+    const errors = [];
+    let resolvePolling;
+    let destroyed = 0;
+    const bot = {
+      api: { getMe: async () => ({ id: 1 }) },
+      start: ({ onStart }) => {
+        onStart();
+        return new Promise((resolve) => {
+          resolvePolling = resolve;
+        });
+      },
+      stop: () => resolvePolling?.(),
+    };
+    const running = runCli(['bot'], {
+      application: {
+        createBot: async () => bot,
+        createTelegramIngestionService: () => ({
+          destroy: async () => {
+            destroyed += 1;
+            throw new Error('session=cleanup-secret failed');
+          },
+          start: async () => {
+            throw new Error('session=startup-secret expired');
+          },
+        }),
+        registry: { list: async () => [] },
+      },
+      env: {
+        HEALTH_PORT: '0',
+        TELEGRAM_API_HASH: 'hash',
+        TELEGRAM_API_ID: '1',
+        TELEGRAM_BOT_TOKEN: 'bot-token',
+        TELEGRAM_USER_SESSION: 'session',
+      },
+      stderr: (line) => errors.push(line),
+    });
+    while (!bot.runtime || bot.runtime.health().status !== 'ready') {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await bot.runtime.stop('test');
+
+    expect(await running).toBe(0);
+    expect(destroyed).toBe(1);
+    expect(errors.length).toBe(2);
+    expect(errors[0]).toContain('continuing in bot-only mode');
+    expect(errors[0]).not.toContain('startup-secret');
+    expect(errors[1]).toContain('cleanup failed');
+    expect(errors[1]).not.toContain('cleanup-secret');
   });
 });
 

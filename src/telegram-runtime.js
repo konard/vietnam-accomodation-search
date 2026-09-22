@@ -64,6 +64,7 @@ export class TelegramRuntime {
     resources = [],
     scheduler,
     userAuth,
+    userAuthOptional = false,
   } = {}) {
     this.accepting = false;
     this.bot = bot;
@@ -77,6 +78,7 @@ export class TelegramRuntime {
     this.resources = resources;
     this.scheduler = scheduler;
     this.userAuth = userAuth;
+    this.userAuthOptional = userAuthOptional;
     this.exitCode = 0;
     this.stopping = undefined;
     this.bot?.catch?.((failure) => this.#botError(failure?.error || failure));
@@ -112,7 +114,18 @@ export class TelegramRuntime {
     await this.#listen();
     try {
       await this.bot?.api?.getMe?.();
-      await this.userAuth?.validate?.();
+      try {
+        await this.userAuth?.validate?.();
+      } catch (error) {
+        if (!this.userAuthOptional) {
+          throw error;
+        }
+        this.logger.warn?.(
+          'Telegram user authentication failed; continuing bot-only.',
+          redactTelegramValue(error)
+        );
+        this.userAuth = undefined;
+      }
       this.accepting = true;
       let initialized;
       let pollingReady = false;
