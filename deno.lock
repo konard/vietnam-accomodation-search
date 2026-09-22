@@ -16,6 +16,7 @@
     "npm:lint-staged@^16.2.6": "16.4.0",
     "npm:playwright@^1.63.0": "1.63.0",
     "npm:prettier@^3.6.2": "3.8.4",
+    "npm:teleproto@^1.229.0": "1.229.0",
     "npm:test-anywhere@~0.8.48": "0.8.50",
     "npm:use-m@8.16.0": "8.16.0"
   },
@@ -678,6 +679,9 @@
         "node-addon-api@8.9.2"
       ]
     },
+    "big-integer@1.6.52": {
+      "integrity": "sha512-QxD8cf2eVqJOOz63z6JIN9BzvVs/dlySa5HGSBH5xtR8dPteIRQnBxxKqkNTiT6jbDTF6jAfrd4oMcND9RGbQg=="
+    },
     "bindings@1.5.0": {
       "integrity": "sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==",
       "dependencies": [
@@ -1338,6 +1342,9 @@
     "ini@1.3.8": {
       "integrity": "sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew=="
     },
+    "ip-address@10.7.2": {
+      "integrity": "sha512-7H/2gFSIitxc0hG3nOI1glS8QLo/EHBFFLk8vEUjXY/xu0AdL8jZ9U1IzO2PUm0d2D/ofQcAifb0g6OBkt8U7w=="
+    },
     "is-core-module@2.16.2": {
       "integrity": "sha512-evOr8xfXKxE6qSR0hSXL2r3sd7ALj8+7jQEUvPYcm5sgZFdJ+AYzT6yNmJenvIYQBgIGwfwz08sL8zoL7yq2BA==",
       "dependencies": [
@@ -1584,6 +1591,10 @@
         "picomatch@2.3.2"
       ]
     },
+    "mime@3.0.0": {
+      "integrity": "sha512-jSCU7/VB1loIWBZe14aEYHU/+1UMEHoaO7qxCOVJOw9GgH72VAWppxNcjU+x9a2k3GSIBXNKxXQFqRvvZ7vr3A==",
+      "bin": true
+    },
     "mimic-fn@2.1.0": {
       "integrity": "sha512-OqbOk5oEQeAZ8WXWydlu9HJjz9WVdEIvamMCcXmuqUYjTknH/sqsWvhQ3vgwKFRR1HpjvNBKQ37nbJgYzGqGcg=="
     },
@@ -1633,6 +1644,12 @@
       "integrity": "sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==",
       "dependencies": [
         "whatwg-url"
+      ]
+    },
+    "node-localstorage@2.2.1": {
+      "integrity": "sha512-vv8fJuOUCCvSPjDjBLlMqYMHob4aGjkmrkaE42/mZr0VT+ZAU10jRF8oTnX9+pgU9/vYJ8P7YT3Vd6ajkmzSCw==",
+      "dependencies": [
+        "write-file-atomic"
       ]
     },
     "node-pty@1.2.0-beta.15": {
@@ -2040,6 +2057,19 @@
         "is-fullwidth-code-point@5.1.0"
       ]
     },
+    "slide@1.1.6": {
+      "integrity": "sha512-NwrtjCg+lZoqhFU8fOwl4ay2ei8PaqCBOUV3/ektPY9trO1yQ1oXEfmHAhKArUVUr/hOHvy5f6AdP17dCM0zMw=="
+    },
+    "smart-buffer@4.2.0": {
+      "integrity": "sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg=="
+    },
+    "socks@2.8.10": {
+      "integrity": "sha512-e0VyvkVTwVYViNovRkZ9aodhxVlyoMn7eJhVUPxZ+eK9P/7CBkxvvsBOHqFPEH416726W8tLXXXjKwqgTErrCQ==",
+      "dependencies": [
+        "ip-address",
+        "smart-buffer"
+      ]
+    },
     "spark-md5@3.0.2": {
       "integrity": "sha512-wcFzz9cDfbuqe0FZzfi2or1sgyIrsDwmPwfZC4hiNidPdPINjeUwNfv5kldczoEAcjl9Y1L3SM7Uz2PUEQzxQw=="
     },
@@ -2052,6 +2082,9 @@
     },
     "sprintf-js@1.0.3": {
       "integrity": "sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g=="
+    },
+    "store2@2.14.4": {
+      "integrity": "sha512-srTItn1GOvyvOycgxjAnPA63FZNwy0PTyUBFMHRM+hVFltAeoh0LmNBz9SZqUS9mMqGk8rfyWyXn3GH5ReJ8Zw=="
     },
     "string-argv@0.3.2": {
       "integrity": "sha512-aqD2Q0144Z+/RqG52NeHEkZauTAUWJO8c6yTftGJKO3Tja5tUgIfmIl6kExvhtxSDP7fXB6DvzkfMpCd/F3G+Q=="
@@ -2141,6 +2174,16 @@
         "fs-constants",
         "inherits",
         "readable-stream"
+      ]
+    },
+    "teleproto@1.229.0": {
+      "integrity": "sha512-aEKx22ZS76SYy26eWR+2oV5XM4+orbq/2ZINvSKoV2SZERn6yqq9mw5lNK22nCax7lTnC0gcz8uqP26gaUxEqA==",
+      "dependencies": [
+        "big-integer",
+        "mime",
+        "node-localstorage",
+        "socks",
+        "store2"
       ]
     },
     "term-size@2.2.1": {
@@ -2250,6 +2293,14 @@
     "wrappy@1.0.2": {
       "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ=="
     },
+    "write-file-atomic@1.3.4": {
+      "integrity": "sha512-SdrHoC/yVBPpV0Xq/mUZQIpW2sWXAShb/V4pomcJXh92RuaO+f3UTWItiR3Px+pLnV2PvC2/bfn5cwr5X6Vfxw==",
+      "dependencies": [
+        "graceful-fs",
+        "imurmurhash",
+        "slide"
+      ]
+    },
     "y18n@5.0.8": {
       "integrity": "sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA=="
     },
@@ -2294,6 +2345,7 @@
         "npm:lint-staged@^16.2.6",
         "npm:playwright@^1.63.0",
         "npm:prettier@^3.6.2",
+        "npm:teleproto@^1.229.0",
         "npm:test-anywhere@~0.8.48",
         "npm:use-m@8.16.0"
       ]

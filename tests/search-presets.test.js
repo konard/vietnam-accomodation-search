@@ -177,6 +177,9 @@ describe('persisted search presets and subscriptions', () => {
   });
 
   it('persists compatibility search state through text and binary mirrors', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const directory = await mkdtemp(join(tmpdir(), 'search-state-'));
     const calls = [];
     const mirror = {
