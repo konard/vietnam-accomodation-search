@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Link, Parser, formatLinks } from 'links-notation';
 
@@ -68,6 +68,10 @@ export const serializeSources = (sources) =>
   serializeRecords('source', sources);
 export const deserializeSources = (notation) =>
   deserializeRecords('source', notation);
+export const serializeSearchState = (state) =>
+  serializeRecords('search-state', [{ id: 'telegram', ...state }]);
+export const deserializeSearchState = (notation) =>
+  deserializeRecords('search-state', notation)[0] || { users: {} };
 
 async function readOrEmpty(path) {
   try {
@@ -80,11 +84,42 @@ async function readOrEmpty(path) {
   }
 }
 
+let temporarySequence = 0;
+
+async function syncDirectory(path) {
+  let directory;
+  try {
+    directory = await open(path, 'r');
+    await directory.sync();
+  } catch (error) {
+    if (!['EINVAL', 'ENOTSUP', 'EISDIR', 'EPERM'].includes(error.code)) {
+      throw error;
+    }
+  } finally {
+    await directory?.close();
+  }
+}
+
 async function atomicWrite(path, contents) {
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temporary, contents, 'utf8');
-  await rename(temporary, path);
+  const parent = dirname(path);
+  await mkdir(parent, { recursive: true });
+  temporarySequence += 1;
+  const pid = globalThis.process?.pid || 'runtime';
+  const temporary = `${path}.${pid}.${Date.now()}.${temporarySequence}.tmp`;
+  let handle;
+  try {
+    handle = await open(temporary, 'w', 0o600);
+    await handle.writeFile(contents, 'utf8');
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await rename(temporary, path);
+    await syncDirectory(parent);
+  } catch (error) {
+    await handle?.close();
+    await rm(temporary, { force: true });
+    throw error;
+  }
 }
 
 export class LinksStore {
@@ -93,8 +128,16 @@ export class LinksStore {
     maxBytes = 10 * 1024 ** 3,
   } = {}) {
     this.offersPath = join(directory, 'offers.lino');
+    this.searchStatePath = join(directory, 'search-state.lino');
     this.sourcesPath = join(directory, 'sources.lino');
     this.maxBytes = maxBytes;
+    this.writeQueue = Promise.resolve();
+  }
+
+  enqueue(operation) {
+    const pending = this.writeQueue.then(operation, operation);
+    this.writeQueue = pending.catch(() => {});
+    return pending;
   }
 
   async listOffers() {
@@ -102,22 +145,24 @@ export class LinksStore {
   }
 
   async saveOffers(incoming) {
-    const offers = deduplicateOffers([
-      ...(await this.listOffers()),
-      ...incoming,
-    ]).sort(
-      (left, right) =>
-        new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
-    );
-    let notation = serializeOffers(offers);
-    while (
-      offers.length &&
-      new globalThis.TextEncoder().encode(notation).length > this.maxBytes
-    ) {
-      offers.pop();
-      notation = serializeOffers(offers);
-    }
-    await atomicWrite(this.offersPath, notation);
+    return this.enqueue(async () => {
+      const offers = deduplicateOffers([
+        ...(await this.listOffers()),
+        ...incoming,
+      ]).sort(
+        (left, right) =>
+          new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
+      );
+      let notation = serializeOffers(offers);
+      while (
+        offers.length &&
+        new globalThis.TextEncoder().encode(notation).length > this.maxBytes
+      ) {
+        offers.pop();
+        notation = serializeOffers(offers);
+      }
+      await atomicWrite(this.offersPath, notation);
+    });
   }
 
   async loadSources() {
@@ -125,6 +170,18 @@ export class LinksStore {
   }
 
   async saveSources(sources) {
-    await atomicWrite(this.sourcesPath, serializeSources(sources));
+    return this.enqueue(() =>
+      atomicWrite(this.sourcesPath, serializeSources(sources))
+    );
+  }
+
+  async loadSearchState() {
+    return deserializeSearchState(await readOrEmpty(this.searchStatePath));
+  }
+
+  saveSearchState(state) {
+    return this.enqueue(() =>
+      atomicWrite(this.searchStatePath, serializeSearchState(state))
+    );
   }
 }

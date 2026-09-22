@@ -85,6 +85,52 @@ function matchesFilters(offer, filters) {
   });
 }
 
+function withinRange(value, minimum, maximum) {
+  if (!Number.isFinite(minimum) && !Number.isFinite(maximum)) {
+    return true;
+  }
+  return (
+    Number.isFinite(value) &&
+    (!Number.isFinite(minimum) || value >= minimum) &&
+    (!Number.isFinite(maximum) || value <= maximum)
+  );
+}
+
+function roomCount(offer) {
+  const rooms = offer.attributes?.rooms;
+  if (Number.isFinite(rooms)) {
+    return rooms;
+  }
+  const bedrooms = offer.attributes?.bedrooms;
+  return bedrooms === 0 ? 1 : bedrooms;
+}
+
+function matchesStructuredFilters(offer, options) {
+  const rooms = roomCount(offer);
+  const beds = offer.attributes?.beds;
+  const kind = normalizedValue(offer.kind || 'accommodation');
+  const types = (options.types || []).map(normalizedValue);
+  return (
+    (!types.length || types.includes(kind)) &&
+    withinRange(rooms, options.minRooms, options.maxRooms) &&
+    withinRange(
+      Number.isFinite(rooms) ? offer.priceVnd / rooms : undefined,
+      options.minPricePerRoomVnd,
+      options.maxPricePerRoomVnd
+    ) &&
+    withinRange(
+      Number.isFinite(beds) && beds > 0 ? offer.priceVnd / beds : undefined,
+      options.minPricePerBedVnd,
+      options.maxPricePerBedVnd
+    ) &&
+    withinRange(
+      offer.priceVnd,
+      options.minTotalPriceVnd,
+      options.maxTotalPriceVnd
+    )
+  );
+}
+
 function sourceCoverageIsComplete(offers, sources, query) {
   if (!sources.length) {
     return offers.length > 0;
@@ -126,13 +172,14 @@ export class SearchService {
     );
   }
 
-  async search({
-    cheapest = false,
-    filters = {},
-    limit = 10,
-    query = '',
-    refresh,
-  } = {}) {
+  async search(options = {}) {
+    const {
+      cheapest = false,
+      filters = {},
+      limit = 10,
+      query = '',
+      refresh,
+    } = options;
     let offers = await this.store.listOffers();
     const sources = await this.registry.list();
 
@@ -154,7 +201,8 @@ export class SearchService {
         Number.isFinite(offer.priceVnd) &&
         isForQuery(offer, query) &&
         telegramOfferMatches(offer, query) &&
-        matchesFilters(offer, filters)
+        matchesFilters(offer, filters) &&
+        matchesStructuredFilters(offer, options)
     );
     unique.sort((left, right) =>
       cheapest

@@ -23,6 +23,7 @@ export interface AccommodationSource {
 
 export interface AccommodationAttributes {
   propertyId?: string;
+  rooms?: number;
   bedrooms?: number;
   bathrooms?: number;
   areaM2?: number;
@@ -130,8 +131,17 @@ export interface SearchOptions {
   cheapest?: boolean;
   filters?: Record<string, boolean | number | string>;
   limit?: number;
+  maxPricePerBedVnd?: number;
+  maxPricePerRoomVnd?: number;
+  maxRooms?: number;
+  maxTotalPriceVnd?: number;
+  minPricePerBedVnd?: number;
+  minPricePerRoomVnd?: number;
+  minRooms?: number;
+  minTotalPriceVnd?: number;
   query?: string;
   refresh?: boolean;
+  types?: string[];
 }
 
 export declare const add: (a: number, b: number) => number;
@@ -168,7 +178,8 @@ export declare function parseTelegramOffer(
 export declare function parseSearchCommand(
   input?: string
 ): Required<Pick<SearchOptions, 'cheapest' | 'limit' | 'query'>> &
-  Pick<SearchOptions, 'filters'>;
+  Omit<SearchOptions, 'cheapest' | 'limit' | 'query' | 'refresh'>;
+export declare function parseSearchOverrides(input?: string): SearchOptions;
 export declare function buildSearchUrl(
   source: Pick<AccommodationSource, 'searchUrl'>,
   query?: string
@@ -184,6 +195,8 @@ export declare function serializeSources(
 export declare function deserializeSources(
   value: string
 ): AccommodationSource[];
+export declare function serializeSearchState(state: SearchState): string;
+export declare function deserializeSearchState(value: string): SearchState;
 export declare function deduplicateOffers(
   offers: AccommodationOffer[]
 ): AccommodationOffer[];
@@ -201,8 +214,90 @@ export declare class LinksStore {
   constructor(options?: { directory?: string; maxBytes?: number });
   listOffers(): Promise<AccommodationOffer[]>;
   saveOffers(offers: AccommodationOffer[]): Promise<void>;
+  loadSearchState(): Promise<SearchState>;
+  saveSearchState(state: SearchState): Promise<void>;
   loadSources(): Promise<AccommodationSource[]>;
   saveSources(sources: AccommodationSource[]): Promise<void>;
+}
+
+export interface SearchPreset {
+  active: boolean;
+  name: string;
+  options: SearchOptions;
+  subscribed: boolean;
+}
+
+export interface SearchState {
+  id?: string;
+  users: Record<
+    string,
+    {
+      activePreset: string;
+      presets: Record<string, SearchOptions>;
+      shownOfferIds: string[];
+      subscription?: { preset: string; startedAt: string };
+    }
+  >;
+}
+
+export declare function normalizePresetName(value: string): string;
+export declare function mergeSearchOptions(
+  base?: SearchOptions,
+  overrides?: SearchOptions
+): SearchOptions;
+export declare class SearchPresetService {
+  constructor(options?: {
+    now?: () => Date;
+    store?: Pick<LinksStore, 'loadSearchState' | 'saveSearchState'>;
+  });
+  resolve(
+    userId: string | number,
+    overrides?: SearchOptions,
+    presetName?: string
+  ): Promise<SearchOptions>;
+  list(userId: string | number): Promise<SearchPreset[]>;
+  save(
+    userId: string | number,
+    presetName: string,
+    overrides?: SearchOptions
+  ): Promise<{ name: string; options: SearchOptions }>;
+  use(
+    userId: string | number,
+    presetName: string
+  ): Promise<{ name: string; options: SearchOptions }>;
+  remove(userId: string | number, presetName: string): Promise<string>;
+  subscribe(
+    userId: string | number,
+    presetName?: string
+  ): Promise<{ name: string; options: SearchOptions }>;
+  unsubscribe(userId: string | number): Promise<
+    | {
+        preset: string;
+        startedAt: string;
+      }
+    | undefined
+  >;
+  markShown(
+    userId: string | number,
+    offers: AccommodationOffer[]
+  ): Promise<void>;
+}
+
+export declare class TelegramSubscriptionService {
+  constructor(options: {
+    delivery: (userId: string, offers: AccommodationOffer[]) => Promise<void>;
+    intervalMs?: number;
+    logger?: Pick<Console, 'error'>;
+    presets: SearchPresetService;
+    search: SearchService;
+  });
+  runFor(
+    userId: string | number,
+    presetName?: string
+  ): Promise<AccommodationOffer[]>;
+  runOnce(): Promise<void>;
+  start(): void;
+  stop(): void;
 }
 
 export declare class MediaCache {
