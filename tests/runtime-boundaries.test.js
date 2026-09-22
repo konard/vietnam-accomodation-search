@@ -55,6 +55,14 @@ describe('runtime dependency boundaries', () => {
     });
     expect(typeof bot.start).toBe('function');
   });
+
+  it('uses the configured data directory for the default store graph', () => {
+    const application = createApplication({
+      binaryMirror: false,
+      environment: { DATA_DIRECTORY: '/data/runtime-state' },
+    });
+    expect(application.store.directory).toBe('/data/runtime-state');
+  });
 });
 
 describe('dependency-free package helpers', () => {

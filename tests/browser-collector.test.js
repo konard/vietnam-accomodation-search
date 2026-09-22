@@ -110,6 +110,39 @@ describe('browser-driven collection', () => {
     expect(offers[0].sourceId).toBe('working');
   });
 
+  it('attempts every browser cleanup and aggregates cleanup failures', async () => {
+    let browserCloseAttempted = false;
+    const collector = new BrowserCollector({
+      browserRuntime: {
+        launchBrowser: async () => ({
+          browser: {
+            close: async () => {
+              browserCloseAttempted = true;
+              throw new Error('browser close failed');
+            },
+          },
+          page: {},
+        }),
+        makeBrowserCommander: () => ({
+          destroy: async () => {
+            throw new Error('commander destroy failed');
+          },
+        }),
+      },
+      rates: { VND: 1 },
+    });
+
+    let error;
+    try {
+      await collector.collect([]);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error instanceof AggregateError).toBe(true);
+    expect(error.errors.length).toBe(2);
+    expect(browserCloseAttempted).toBe(true);
+  });
+
   it('checks explicitly discovered accommodation websites for direct prices', async () => {
     let currentUrl = '';
     const collector = new BrowserCollector({

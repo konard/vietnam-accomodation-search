@@ -28,6 +28,7 @@ export interface AccommodationAttributes {
   areaM2?: number;
   floor?: number;
   district?: string;
+  rooms?: number;
   beds?: number;
   guests?: number;
   availableFrom?: string;
@@ -78,7 +79,14 @@ export interface PriceChange {
 }
 
 export interface AccommodationOfferVariant {
+  attributes?: AccommodationAttributes;
+  contacts?: AccommodationContacts;
   id: string;
+  identifiers?: Record<string, string>;
+  identityKeys?: string[];
+  kind?: string;
+  location?: string;
+  photos?: string[];
   sourceId: string;
   sourceType?: 'web' | 'official-web' | 'telegram';
   title: string;
@@ -88,7 +96,9 @@ export interface AccommodationOfferVariant {
   priceVnd: number | null;
   postedAt?: string;
   collectedAt: string;
+  provenance?: AccommodationOffer['provenance'];
   raw: unknown;
+  searchQuery?: string;
 }
 
 export interface AccommodationOffer {
@@ -124,14 +134,31 @@ export interface AccommodationOffer {
     size: number;
     url: string;
   }>;
+  provenance?: {
+    editedAt?: number | string;
+    groupedId?: number | string;
+    messageId?: number | string;
+    sourceId: string;
+    topicId?: number | string;
+    transport: 'bot-api' | 'browser-preview' | 'mtproto';
+  };
 }
 
 export interface SearchOptions {
   cheapest?: boolean;
   filters?: Record<string, boolean | number | string>;
   limit?: number;
+  maxPerBedVnd?: number;
+  maxPerRoomVnd?: number;
+  maxRooms?: number;
+  maxTotalVnd?: number;
+  minPerBedVnd?: number;
+  minPerRoomVnd?: number;
+  minRooms?: number;
+  minTotalVnd?: number;
   query?: string;
   refresh?: boolean;
+  types?: string[];
 }
 
 export declare const add: (a: number, b: number) => number;
@@ -151,6 +178,11 @@ export declare function canonicalizeOfferUrl(
   value?: string
 ): string | undefined;
 export declare function offerIdentityKeys(offer: AccommodationOffer): string[];
+export declare function removeOfferMessageVariants(
+  offer: AccommodationOffer,
+  sourceId: string,
+  messageIds: Set<string>
+): AccommodationOffer | undefined;
 export declare function parseLabeledFields(
   text?: string
 ): Record<string, string[]>;
@@ -166,9 +198,14 @@ export declare function parseTelegramOffer(
   options?: { now?: Date; rates?: Record<string, number> }
 ): AccommodationOffer | null;
 export declare function parseSearchCommand(
-  input?: string
+  input?: string,
+  options?: { defaults?: true }
 ): Required<Pick<SearchOptions, 'cheapest' | 'limit' | 'query'>> &
-  Pick<SearchOptions, 'filters'>;
+  Omit<SearchOptions, 'cheapest' | 'limit' | 'query'>;
+export declare function parseSearchCommand(
+  input: string,
+  options: { defaults: false }
+): SearchOptions;
 export declare function buildSearchUrl(
   source: Pick<AccommodationSource, 'searchUrl'>,
   query?: string
@@ -176,6 +213,16 @@ export declare function buildSearchUrl(
 export declare function formatSearchResults(
   offers: AccommodationOffer[]
 ): string;
+export declare function serializeRecords<T>(kind: string, records: T[]): string;
+export declare function deserializeRecords<T = Record<string, unknown>>(
+  kind: string,
+  value: string
+): T[];
+export declare function queryRecords<T = Record<string, unknown>>(
+  kind: string,
+  value: string,
+  query: { path: string; value: unknown }
+): T[];
 export declare function serializeOffers(offers: AccommodationOffer[]): string;
 export declare function deserializeOffers(value: string): AccommodationOffer[];
 export declare function serializeSources(
@@ -198,11 +245,52 @@ export declare class ExchangeRateProvider {
 }
 
 export declare class LinksStore {
-  constructor(options?: { directory?: string; maxBytes?: number });
+  constructor(options?: {
+    binaryMirror?: boolean;
+    directory?: string;
+    maxBytes?: number;
+    mirror?: Pick<LinkCliMirror, 'stage'> &
+      Partial<Pick<LinkCliMirror, 'ensure'>>;
+  });
+  loadRecords<T = Record<string, unknown>>(kind: string): Promise<T[]>;
+  saveRecords<T = Record<string, unknown>>(
+    kind: string,
+    records: T[]
+  ): Promise<void>;
+  updateRecords<T = Record<string, unknown>>(
+    kind: string,
+    update: (records: T[]) => T[] | Promise<T[]>
+  ): Promise<T[]>;
+  queryRecords<T = Record<string, unknown>>(
+    kind: string,
+    query: { path: string; value: unknown }
+  ): Promise<T[]>;
   listOffers(): Promise<AccommodationOffer[]>;
   saveOffers(offers: AccommodationOffer[]): Promise<void>;
+  deleteOffersByMessages(
+    sourceId: string,
+    messageIds: Array<number | string>
+  ): Promise<void>;
   loadSources(): Promise<AccommodationSource[]>;
   saveSources(sources: AccommodationSource[]): Promise<void>;
+}
+
+export declare class LinkCliMirror {
+  constructor(options?: {
+    command?: string;
+    run?: (command: string, arguments_: string[]) => Promise<void>;
+  });
+  preflight(): Promise<void>;
+  ensure(options: {
+    directory: string;
+    kind: string;
+    notation: string;
+  }): Promise<{ sha256: string }>;
+  stage(options: {
+    directory: string;
+    kind: string;
+    notation: string;
+  }): Promise<{ activate: () => Promise<void>; sha256: string }>;
 }
 
 export declare class MediaCache {
@@ -261,6 +349,7 @@ export declare class TelegramAvailabilityService {
       apiId: number;
     }) => Promise<Record<string, unknown>>;
     now?: () => Date;
+    router?: TelegramCapabilityRouter;
     session?: string;
     store?: Pick<LinksStore, 'listOffers'>;
   });
@@ -273,6 +362,7 @@ export declare class TelegramAvailabilityService {
     recipient: string;
     sentAt: string;
   }>;
+  destroy(): Promise<void> | undefined;
 }
 
 export declare function registerTelegramHandlers(
@@ -283,7 +373,206 @@ export declare function createTelegramBot(
   token: string,
   dependencies: Record<string, unknown>
 ): Promise<Record<string, unknown>>;
+export declare function telegramRuntimeMiddleware(bot: {
+  runtime?: { middleware(context: unknown, next: () => unknown): unknown };
+}): (context: unknown, next: () => unknown) => unknown;
+export declare function telegramDeduplicationMiddleware(updateDeduplicator: {
+  accept(update: unknown): Promise<boolean>;
+}): (context: { update: unknown }, next: () => unknown) => Promise<unknown>;
+export declare function deliverSubscriptionOffers(
+  api: {
+    sendMediaGroup(chatId: string, media: unknown[]): Promise<unknown>;
+    sendMessage(chatId: string, text: string): Promise<unknown>;
+  },
+  chatId: string,
+  offers: AccommodationOffer[],
+  options?: { maxProgress?: number; store?: LinksStore }
+): Promise<void>;
+
+export declare class PresetService {
+  constructor(options: {
+    maxShownPerUser?: number;
+    now?: () => Date;
+    store: LinksStore;
+  });
+  list(
+    userId: string
+  ): Promise<Array<{ name: string; options: SearchOptions }>>;
+  show(
+    userId: string,
+    name: string
+  ): Promise<{ name: string; options: SearchOptions }>;
+  activeName(userId: string): Promise<string | undefined>;
+  activeOptions(userId: string): Promise<SearchOptions>;
+  save(userId: string, name: string, options?: SearchOptions): Promise<unknown>;
+  use(userId: string, name: string): Promise<void>;
+  delete(userId: string, name: string): Promise<void>;
+  resolveSearch(
+    userId: string,
+    overrides: SearchOptions
+  ): Promise<SearchOptions>;
+  subscribe(userId: string, name?: string): Promise<unknown>;
+  unsubscribe(userId: string): Promise<void>;
+}
+
+export declare class SubscriptionScheduler {
+  constructor(options: Record<string, unknown>);
+  start(): void;
+  stop(): Promise<void>;
+  tick(): Promise<void>;
+}
+
+export declare class TelegramAuthService {
+  constructor(options?: Record<string, unknown>);
+  login(
+    options?: Record<string, unknown>
+  ): Promise<{ id: number; username?: string }>;
+  rotate(
+    options?: Record<string, unknown>
+  ): Promise<{ id: number; username?: string }>;
+  validate(): Promise<{ id: number; username?: string }>;
+  status(): Promise<Record<string, unknown>>;
+  logout(options?: { revoke?: boolean }): Promise<void>;
+}
+
+export declare function validateTelegramConfiguration(options?: {
+  apiHash?: string;
+  apiId?: number | string;
+  botToken?: string;
+  session?: string;
+}): { mode: 'bot-only' | 'user-only' | 'both' };
+
+export declare function resolveTelegramSecrets(
+  env?: Record<string, string | undefined>
+): Promise<{
+  apiHash?: string;
+  apiId?: string;
+  botToken?: string;
+  session?: string;
+}>;
+
+export declare function preflightTelegram(
+  options?: Record<string, unknown>
+): Promise<{
+  identities: Record<string, { id: number; username?: string }>;
+  mode: 'bot-only' | 'user-only' | 'both';
+}>;
+
+export declare class TelegramAccessPolicy {
+  constructor(options?: Record<string, unknown>);
+  authorize(
+    context: Record<string, unknown>,
+    options?: { action?: string; privileged?: boolean }
+  ): { chatId?: string; userId?: string };
+}
+
+export declare class TelegramCapabilityRouter {
+  constructor(options?: Record<string, unknown>);
+  diagnostics(): Record<string, unknown>;
+  send(
+    destination: unknown,
+    message: unknown,
+    options?: { idempotencyKey?: string }
+  ): Promise<unknown>;
+  identity(...arguments_: unknown[]): Promise<unknown>;
+  liveUpdates(...arguments_: unknown[]): Promise<unknown>;
+  history(...arguments_: unknown[]): Promise<unknown>;
+  resolveEntity(...arguments_: unknown[]): Promise<unknown>;
+  media(...arguments_: unknown[]): Promise<unknown>;
+  membership(...arguments_: unknown[]): Promise<unknown>;
+  popularity(...arguments_: unknown[]): Promise<unknown>;
+  destroy(): Promise<void>;
+}
+
+export declare class BotApiTelegramProvider {
+  constructor(
+    api: Record<string, (...arguments_: unknown[]) => unknown>,
+    options?: {
+      fetchImpl?: typeof fetch;
+      token?: string;
+    }
+  );
+  capabilities: Set<string>;
+  transport: 'bot-api';
+  identity(): Promise<unknown>;
+  resolveEntity(chatId: unknown): Promise<unknown>;
+  media(
+    fileId: unknown,
+    options?: { signal?: AbortSignal }
+  ): Promise<Uint8Array>;
+  membership(chatId: unknown, userId?: unknown): Promise<unknown>;
+  popularity(chatId: unknown): Promise<{ members: number }>;
+  send(
+    destination: unknown,
+    message: unknown,
+    options?: Record<string, unknown>
+  ): Promise<unknown>;
+}
+
+export declare class MtcuteTelegramProvider {
+  constructor(options?: Record<string, unknown>);
+  capabilities: Set<string>;
+  transport: 'mtproto';
+  identity(): Promise<{ id: number; username?: string }>;
+  history(
+    source: AccommodationSource,
+    options?: { since?: Date }
+  ): Promise<AsyncIterable<Record<string, unknown>>>;
+  liveUpdates(
+    handler: (event: Record<string, unknown>) => unknown,
+    options?: { sources?: AccommodationSource[] }
+  ): Promise<{ stop(): void }>;
+  resolveEntity(value: unknown): Promise<unknown>;
+  media(location: unknown, options?: Record<string, unknown>): Promise<unknown>;
+  membership(chatId: unknown, userId?: unknown): Promise<unknown>;
+  popularity(chatId: unknown): Promise<{ members: number | null }>;
+  send(
+    destination: unknown,
+    message: unknown,
+    options?: Record<string, unknown>
+  ): Promise<unknown>;
+  destroy(): Promise<void>;
+}
+
+export declare function normalizeMtcuteMessage(
+  message: Record<string, unknown>,
+  source: AccommodationSource
+): Record<string, unknown>;
+
+export declare class TelegramIngestionService {
+  constructor(options: Record<string, unknown>);
+  start(
+    sources: AccommodationSource[]
+  ): Promise<{ backfilled: number; sources: number }>;
+  destroy(): Promise<void>;
+}
+
+export declare class TelegramRuntime {
+  constructor(options?: Record<string, unknown>);
+  exitCode: number;
+  polling?: Promise<unknown>;
+  start(): Promise<this>;
+  stop(reason?: string): Promise<void>;
+  middleware(context: unknown, next: () => Promise<unknown>): Promise<unknown>;
+  health(kind?: 'live' | 'ready'): { status: string };
+  installSignalHandlers(processLike?: {
+    exitCode?: number;
+    off(event: string, listener: () => void): unknown;
+    once(event: string, listener: () => void): unknown;
+  }): () => void;
+}
+
+export declare class UpdateDeduplicator {
+  constructor(options: Record<string, unknown>);
+  accept(update: Record<string, unknown>): Promise<boolean>;
+}
+
+export declare class TelegramHistoryCollector {
+  constructor(options?: Record<string, unknown>);
+  collect(sources: AccommodationSource[]): Promise<AccommodationOffer[]>;
+}
 export declare function createApplication(options?: Record<string, unknown>): {
+  accessPolicy: TelegramAccessPolicy;
   collector: BrowserCollector;
   createAvailabilityService: (
     credentials?: Record<string, unknown>
@@ -292,9 +581,14 @@ export declare function createApplication(options?: Record<string, unknown>): {
     token: string,
     credentials?: Record<string, unknown>
   ) => Promise<Record<string, unknown>>;
+  createTelegramIngestionService: (
+    credentials?: Record<string, unknown>
+  ) => TelegramIngestionService;
   mediaCache: MediaCache;
+  presetService: PresetService;
   rateProvider: ExchangeRateProvider;
   registry: SourceRegistry;
   service: SearchService;
   store: LinksStore;
+  updateDeduplicator: UpdateDeduplicator;
 };

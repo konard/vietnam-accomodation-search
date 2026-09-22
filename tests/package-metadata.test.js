@@ -30,6 +30,17 @@ describe('publishable package metadata', () => {
     expect(existsSync('bin/vietnam-accomodation-search.js')).toBe(true);
   });
 
+  it('prints the package version without constructing the application', async () => {
+    const stdout = [];
+    expect(
+      await runCli(['--version'], {
+        env: {},
+        stdout: (line) => stdout.push(line),
+      })
+    ).toBe(0);
+    expect(stdout).toEqual([packageJson.version]);
+  });
+
   it('runs accommodation searches through the CLI command', async () => {
     const stdout = [];
     const stderr = [];

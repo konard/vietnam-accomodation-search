@@ -33,6 +33,7 @@ export class TelegramAvailabilityService {
     apiId,
     clientFactory = createMtcuteClient,
     now,
+    router,
     session,
     store,
   } = {}) {
@@ -40,6 +41,7 @@ export class TelegramAvailabilityService {
     this.apiId = apiId;
     this.clientFactory = clientFactory;
     this.now = now || (() => new Date());
+    this.router = router;
     this.session = session;
     this.store = store;
   }
@@ -59,8 +61,9 @@ export class TelegramAvailabilityService {
     return { apiHash: this.apiHash, apiId };
   }
 
+  // eslint-disable-next-line complexity -- Explicit inquiry validation stays adjacent to its no-duplicate send path.
   async check(offerId, { message, recipient } = {}) {
-    const credentials = this.credentials();
+    const credentials = this.router ? undefined : this.credentials();
     const offers = (await this.store?.listOffers?.()) || [];
     const offer = offers.find((candidate) => candidate.id === offerId);
     if (!offer) {
@@ -69,21 +72,55 @@ export class TelegramAvailabilityService {
     const destination = normalizeRecipient(
       recipient || offer.contacts?.telegram?.[0]
     );
+    if (this.router) {
+      const sent = await this.router.send(
+        destination,
+        message || createAvailabilityMessage(offer),
+        { idempotencyKey: `availability:${offerId}:${destination}` }
+      );
+      return {
+        messageId: sent?.id ?? sent?.message_id,
+        offerId,
+        recipient: destination,
+        sentAt: this.now().toISOString(),
+      };
+    }
     const client = await this.clientFactory(credentials);
+    let failure;
+    let result;
     try {
       await client.start({ session: this.session });
       const sent = await client.sendText(
         destination,
         message || createAvailabilityMessage(offer)
       );
-      return {
+      result = {
         messageId: sent?.id,
         offerId,
         recipient: destination,
         sentAt: this.now().toISOString(),
       };
-    } finally {
-      await client.destroy();
+    } catch (error) {
+      failure = error;
     }
+    try {
+      await client.destroy();
+    } catch (cleanupError) {
+      if (failure) {
+        throw new AggregateError(
+          [failure, cleanupError],
+          'Telegram availability send and client cleanup both failed.'
+        );
+      }
+      throw cleanupError;
+    }
+    if (failure) {
+      throw failure;
+    }
+    return result;
+  }
+
+  destroy() {
+    return this.router?.destroy?.();
   }
 }

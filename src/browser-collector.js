@@ -1,5 +1,6 @@
 import { normalizeOffer } from './offers.js';
 import { parseTelegramOffer } from './telegram-parser.js';
+import { settleCleanup } from './utils.js';
 
 export function buildSearchUrl(source, query = '') {
   return source.searchUrl.replaceAll('{query}', encodeURIComponent(query));
@@ -160,6 +161,7 @@ export class BrowserCollector {
     browserLaunchOptions,
     browserRuntime,
     logger,
+    maxTelegramPages = 200,
     now,
     rateProvider,
     rates,
@@ -167,6 +169,7 @@ export class BrowserCollector {
     this.browserLaunchOptions = browserLaunchOptions || {};
     this.browserRuntime = browserRuntime;
     this.logger = logger || { debug: () => {} };
+    this.maxTelegramPages = maxTelegramPages;
     this.now = now || (() => new Date());
     this.rateProvider = rateProvider;
     this.rates = rates || { VND: 1 };
@@ -179,7 +182,11 @@ export class BrowserCollector {
     const cutoff = cutoffDate(this.now());
     let url = firstUrl;
 
-    for (let page = 0; page < 200 && !visited.has(url); page += 1) {
+    for (
+      let page = 0;
+      page < this.maxTelegramPages && !visited.has(url);
+      page += 1
+    ) {
       visited.add(url);
       await commander.goto({ url, waitForNetworkIdle: false });
       const rows =
@@ -242,6 +249,10 @@ export class BrowserCollector {
               { now: this.now(), rates }
             );
       if (Number.isFinite(offer?.priceVnd) || offer?.officialUrl) {
+        offer.provenance = {
+          sourceId: source.id,
+          transport: 'browser-preview',
+        };
         offers.push(offer);
       }
     }
@@ -319,8 +330,10 @@ export class BrowserCollector {
         ...(await this.collectOfficialOffers(commander, offers, query, rates))
       );
     } finally {
-      await commander.destroy();
-      await browser.close();
+      await settleCleanup(
+        [() => commander.destroy(), () => browser.close()],
+        'Browser collection cleanup was incomplete.'
+      );
     }
     return offers;
   }

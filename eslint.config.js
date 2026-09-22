@@ -107,6 +107,7 @@ export default [
     // Test files have different requirements
     files: ['tests/**/*.js', '**/*.test.js'],
     rules: {
+      'max-lines-per-function': 'off', // Test suites group related scenarios for shared fixtures
       'require-await': 'off', // Async functions without await are common in tests
     },
   },

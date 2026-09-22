@@ -2,9 +2,8 @@ import { deduplicateOffers } from './offers.js';
 
 function isFresh(offer, now, maxAgeMs) {
   const collectedAt = new Date(offer.collectedAt).getTime();
-  return (
-    Number.isFinite(collectedAt) && now.getTime() - collectedAt <= maxAgeMs
-  );
+  const age = now.getTime() - collectedAt;
+  return Number.isFinite(collectedAt) && age >= 0 && age <= maxAgeMs;
 }
 
 function normalizedQuery(value) {
@@ -85,6 +84,56 @@ function matchesFilters(offer, filters) {
   });
 }
 
+function normalizedType(offer) {
+  return normalizedValue(
+    offer.kind || offer.type || offer.attributes?.type || ''
+  );
+}
+
+function finiteCount(offer, name) {
+  const direct = offer.attributes?.[name];
+  if (Number.isFinite(direct)) {
+    return direct;
+  }
+  const labeled = offer.attributes?.labeledFields?.[name];
+  const first = Array.isArray(labeled) ? labeled[0] : labeled;
+  const match = String(first || '').match(/\d+(?:\.\d+)?/u);
+  return match ? Number(match[0]) : undefined;
+}
+
+function inRange(value, minimum, maximum) {
+  if (minimum === undefined && maximum === undefined) {
+    return true;
+  }
+  return (
+    Number.isFinite(value) &&
+    (minimum === undefined || value >= minimum) &&
+    (maximum === undefined || value <= maximum)
+  );
+}
+
+function matchesNamedFilters(offer, options) {
+  const rooms = finiteCount(offer, 'rooms');
+  const beds = finiteCount(offer, 'beds');
+  const total = offer.priceVnd;
+  return (
+    (!options.types?.length ||
+      options.types.map(normalizedValue).includes(normalizedType(offer))) &&
+    inRange(rooms, options.minRooms, options.maxRooms) &&
+    inRange(total, options.minTotalVnd, options.maxTotalVnd) &&
+    inRange(
+      Number.isFinite(rooms) && rooms > 0 ? total / rooms : undefined,
+      options.minPerRoomVnd,
+      options.maxPerRoomVnd
+    ) &&
+    inRange(
+      Number.isFinite(beds) && beds > 0 ? total / beds : undefined,
+      options.minPerBedVnd,
+      options.maxPerBedVnd
+    )
+  );
+}
+
 function sourceCoverageIsComplete(offers, sources, query) {
   if (!sources.length) {
     return offers.length > 0;
@@ -126,13 +175,14 @@ export class SearchService {
     );
   }
 
-  async search({
-    cheapest = false,
-    filters = {},
-    limit = 10,
-    query = '',
-    refresh,
-  } = {}) {
+  async search(options = {}) {
+    const {
+      cheapest = false,
+      filters = {},
+      limit = 10,
+      query = '',
+      refresh,
+    } = options;
     let offers = await this.store.listOffers();
     const sources = await this.registry.list();
 
@@ -154,7 +204,8 @@ export class SearchService {
         Number.isFinite(offer.priceVnd) &&
         isForQuery(offer, query) &&
         telegramOfferMatches(offer, query) &&
-        matchesFilters(offer, filters)
+        matchesFilters(offer, filters) &&
+        matchesNamedFilters(offer, options)
     );
     unique.sort((left, right) =>
       cheapest

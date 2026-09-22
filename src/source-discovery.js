@@ -1,3 +1,5 @@
+import { settleCleanup } from './utils.js';
+
 function extractSearchLinks() {
   return [...globalThis.document.querySelectorAll('a[href]')]
     .map((anchor) => anchor.href)
@@ -149,8 +151,10 @@ export class BrowserSourceDiscoverer {
         ? await this.rankTelegram(commander, candidates, { focus })
         : await this.rankWeb(commander, candidates);
     } finally {
-      await commander.destroy();
-      await browser.close();
+      await settleCleanup(
+        [() => commander.destroy(), () => browser.close()],
+        'Source discovery cleanup was incomplete.'
+      );
     }
   }
 }

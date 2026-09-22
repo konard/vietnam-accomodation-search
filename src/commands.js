@@ -38,12 +38,74 @@ function extractFilters(tokens) {
   return filters;
 }
 
-export function parseSearchCommand(input = '') {
+const NAMED_OPTIONS = new Map([
+  ['--max-per-bed-vnd', 'maxPerBedVnd'],
+  ['--max-per-room-vnd', 'maxPerRoomVnd'],
+  ['--max-rooms', 'maxRooms'],
+  ['--max-total-vnd', 'maxTotalVnd'],
+  ['--min-per-bed-vnd', 'minPerBedVnd'],
+  ['--min-per-room-vnd', 'minPerRoomVnd'],
+  ['--min-rooms', 'minRooms'],
+  ['--min-total-vnd', 'minTotalVnd'],
+]);
+
+function extractNamedOptions(tokens) {
+  const options = {};
+  for (let index = 0; index < tokens.length; ) {
+    const key = NAMED_OPTIONS.get(tokens[index]);
+    if (!key) {
+      index += 1;
+      continue;
+    }
+    const raw = tokens[index + 1];
+    const value = Number(raw);
+    const rooms = key === 'minRooms' || key === 'maxRooms';
+    if (
+      !raw ||
+      !Number.isFinite(value) ||
+      value < 0 ||
+      (rooms && !Number.isInteger(value))
+    ) {
+      throw new TypeError(`${tokens[index]} requires a non-negative number.`);
+    }
+    options[key] = value;
+    tokens.splice(index, 2);
+  }
+
+  const typesIndex = tokens.indexOf('--types');
+  if (typesIndex >= 0) {
+    const types = (tokens[typesIndex + 1] || '')
+      .split(',')
+      .map((type) => type.trim().toLocaleLowerCase('en'))
+      .filter(Boolean);
+    if (!types.length) {
+      throw new TypeError('--types requires a comma-separated list.');
+    }
+    options.types = [...new Set(types)];
+    tokens.splice(typesIndex, 2);
+  }
+
+  for (const [minimum, maximum] of [
+    ['minRooms', 'maxRooms'],
+    ['minTotalVnd', 'maxTotalVnd'],
+    ['minPerRoomVnd', 'maxPerRoomVnd'],
+    ['minPerBedVnd', 'maxPerBedVnd'],
+  ]) {
+    if (options[minimum] > options[maximum]) {
+      throw new RangeError(`${minimum} cannot exceed ${maximum}.`);
+    }
+  }
+  return options;
+}
+
+// eslint-disable-next-line complexity -- Each independent CLI bound has a small parsing branch in this single grammar.
+export function parseSearchCommand(input = '', { defaults = true } = {}) {
   const body = String(input)
     .replace(/^\/search(?:@\w+)?\s*/u, '')
     .trim();
   const tokens = body ? body.split(/\s+/u) : [];
   const optionIndex = tokens.indexOf('--cheapest');
+  const hasCheapest = optionIndex >= 0;
   let limit = 10;
   let cheapest = false;
 
@@ -64,11 +126,13 @@ export function parseSearchCommand(input = '') {
   }
 
   const filters = extractFilters(tokens);
+  const named = extractNamedOptions(tokens);
 
   return {
-    cheapest,
+    ...(defaults || hasCheapest ? { cheapest } : {}),
     ...(Object.keys(filters).length ? { filters } : {}),
-    limit,
-    query: tokens.join(' '),
+    ...(defaults || hasCheapest ? { limit } : {}),
+    ...named,
+    ...(defaults || tokens.length ? { query: tokens.join(' ') } : {}),
   };
 }
