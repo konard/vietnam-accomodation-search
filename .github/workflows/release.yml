@@ -474,7 +474,7 @@ jobs:
               };
               await new TelegramRuntime({ bot }).start();
             "
-          for attempt in {1..30}; do
+          for _attempt in {1..30}; do
             status="$(docker inspect --format '{{.State.Health.Status}}' "$container")"
             [[ "$status" == healthy ]] && exit 0
             [[ "$status" == unhealthy ]] && break
