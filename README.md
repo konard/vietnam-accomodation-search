@@ -49,6 +49,18 @@ npx playwright install chromium
 cp .env.example .env
 ```
 
+For the production container path, fill the untracked `.env` and run:
+
+```bash
+docker compose up --build -d
+docker compose ps
+```
+
+The health endpoint is bound to `127.0.0.1:8080` by default. State lives in
+the `vietnam-accomodation-search-data` named volume and survives image
+replacement. See [deployment and recovery](docs/deployment.md) for candidate
+preflight, redeploy, rollback, logs, backup, restore, and Docker Hub setup.
+
 ## Configuration
 
 Export the bot token before starting the process. The CLI does not load `.env`
@@ -59,13 +71,15 @@ export TELEGRAM_BOT_TOKEN='replace-with-a-BotFather-token'
 npm exec vietnam-accomodation-search -- bot
 ```
 
-Availability inquiries use a Telegram user session because bots cannot start a
-private conversation with arbitrary owners. Set `TELEGRAM_API_ID`,
-`TELEGRAM_API_HASH`, and an exported `TELEGRAM_USER_SESSION` string generated
-for that account with [mtcute](https://mtcute.dev/guide/). The session is
-equivalent to a password: never log it, commit it, or share it. The application
-opens it only for an explicitly requested inquiry and closes the client after
-the message is sent.
+Availability inquiries and private history use a Telegram user session. Create
+one with `telegram auth login --session-file /run/secrets/telegram-session`;
+choose an explicit `0600` session file, `--session-stdout` handoff, or an
+injected `TELEGRAM_USER_SESSION_FILE`. No implicit session destination is
+used. The session is equivalent to account access: never log, commit, or back
+it up with ordinary application state. `telegram auth
+status|validate|rotate|logout` manage its lifecycle. `telegram preflight`
+validates configured numeric identities with `getMe` without starting
+`getUpdates`.
 
 The default cache directory is `.vietnam-accomodation-search/` in the current
 working directory. It contains `offers.lino`, `sources.lino`, and downloaded
@@ -85,6 +99,16 @@ security boundary.
 /search --cheapest 10 Nha Trang
 /search --cheapest 10 --filter bedrooms=2 --filter petsAllowed=true Nha Trang
 /search --filter labeledFields.электричество=счётчику Нячанг
+/search --types studio,hotel --min-rooms 1 --max-total-vnd 15000000 Nha Trang
+/search --max-per-room-vnd 8000000 --max-per-bed-vnd 5000000 Nha Trang
+/preset list
+/preset show [NAME]
+/preset save NAME [SEARCH OPTIONS]
+/preset use NAME
+/preset delete NAME
+/subscribe [NAME]
+/unsubscribe
+/subscription
 /update_sources
 /check_availability OFFER_ID [@owner]
 ```
@@ -94,7 +118,15 @@ browser pass over every configured source. Later searches use the cache for up
 to six hours. One inaccessible source is logged and skipped without discarding
 results from the other sources.
 
-The same operations are available without Telegram:
+The built-in `default` preset is empty and cannot be deleted. A named preset is
+global for that numeric Telegram user. Search arguments temporarily override
+the active preset. Rooms are not bedrooms: room filters require an explicit
+room count, and per-room/per-bed filters exclude records missing the respective
+count. Studios are selected by type and do not imply one room. Prices retain
+their quoted billing period; range filters compare the normalized quoted VND
+amount without changing that period.
+
+The same search operations are available without Telegram:
 
 ```bash
 node bin/vietnam-accomodation-search.js search --cheapest 10 "Da Nang"
@@ -122,10 +154,22 @@ source record is the authoritative snapshot for a particular deployment.
 
 ## Telegram access model
 
-Search and ingestion need only a Telegram bot token. Public channel history is
-read from Telegram's public web preview through browser-commander, following
-older-message links until the two-month cutoff. Live group and channel posts
-are also ingested when Telegram delivers them to the bot.
+Search and public-preview ingestion need no user session. Public channel
+history is read through browser-commander, following older-message links until
+the two-month cutoff. A bot token adds Bot API commands and updates from chats
+where the bot is present. An MTProto user session adds a two-month backfill and
+continuous updates for configured sources the account can already access:
+
+```bash
+node bin/vietnam-accomodation-search.js telegram ingest
+```
+
+The service supports bot-only, MTProto user-only ingestion, and combined modes.
+Combined routing is bot-first and falls back to MTProto only
+for a classified capability rejection known to occur before a send. It never
+falls back after an ambiguous timeout. Bot commands and subscription chat
+delivery are unavailable in user-only mode because there is no Bot API command
+surface.
 
 Telegram does not expose arbitrary private history to bots. To monitor a
 private community, add the bot there and grant the permissions needed to
@@ -133,17 +177,23 @@ receive new posts; for groups, disable BotFather privacy mode if the bot must
 see ordinary messages. Messages posted before the bot joined must be forwarded
 or imported separately. These platform constraints are not bypassed.
 
-The optional user session is used only by `/check_availability` (or its CLI
-equivalent) to send a single private message. Searching never contacts an owner
-automatically. When a parsed post contains an `@username`, it is used by
-default; an explicit recipient can be supplied for listings without one.
+Searching never contacts an owner automatically. When a parsed post contains
+an `@username`, it is used only after an explicit availability command. Private
+mode is the default and requires numeric allowlists; public search/subscription
+traffic is rate-limited while privileged actions still fail closed. See the
+[Telegram operations guide](docs/telegram.md) for BotFather privacy mode,
+permissions, capability degradation, rotation, revocation, and incident
+response.
 
 ## Data model and cache
 
-Offers keep normalized links for identity, source, URL, and VND price alongside
-a lossless base64url JSON payload containing the original record. This produces
-portable Links Notation while preserving unknown fields for future parsing.
-Writes use a temporary file and atomic rename.
+Every record field is represented as deterministic, typed, addressable
+two-value links. Canonical human-readable `.lino` text is mirrored into an
+immutable, verified `clink` file-mapped database snapshot; unknown/raw fields
+round-trip through the same schema rather than an opaque JSON-only payload.
+Writes use fsync, atomic rename, a process lock, and content-hash repair. See
+the [associative storage guide](docs/storage.md) for schema, migration,
+recovery, compaction, installation, and point-in-time backup details.
 
 Merged offers retain all source IDs, identifiers, raw variants, contacts,
 attributes, photos, and price observations. Learned identity aliases are saved,
