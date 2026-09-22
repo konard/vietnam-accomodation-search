@@ -287,6 +287,28 @@ describe('complete recent Telegram parsing', () => {
     expect(durationMs < 150).toBe(true);
   });
 
+  it('parses adversarial word and location punctuation runs in bounded time', () => {
+    const startedAt = globalThis.performance.now();
+    for (const text of [
+      `${'-'.repeat(20_000)} x`,
+      `спальни${' '.repeat(20_000)}x`,
+      `Address: Nha Trang${'!'.repeat(20_000)}x`,
+    ]) {
+      parseTelegramOffer(
+        {
+          chat: { username: 'adversarial_input' },
+          date: '2026-09-20T00:00:00Z',
+          messageId: 2,
+          text,
+        },
+        { now: new Date('2026-09-21T00:00:00Z') }
+      );
+    }
+    const durationMs = globalThis.performance.now() - startedAt;
+
+    expect(durationMs < 500).toBe(true);
+  });
+
   it('paginates public previews until reaching the two-month cutoff', async () => {
     const navigated = [];
     let currentUrl = '';

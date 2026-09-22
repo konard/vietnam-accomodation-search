@@ -8,6 +8,9 @@ const CURRENCY_ALIASES = new Map([
   ['GBP', 'GBP'],
   ['VND', 'VND'],
   ['VNĐ', 'VND'],
+  ['ДОНГ', 'VND'],
+  ['ДОНГА', 'VND'],
+  ['ДОНГОВ', 'VND'],
   ['Đ', 'VND'],
   ['₫', 'VND'],
 ]);
@@ -50,7 +53,7 @@ function currencyFrom(value) {
 function scaledCandidates(text) {
   const candidates = [];
   const pattern =
-    /(?<![\d.,])(\d{1,12}(?:[.,]\d{1,4})?)(?![\d.,])\s*(triệu|tr(?:iệu)?|million|mio|tỷ|billion)(?:\s*(VND|VNĐ|₫|đ|USD|US\$|\$|EUR|€|GBP|£))?/giu;
+    /(?<![\d.,])(\d{1,12}(?:[.,]\d{1,4})?)(?![\d.,])\s*(triệu|tr(?:iệu)?|million|mio|млн|tỷ|billion)(?:\s*(VND|VNĐ|донг(?:а|ов)?|₫|đ|USD|US\$|\$|EUR|€|GBP|£))?/giu;
 
   for (const match of text.matchAll(pattern)) {
     const unit = match[2].toLocaleLowerCase('vi');
@@ -67,7 +70,7 @@ function scaledCandidates(text) {
 
 function explicitCurrencyCandidates(text) {
   const candidates = [];
-  const currency = '(VND|VNĐ|₫|đ|USD|US\\$|\\$|EUR|€|GBP|£)';
+  const currency = '(VND|VNĐ|донг(?:а|ов)?|₫|đ|USD|US\\$|\\$|EUR|€|GBP|£)';
   const number = '(?<!\\d)(\\d(?:[\\d.,\\s]{0,20}\\d)?)(?!\\d)';
   const patterns = [
     new RegExp(`${currency}\\s*${number}`, 'giu'),

@@ -1,32 +1,60 @@
 const OBSERVED_AT = '2026-09-21T00:00:00.000Z';
 
-function webSource(id, name, url, searchUrl, value, evidenceUrl) {
+// eslint-disable-next-line max-params -- Static source declarations stay compact and directly reviewable as a ranked manifest.
+function webSource(
+  id,
+  name,
+  url,
+  searchUrl,
+  value,
+  evidenceUrl,
+  { enabled = true, reason } = {}
+) {
   return {
     id,
     name,
     type: 'web',
     url,
     searchUrl,
+    access: 'public-web',
+    geographicFocus: 'vietnam',
+    languages: ['en', 'vi'],
+    lastScannedAt: OBSERVED_AT,
+    enabled,
+    ...(reason ? { reason } : {}),
     popularity: {
       metric: 'seed-rank-score',
       value,
       evidenceUrl,
+      limitations:
+        'Public traffic/search evidence is volatile and is not proof of rental inventory quality.',
       observedAt: OBSERVED_AT,
     },
   };
 }
 
 function telegramSource(handle, name, value, { focus } = {}) {
+  const languages = /[А-Яа-яЁё]/u.test(name)
+    ? ['ru']
+    : /(?:Viet|Vietnam|Nha Trang|Da Nang|Phu Quoc)/iu.test(name)
+      ? ['en', 'vi']
+      : ['en'];
   return {
     id: `telegram:${handle.toLocaleLowerCase('en')}`,
     name,
     type: 'telegram',
     url: `https://t.me/${handle}`,
     searchUrl: `https://t.me/s/${handle}`,
+    access: 'public-preview',
+    geographicFocus: focus === 'nha-trang' ? 'nha-trang' : 'vietnam',
+    languages,
+    lastScannedAt: OBSERVED_AT,
     popularity: {
       metric: 'members-or-subscribers',
       value,
       evidenceUrl: `https://t.me/${handle}`,
+      limitations:
+        'Visible member/subscriber counts are volatile and do not measure listing relevance.',
       observedAt: OBSERVED_AT,
     },
     ...(focus ? { focus } : {}),
@@ -196,7 +224,11 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.chotot.com',
     'https://www.chotot.com/mua-ban-bat-dong-san?q={query}',
     62,
-    'https://www.similarweb.com/website/chotot.com/'
+    'https://www.similarweb.com/website/chotot.com/',
+    {
+      enabled: false,
+      reason: 'sale-route-disabled-until-a-validated-rental-route-is-reviewed',
+    }
   ),
   webSource(
     'hotel-mix',
@@ -261,7 +293,7 @@ export const DEFAULT_NHA_TRANG_TELEGRAM_SOURCES = [
 
 function rankAndLimit(sources, count) {
   const unique = new Map();
-  for (const source of sources) {
+  for (const source of sources.filter(({ enabled }) => enabled !== false)) {
     unique.set(source.id, source);
   }
   return [...unique.values()]
@@ -309,17 +341,27 @@ export class SourceRegistry {
           ...DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
           ...stored.filter((source) => source.focus === 'nha-trang'),
         ],
-        20
+        40
       ),
     ];
     return type ? sources.filter((source) => source.type === type) : sources;
   }
 
-  async update({ count = 20 } = {}) {
+  async update({
+    count,
+    focusCount = count ?? 40,
+    telegramCount = count ?? 20,
+    webCount = count ?? 20,
+    signal,
+  } = {}) {
     const current = await this.list();
-    const discoverType = async (type, defaults, { focus } = {}) => {
+    const discoverType = async (type, defaults, { focus, limit } = {}) => {
       const found =
-        (await this.discover?.(type, { candidates: defaults, focus })) || [];
+        (await this.discover?.(type, {
+          candidates: defaults,
+          focus,
+          signal,
+        })) || [];
       const fallback = current.filter(
         (source) =>
           source.type === type && (source.focus || undefined) === focus
@@ -327,14 +369,17 @@ export class SourceRegistry {
       const selected = found.length ? found : fallback;
       return rankAndLimit(
         selected.map((source) => assignFocus(source, focus)),
-        count
+        limit
       );
     };
     const [web, telegram, nhaTrang] = await Promise.all([
-      discoverType('web', DEFAULT_WEB_SOURCES),
-      discoverType('telegram', DEFAULT_TELEGRAM_SOURCES),
+      discoverType('web', DEFAULT_WEB_SOURCES, { limit: webCount }),
+      discoverType('telegram', DEFAULT_TELEGRAM_SOURCES, {
+        limit: telegramCount,
+      }),
       discoverType('telegram', DEFAULT_NHA_TRANG_TELEGRAM_SOURCES, {
         focus: 'nha-trang',
+        limit: focusCount,
       }),
     ]);
     const telegramSources = [...telegram, ...nhaTrang];

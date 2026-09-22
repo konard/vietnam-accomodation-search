@@ -14,9 +14,10 @@ spelling, so the executable and npm package are named
 ## What it does
 
 - Starts with 20 ranked web services, 20 nationwide Telegram communities, and
-  20 additional Nha Trang-focused Telegram communities.
-- Refreshes all three rankings with `/update_sources`, keeping 20 in each
-  cohort and searching for similar sources in English, Russian, and Vietnamese.
+  up to 40 additional Nha Trang-focused Telegram communities.
+- Refreshes all three rankings with `/update_sources`, independently keeping
+  20 web, 20 nationwide Telegram, and up to 40 Nha Trang Telegram sources while
+  searching in English, Russian, and Vietnamese.
 - Navigates each configured source's web UI rather than calling a private
   accommodation API.
 - Paginates public Telegram previews through the latest two months of history.
@@ -146,7 +147,8 @@ for Vietnam accommodation services plus multilingual Nha Trang Telegram
 communities. Website candidates are reranked by their result position.
 Telegram candidates discovered in the search UI are combined with their seed
 cohort, then each public `t.me` preview is visited to read its current member or
-subscriber count. The highest 20 records in each cohort are saved.
+subscriber count. The highest 20 web and nationwide Telegram records and up to
+40 independently ranked Nha Trang Telegram records are saved.
 
 Popularity changes constantly, so the bundled list is a bootstrap candidate
 set rather than a permanent claim. The evidence attached to the persisted
@@ -169,7 +171,10 @@ Combined routing is bot-first and falls back to MTProto only
 for a classified capability rejection known to occur before a send. It never
 falls back after an ambiguous timeout. Bot commands and subscription chat
 delivery are unavailable in user-only mode because there is no Bot API command
-surface.
+surface. In combined mode, incomplete/foreign user-session configuration or an
+MTProto startup/authentication failure is reported with redacted diagnostics
+and the Bot API surface continues in bot-only mode. The ingest-only command
+still fails closed because it has no Bot API work to perform.
 
 Telegram does not expose arbitrary private history to bots. To monitor a
 private community, add the bot there and grant the permissions needed to

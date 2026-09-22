@@ -25,7 +25,7 @@ describe('Telegram accommodation audit helpers', () => {
   });
 
   it('keeps a multilingual, anonymized parser conformance corpus', async () => {
-    const fixtures = JSON.parse(
+    const corpus = JSON.parse(
       await readFile(
         new URL(
           './fixtures/telegram-accommodation-parser-cases.json',
@@ -34,6 +34,9 @@ describe('Telegram accommodation audit helpers', () => {
         'utf8'
       )
     );
+    expect(corpus.schemaVersion).toBe(1);
+    expect(corpus.dataPolicy).toBe('synthetic-and-anonymized-only');
+    const fixtures = corpus.cases;
     expect(new Set(fixtures.map(({ id }) => id)).size).toBe(fixtures.length);
     expect(new Set(fixtures.map(({ language }) => language))).toEqual(
       new Set(['en', 'ru', 'vi'])

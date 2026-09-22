@@ -1,4 +1,6 @@
 import { canonicalizeUrl } from './utils.js';
+import { detectListingLanguage } from './language.js';
+import { parsePrice } from './pricing.js';
 
 function matchedNumber(text, patterns) {
   for (const pattern of patterns) {
@@ -77,14 +79,17 @@ function firstLabeledValue(fields, labels) {
   return undefined;
 }
 
-function isoDate(text) {
+function isoDate(text, referenceDate = new Date()) {
   const match = text.match(
-    /(?:свобод\p{L}*|available|доступ\p{L}*|có\s*sẵn)[^\d]{0,24}(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/iu
+    /(?:свобод\p{L}*|available|доступ\p{L}*|có\s*sẵn)[^\d]{0,24}(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/iu
   );
   if (!match) {
     return undefined;
   }
-  const year = Number(match[3]) + (match[3].length === 2 ? 2000 : 0);
+  const suppliedYear = match[3];
+  const year = suppliedYear
+    ? Number(suppliedYear) + (suppliedYear.length === 2 ? 2000 : 0)
+    : new Date(referenceDate).getUTCFullYear();
   const month = Number(match[2]);
   const day = Number(match[1]);
   const date = new Date(Date.UTC(year, month - 1, day));
@@ -170,20 +175,73 @@ function coordinates(text) {
     : {};
 }
 
-function extractAttributes(text, fields) {
+function wordNumber(text, expressions) {
+  const words = [
+    [1, /one|одн\p{L}*|một/iu],
+    [2, /two|дв(?:е|умя)|hai/iu],
+    [3, /three|тр(?:и|емя)|ba/iu],
+    [4, /four|четыр\p{L}*|bốn/iu],
+  ];
+  for (const expression of expressions) {
+    const nearby = text.match(expression)?.[1];
+    if (nearby) {
+      return words.find(([, pattern]) => pattern.test(nearby))?.[0];
+    }
+  }
+  return undefined;
+}
+
+function moneyAfterLabel(text, label) {
+  const value = text.match(
+    new RegExp(`(?:${label})\\s{0,12}[:#-]?\\s{0,12}([^\\n]{1,100})`, 'iu')
+  )?.[1];
+  return value ? parsePrice(value) : undefined;
+}
+
+function utilityCharges(text) {
+  const candidates = [
+    ['management', /management|управлен|phí\s*quản\s*lý/iu],
+    ['internet', /internet|интернет|wi-?fi/iu],
+    ['electricity', /electricity|электрич|điện/iu],
+    ['water', /\bwater\b|вод[ауы]|nước/iu],
+  ];
+  return candidates
+    .filter(([, pattern]) => pattern.test(text))
+    .map(([name]) => name);
+}
+
+function fees(fields) {
+  return Object.entries(fields)
+    .filter(([label]) => /fee|phí|комисси|управлен/iu.test(label))
+    .flatMap(([label, values]) =>
+      values
+        .map((value) => ({ label, price: parsePrice(value) }))
+        .filter(({ price }) => price)
+    );
+}
+
+function extractAttributes(text, fields, referenceDate) {
   const propertyId = text.match(
     /(?:\bID|код|mã)\s{0,8}[#:№-]?\s{0,8}([\p{L}\d][\p{L}\d_-]{0,31})/iu
   )?.[1];
   const studio = /\bstudio\b|студи\p{L}*|căn\s*hộ\s*studio/iu.test(text);
-  const bedrooms = studio
+  const numericBedrooms = studio
     ? 0
     : matchedNumber(text, [
         /(\d{1,2})\s*(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)/iu,
         /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
       ]);
+  const bedrooms =
+    numericBedrooms ??
+    wordNumber(text, [
+      /([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)[ \t]+(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)/iu,
+      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+(?:с|with)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
+      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
+    ]);
   const bathrooms = matchedNumber(text, [
     /(\d{1,2})\s*(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)/iu,
     /(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
+    /(\d{1,2})\s*WC\b/iu,
   ]);
   const beds = matchedNumber(text, [
     /(?:\bbeds?|кроват\p{L}*|giường)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
@@ -200,12 +258,28 @@ function extractAttributes(text, fields) {
     /(?:floor|этаж|tầng)\s{0,8}[:#-]?\s{0,8}(\d{1,3})/iu,
     /(\d{1,3})\s*(?:floor|этаж)/iu,
   ]);
+  const rooms = matchedNumber(text, [
+    /(\d{1,2})\s*(?:rooms?|комнат\p{L}*|phòng(?!\s*(?:ngủ|tắm)))/iu,
+  ]);
   const minimumStayMonths = matchedNumber(text, [
     /(?:minimum|аренд\p{L}*\s+от|tối\s*thiểu)\D{0,24}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
     /(?:hợp\s*đồng)\D{0,24}(\d{1,3})\s*tháng/iu,
+    /(?:contract|контракт)\s{0,8}[:#-]?\s{0,8}(\d{1,3})\s*(?:months?|месяц\p{L}*)/iu,
   ]);
-  const depositMonths = matchedNumber(text, [
-    /(?:deposit|депозит|đặt\s*cọc)\D{0,16}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
+  const depositMonths =
+    matchedNumber(text, [
+      /(?:deposit|депозит|đặt\s*cọc)\D{0,16}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
+    ]) ??
+    (/deposit[^\n]{0,40}(?:one|monthly\s+payment)|депозит[^\n]{0,50}месячн\p{L}*\s+платеж|đặt\s*cọc[^\n]{0,40}một\s+tháng/iu.test(
+      text
+    )
+      ? 1
+      : undefined);
+  const maximumStayMonths = matchedNumber(text, [
+    /(?:maximum|max\.?|не\s+более|tối\s+đa)\D{0,24}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
+  ]);
+  const prepaymentMonths = matchedNumber(text, [
+    /(?:prepay(?:ment)?|предоплат\p{L}*|trả\s+trước)\D{0,24}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
   ]);
   const rating = matchedNumber(text, [
     /(?:rating|рейтинг|đánh\s*giá)\s{0,8}[:#-]?\s{0,8}(\d(?:[.,]\d{1,2})?)/iu,
@@ -223,17 +297,19 @@ function extractAttributes(text, fields) {
   );
   const petsAllowed = matchedBoolean(
     text,
-    /pets?\s*(?:allowed|welcome)|можно\s*с\s*животн|cho\s*phép\s*thú\s*cưng/iu,
+    /pets?\s*(?:allowed|welcome)|можно\s+с[^\n]{0,30}животн|cho\s*phép\s*thú\s*cưng/iu,
     /no\s*pets|без\s*животн|không\s*(?:cho\s*phép\s*)?thú\s*cưng/iu
   );
   const utilitiesIncluded = matchedBoolean(
     text,
     /utilities\s+included|коммунальн\p{L}*\s+включен|đã\s*bao\s*gồm\s*(?:điện|nước|tiện\s*ích)/iu,
-    /utilities\s+not\s+included|коммунальн\p{L}*\s+не\s+включен|chưa\s*bao\s*gồm\s*(?:điện|nước|tiện\s*ích)/iu
+    /utilities\s+not\s+included|коммунальн\p{L}*[^\n]{0,30}(?:не\s+включен|оплачива\p{L}*\s+отдельно)|(?:электрич\p{L}*|вод\p{L}*)\s+(?:по\s+сч[её]тчик|оплачива\p{L}*\s+отдельно)|chưa\s*bao\s*gồm\s*(?:điện|nước|tiện\s*ích)/iu
   );
 
   return definedProperties({
     propertyId,
+    intent: 'rental-offer',
+    rooms,
     bedrooms,
     bathrooms,
     beds,
@@ -246,15 +322,31 @@ function extractAttributes(text, fields) {
       'khu vực',
       'quận',
     ]),
-    availableFrom: isoDate(text),
+    availableFrom: isoDate(text, referenceDate),
+    availableNow:
+      /available\s+now|свобод\p{L}*\s+сейчас|доступ\p{L}*\s+сейчас|có\s+sẵn\s+ngay/iu.test(
+        text
+      ) || undefined,
     minimumStayMonths,
+    maximumStayMonths,
     depositMonths,
+    deposit:
+      depositMonths === undefined
+        ? moneyAfterLabel(text, 'deposit|депозит|залог|đặt\\s*cọc')
+        : undefined,
+    prepaymentMonths,
+    prepayment: moneyAfterLabel(
+      text,
+      'prepay(?:ment)?|предоплат\\p{L}*|trả\\s+trước'
+    ),
     furnished,
     petsAllowed,
     utilitiesIncluded,
     agencyFeePercent,
     rating,
     reviewCount,
+    utilityCharges: utilityCharges(text),
+    fees: fees(fields),
     checkIn: timeValue(text, 'check[- ]?in|заезд|nhận\\s*phòng'),
     checkOut: timeValue(text, 'check[- ]?out|выезд|trả\\s*phòng'),
     ...coordinates(text),
@@ -277,21 +369,38 @@ function detectKind(text) {
   );
 }
 
-function detectLocation(text, fields) {
-  return (
-    firstLabeledValue(fields, ['address', 'location', 'địa chỉ', 'адрес']) ||
-    text
-      .match(/(?:address|location|địa\s*chỉ|адрес)\s*:\s*([^\n\r]+)/iu)?.[1]
-      ?.trim()
-  );
-}
-
-function trimTrailingUrlPunctuation(value) {
+function trimTrailingCharacters(value, characters) {
   let end = value.length;
-  while (end > 0 && '.,;!?'.includes(value[end - 1])) {
+  while (end > 0 && characters.includes(value[end - 1])) {
     end -= 1;
   }
   return value.slice(0, end);
+}
+
+function detectLocation(text, fields) {
+  const location =
+    firstLabeledValue(fields, [
+      'address',
+      'location',
+      'district',
+      'địa chỉ',
+      'khu vực',
+      'quận',
+      'адрес',
+      'район',
+    ]) ||
+    text
+      .match(
+        /(?:address|location|district|địa\s*chỉ|khu\s*vực|quận|адрес|район)\s*:\s*([^\n\r]+)/iu
+      )?.[1]
+      ?.trim();
+  return location
+    ? trimTrailingCharacters(location.trim(), '.,;!').trim()
+    : location;
+}
+
+function trimTrailingUrlPunctuation(value) {
+  return trimTrailingCharacters(value, '.,;!?');
 }
 
 function officialUrl(text) {
@@ -317,14 +426,19 @@ function officialUrl(text) {
   return undefined;
 }
 
-export function parseListingText(value = '') {
+export function parseListingText(value = '', { referenceDate } = {}) {
   const text = String(value);
   const fields = parseLabeledFields(text);
+  const location = detectLocation(text, fields);
   return {
-    attributes: extractAttributes(text, fields),
+    attributes: extractAttributes(text, fields, referenceDate),
     contacts: extractContacts(text),
     kind: detectKind(text),
-    location: detectLocation(text, fields),
+    language: detectListingLanguage(text),
+    location,
+    locationProvenance: location
+      ? { method: 'labeled-text', source: 'message-text' }
+      : { method: 'not-mentioned', source: 'message-text' },
     officialUrl: officialUrl(text),
   };
 }

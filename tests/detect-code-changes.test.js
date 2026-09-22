@@ -261,6 +261,26 @@ describe('detect-code-changes CLI', () => {
         rmSync(root, { force: true, recursive: true });
       }
     });
+
+    it('runs release gates for an excluded-only repair when a valid changeset is pending', () => {
+      const root = createChangeFixture('.changeset/repair.md', 'push');
+      writeFileSync(
+        path.join(root, '.changeset', 'repair.md'),
+        "---\n'fixture': patch\n---\n\nRepair release metadata.\n"
+      );
+      runGit(root, ['add', '.changeset/repair.md']);
+      runGit(root, ['commit', '--amend', '--no-edit']);
+
+      try {
+        const { outputs, result } = runDetectCodeChanges(root, 'push');
+
+        expect(result.status).toBe(0);
+        expect(outputs).toContain('pending-changeset=true\n');
+        expect(outputs).toContain('any-code-changed=true\n');
+      } finally {
+        rmSync(root, { force: true, recursive: true });
+      }
+    });
   }
 });
 

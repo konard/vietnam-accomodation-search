@@ -11,6 +11,7 @@ import {
   formatSearchResults,
   parseSearchCommand,
   preflightTelegram,
+  redactTelegramValue,
   resolveTelegramSecrets,
   validateTelegramConfiguration,
 } from '../src/index.js';
@@ -71,9 +72,12 @@ export async function runCli(
       const qr = authArguments.includes('--qr');
       const sessionFile =
         option('--session-file') || env.TELEGRAM_USER_SESSION_FILE;
-      if (authArguments.includes('--password')) {
+      if (
+        authArguments.includes('--code') ||
+        authArguments.includes('--password')
+      ) {
         throw new Error(
-          '2FA passwords are never accepted as command-line arguments.'
+          'Login codes and 2FA passwords are never accepted as command-line arguments.'
         );
       }
       if (
@@ -98,16 +102,20 @@ export async function runCli(
         onSession: stdoutSession
           ? (session) => stdout(`TELEGRAM_USER_SESSION=${session}`)
           : undefined,
+        onSessionEnvelope: stdoutSession
+          ? (session) => stdout(`TELEGRAM_USER_SESSION=${session}`)
+          : undefined,
         prompt,
         qrCodeHandler: qr
           ? (url) => stdout(`Scan this Telegram login URL: ${url}`)
           : undefined,
         session: authSecrets.session,
+        sessionFormat: authSecrets.sessionFormat,
         sessionFile: stdoutSession ? undefined : sessionFile,
       });
       if (action === 'login' || action === 'rotate') {
         const identity = await auth[action]({
-          code: option('--code') || env.TELEGRAM_LOGIN_CODE,
+          code: env.TELEGRAM_LOGIN_CODE,
           password: env.TELEGRAM_2FA_PASSWORD,
           phone: option('--phone') || env.TELEGRAM_PHONE,
           qr,
@@ -145,35 +153,60 @@ export async function runCli(
       stdout(JSON.stringify(result));
       return 0;
     }
-    application ||= createApplication();
     if (command === 'bot' || (command === 'telegram' && rest[0] === 'ingest')) {
       const credentials = await resolveTelegramSecrets(env);
-      validateTelegramConfiguration(credentials);
+      const configuration = validateTelegramConfiguration(credentials);
       const ingestOnly = command === 'telegram';
-      if (ingestOnly && !credentials.session) {
-        throw new Error('TELEGRAM_USER_SESSION is required for ingestion.');
+      if (ingestOnly && configuration.mode === 'bot-only') {
+        throw new Error(
+          configuration.userUnavailable ||
+            'TELEGRAM_USER_SESSION is required for ingestion.'
+        );
       }
-      if (!ingestOnly && !credentials.botToken && !credentials.session) {
+      const effectiveCredentials = configuration.userUnavailable
+        ? {
+            ...credentials,
+            apiHash: undefined,
+            apiId: undefined,
+            session: undefined,
+          }
+        : credentials;
+      if (configuration.userUnavailable) {
+        stderr(
+          `Telegram user capability unavailable; continuing in bot-only mode: ${configuration.userUnavailable}`
+        );
+      }
+      application ||= createApplication({
+        environment: env,
+        telegramCredentials: effectiveCredentials,
+      });
+      if (
+        !ingestOnly &&
+        !effectiveCredentials.botToken &&
+        !effectiveCredentials.session
+      ) {
         throw new Error(
           'Configure TELEGRAM_BOT_TOKEN, TELEGRAM_USER_SESSION, or both.'
         );
       }
       const bot =
-        !ingestOnly && credentials.botToken
-          ? await application.createBot(credentials.botToken, {
-              apiHash: credentials.apiHash,
-              apiId: credentials.apiId,
-              session: credentials.session,
+        !ingestOnly && effectiveCredentials.botToken
+          ? await application.createBot(effectiveCredentials.botToken, {
+              apiHash: effectiveCredentials.apiHash,
+              apiId: effectiveCredentials.apiId,
+              session: effectiveCredentials.session,
+              sessionFormat: effectiveCredentials.sessionFormat,
             })
           : undefined;
-      const { apiHash, apiId, session } = credentials;
-      const userAuth =
+      const { apiHash, apiId, session, sessionFormat } = effectiveCredentials;
+      let userAuth =
         apiHash && apiId && session
           ? new TelegramAuthService({
               apiHash,
               apiId,
               expectedUserId: env.TELEGRAM_EXPECTED_USER_ID,
               session,
+              sessionFormat,
             })
           : undefined;
       if (bot) {
@@ -191,15 +224,34 @@ export async function runCli(
           return me;
         };
       }
-      const ingestion = session
+      let ingestion = session
         ? application.createTelegramIngestionService({
             apiHash,
             apiId,
             session,
+            sessionFormat,
           })
         : undefined;
       if (ingestion) {
-        await ingestion.start(await application.registry.list('telegram'));
+        try {
+          await ingestion.start(await application.registry.list('telegram'));
+        } catch (error) {
+          if (!bot) {
+            throw error;
+          }
+          stderr(
+            `Telegram user ingestion unavailable; continuing in bot-only mode: ${redactTelegramValue(error).message}`
+          );
+          try {
+            await ingestion.destroy();
+          } catch (destroyError) {
+            stderr(
+              `Telegram user ingestion cleanup failed: ${redactTelegramValue(destroyError).message}`
+            );
+          }
+          ingestion = undefined;
+          userAuth = undefined;
+        }
       }
       let stopUserOnly;
       const userOnlyRuntimeBot = !bot
@@ -220,6 +272,7 @@ export async function runCli(
         resources: [ingestion, ...(bot?.resources || [])].filter(Boolean),
         scheduler: bot?.subscriptionScheduler,
         userAuth,
+        userAuthOptional: Boolean(bot),
       });
       if (bot) {
         bot.runtime = runtime;
@@ -234,27 +287,36 @@ export async function runCli(
       }
     }
     if (command === 'search') {
+      application ||= createApplication({ environment: env });
       const options = parseSearchCommand(`/search ${rest.join(' ')}`);
       stdout(formatSearchResults(await application.service.search(options)));
       return 0;
     }
     if (command === 'update-sources') {
-      const updated = await application.registry.update({ count: 20 });
+      const credentials = await resolveTelegramSecrets(env);
+      application ||= createApplication({
+        environment: env,
+        telegramCredentials: credentials,
+      });
+      const updated = await application.registry.update();
       stdout(
         `Updated ${updated.web.length} web and ${updated.telegram.length} Telegram sources.`
       );
       return 0;
     }
     if (command === 'check-availability') {
+      application ||= createApplication({ environment: env });
       const [offerId, recipient] = rest;
       if (!offerId) {
         throw new Error('An offer ID is required.');
       }
-      const { apiHash, apiId, session } = await resolveTelegramSecrets(env);
+      const { apiHash, apiId, session, sessionFormat } =
+        await resolveTelegramSecrets(env);
       const availabilityService = application.createAvailabilityService({
         apiHash,
         apiId,
         session,
+        sessionFormat,
       });
       const result = await availabilityService.check(offerId, { recipient });
       stdout(

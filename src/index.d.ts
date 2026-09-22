@@ -7,18 +7,37 @@ export interface Price {
 export interface PopularityEvidence {
   metric: string;
   value: number;
-  evidenceUrl: string;
+  evidenceUrl?: string;
   observedAt: string;
 }
 
 export interface AccommodationSource {
+  access?:
+    | 'public-web'
+    | 'public-preview'
+    | 'bot-membership'
+    | 'user-session-visible'
+    | 'configured';
+  accessCapabilities?: string[];
+  aliases?: string[];
+  enabled?: boolean;
+  focus?: 'nha-trang';
   id: string;
+  languages?: Array<'en' | 'ru' | 'vi'>;
+  lastScannedAt?: string;
+  lastSuccessfulScan?: string;
   name: string;
   type: 'web' | 'telegram';
-  url: string;
-  searchUrl: string;
+  url?: string;
+  searchUrl?: string;
   popularity: PopularityEvidence;
-  focus?: 'nha-trang';
+  provenance?: Array<Record<string, unknown>>;
+  reason?: string;
+  telegram?: {
+    kind: 'channel' | 'chat' | 'megagroup';
+    peerId?: string;
+    username?: string;
+  };
 }
 
 export interface AccommodationAttributes {
@@ -33,7 +52,12 @@ export interface AccommodationAttributes {
   guests?: number;
   availableFrom?: string;
   minimumStayMonths?: number;
+  maximumStayMonths?: number;
   depositMonths?: number;
+  deposit?: Price;
+  prepaymentMonths?: number;
+  prepayment?: Price;
+  availableNow?: boolean;
   furnished?: boolean;
   petsAllowed?: boolean;
   utilitiesIncluded?: boolean;
@@ -45,6 +69,8 @@ export interface AccommodationAttributes {
   latitude?: number;
   longitude?: number;
   amenities?: string[];
+  utilityCharges?: string[];
+  fees?: Array<{ label: string; price: Price }>;
   labeledFields?: Record<string, string[]>;
   [key: string]: unknown;
 }
@@ -85,7 +111,10 @@ export interface AccommodationOfferVariant {
   identifiers?: Record<string, string>;
   identityKeys?: string[];
   kind?: string;
+  intent?: 'rental-offer';
+  language?: ListingLanguage;
   location?: string;
+  locationProvenance?: Record<string, unknown>;
   photos?: string[];
   sourceId: string;
   sourceType?: 'web' | 'official-web' | 'telegram';
@@ -109,7 +138,10 @@ export interface AccommodationOffer {
   sourceTypes?: Array<'web' | 'official-web' | 'telegram'>;
   title: string;
   kind?: string;
+  intent?: 'rental-offer';
+  language?: ListingLanguage;
   location?: string;
+  locationProvenance?: Record<string, unknown>;
   attributes?: AccommodationAttributes;
   contacts?: AccommodationContacts;
   price: Price | null;
@@ -138,6 +170,7 @@ export interface AccommodationOffer {
     editedAt?: number | string;
     groupedId?: number | string;
     messageId?: number | string;
+    messageIds?: Array<number | string>;
     sourceId: string;
     topicId?: number | string;
     transport: 'bot-api' | 'browser-preview' | 'mtproto';
@@ -164,6 +197,7 @@ export interface SearchOptions {
   minTotalPriceVnd?: number;
   query?: string;
   refresh?: boolean;
+  traceRunId?: string;
   types?: string[];
 }
 
@@ -192,11 +226,16 @@ export declare function removeOfferMessageVariants(
 export declare function parseLabeledFields(
   text?: string
 ): Record<string, string[]>;
-export declare function parseListingText(text?: string): {
+export declare function parseListingText(
+  text?: string,
+  options?: { referenceDate?: Date | string | number }
+): {
   attributes: AccommodationAttributes;
   contacts: AccommodationContacts;
   kind: string;
+  language: ListingLanguage;
   location?: string;
+  locationProvenance: Record<string, unknown>;
   officialUrl?: string;
 };
 export declare function parseTelegramOffer(
@@ -214,7 +253,7 @@ export declare function parseSearchCommand(
 ): SearchOptions;
 export declare function parseSearchOverrides(input?: string): SearchOptions;
 export declare function buildSearchUrl(
-  source: Pick<AccommodationSource, 'searchUrl'>,
+  source: { searchUrl: string },
   query?: string
 ): string;
 export declare function formatSearchResults(
@@ -243,6 +282,273 @@ export declare function deserializeSearchState(value: string): SearchState;
 export declare function deduplicateOffers(
   offers: AccommodationOffer[]
 ): AccommodationOffer[];
+
+export interface ListingLanguage {
+  confidence: number;
+  language: 'en' | 'ru' | 'vi' | 'unknown';
+  method: 'reviewed-keyword-script-v1';
+  schemaVersion: 1;
+}
+
+export declare const LANGUAGE_DETECTION_SCHEMA_VERSION: 1;
+export declare function detectListingLanguage(text?: string): ListingLanguage;
+
+export declare const BROWSER_ADAPTER_SCHEMA_VERSION: 1;
+export declare const PAGE_CLASSIFICATIONS: Readonly<{
+  CHALLENGE: 'challenge';
+  CONSENT: 'consent-wall';
+  EMPTY: 'empty';
+  LANDING: 'landing';
+  LOGIN: 'login';
+  NAVIGATION_LOOP: 'navigation-loop';
+  RENTAL: 'rental';
+  SALE: 'sale';
+  SELECTOR_DRIFT: 'selector-drift';
+  WRONG_LOCATION: 'wrong-location';
+}>;
+export interface BrowserSourceAdapter {
+  domains?: string[];
+  enabled: boolean;
+  id: string;
+  reason?: string;
+  schemaVersion: 1;
+  searchPath?: string;
+}
+export declare const BROWSER_SOURCE_ADAPTERS: Readonly<
+  Record<string, BrowserSourceAdapter>
+>;
+export declare function browserAdapterFor(value: string): BrowserSourceAdapter;
+export declare function classifyListingPage(options?: {
+  cards?: number;
+  expectedLocation?: string;
+  status?: number;
+  title?: string;
+  url?: string;
+}): (typeof PAGE_CLASSIFICATIONS)[keyof typeof PAGE_CLASSIFICATIONS];
+export declare class BrowserPageError extends Error {
+  classification: string;
+  code: string;
+  url: string;
+}
+export declare class DomainScheduler {
+  constructor(options?: {
+    delay?: (
+      milliseconds: number,
+      options?: { signal?: AbortSignal }
+    ) => Promise<void>;
+    maxAttempts?: number;
+    maxBackoffMs?: number;
+    maxConcurrentDomains?: number;
+    maxDelayMs?: number;
+    maxRequestsPerDomain?: number;
+    minDelayMs?: number;
+    random?: () => number;
+  });
+  run<T>(
+    url: string,
+    operation: (options: { attempt: number }) => Promise<T> | T,
+    options?: { signal?: AbortSignal }
+  ): Promise<T>;
+}
+
+export declare const DOMAIN_GRAPH_SCHEMA_VERSION: 1;
+export declare const DOMAIN_ENTITY_TYPES: Set<string>;
+export declare const SEMANTIC_STATES: Set<string>;
+export interface SemanticValue<T = unknown> {
+  state: string;
+  value?: T;
+  [key: string]: unknown;
+}
+export declare function createSemanticValue<T>(
+  state: string,
+  value?: T,
+  metadata?: Record<string, unknown>
+): SemanticValue<T>;
+export declare function createDomainRecords(options: {
+  id: string;
+  type: string;
+  values?: Record<string, unknown>;
+}): Array<Record<string, unknown>>;
+export declare function validatePublicRecord(value: unknown): true;
+
+export declare const RELEASE_AUDIT_SCHEMA_VERSION: 1;
+export declare const RELEASE_AUDIT_GATES: readonly string[];
+export declare function compareReleaseAudit(
+  baseline?: Record<string, unknown>,
+  candidate?: Record<string, unknown>
+): {
+  baselineRelease: unknown;
+  candidateRelease: unknown;
+  changed: boolean;
+  improvements: string[];
+  regressions: string[];
+  schemaVersion: 1;
+};
+export declare function evaluateReleaseGate(options?: {
+  competingPoller?: boolean;
+  credentials?: boolean;
+  mode?: 'fixture' | 'dry-run' | 'live' | string;
+}): { reason: string; status: 'failure' | 'pending' | 'ready' };
+export declare function selectReleaseForAudit(
+  releases?: Array<Record<string, unknown>>,
+  options?: { auditedTags?: string[]; overrideTag?: string }
+): Record<string, unknown> | undefined;
+export declare function createReleaseAudit(
+  options?: Record<string, unknown>
+): Readonly<Record<string, unknown>>;
+
+export declare const SESSION_SCHEMA_VERSION: 1;
+export declare const SESSION_FORMAT: 'mtcute/session-string-v1';
+export declare const GRAMJS_SESSION_FORMAT: 'gramjs/string-session-v1';
+export declare function inspectSessionFormat(format?: string): {
+  provider?: string;
+  reason?: string;
+  state: 'supported' | 'relogin-required' | 'unsupported';
+};
+export declare function createSessionEnvelope(
+  payload: string,
+  metadata?: {
+    createdAt?: string;
+    dcId?: number;
+    expectedUserId?: number | string;
+    provider?: 'mtcute';
+    rotatedAt?: string;
+    sessionId?: string;
+  }
+): string;
+export declare function inspectSessionEnvelope(value?: unknown): {
+  createdAt?: string;
+  expectedUserId?: string;
+  format?: string;
+  provider?: string;
+  reason?: string;
+  schemaVersion?: number;
+  sessionId?: string;
+  state:
+    | 'absent'
+    | 'active-unverified'
+    | 'malformed'
+    | 'partial'
+    | 'unsupported';
+};
+export declare function sessionPayload(value: unknown): string;
+export declare function nativeSessionPayload(
+  value: string,
+  format?: string
+): string;
+
+export interface TelegramDiscoveryQuery {
+  id: string;
+  language: 'en' | 'ru' | 'vi';
+  text: string;
+}
+export interface TelegramDiscoveryCandidate {
+  entity: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  transport?: string;
+}
+export declare const TELEGRAM_DISCOVERY_SCHEMA_VERSION: 1;
+export declare const TELEGRAM_DISCOVERY_QUERIES: Readonly<{
+  version: 1;
+  reviewedAt: string;
+  queries: readonly TelegramDiscoveryQuery[];
+}>;
+export declare function classifyTelegramEntity(
+  entity: Record<string, unknown>
+): { accepted: boolean; kind?: string; reason?: string };
+export declare class TelegramSourceDiscovery {
+  constructor(options?: Record<string, unknown>);
+  addProvider(
+    provider: { name: string; discover(options?: unknown): unknown },
+    options?: { before?: string }
+  ): void;
+  discover(options?: {
+    focus?: 'nha-trang';
+    maxResults?: number;
+    queries?: TelegramDiscoveryQuery[];
+    signal?: AbortSignal;
+  }): Promise<{
+    complete: boolean;
+    failures: Array<Record<string, unknown>>;
+    rejected: Array<Record<string, unknown>>;
+    sources: AccommodationSource[];
+  }>;
+}
+export declare class ConfiguredTelegramDiscoveryProvider {
+  constructor(options?: {
+    focusSources?: AccommodationSource[];
+    sources?: AccommodationSource[];
+  });
+  name: 'configured';
+  discover(options?: { focus?: 'nha-trang' }): TelegramDiscoveryCandidate[];
+}
+export declare class PublicPreviewTelegramDiscoveryProvider {
+  constructor(options?: Record<string, unknown>);
+  name: 'public-preview';
+  discover(options?: {
+    focus?: 'nha-trang';
+    signal?: AbortSignal;
+  }): Promise<TelegramDiscoveryCandidate[]>;
+}
+export declare class BotApiTelegramDiscoveryProvider {
+  constructor(options?: Record<string, unknown>);
+  name: 'bot-api';
+  discover(options?: {
+    focus?: 'nha-trang';
+    signal?: AbortSignal;
+  }): Promise<TelegramDiscoveryCandidate[]>;
+}
+
+export declare const TELEGRAM_LABELS: Set<string>;
+export declare function classifyTelegramPost(
+  value: unknown,
+  options?: { duplicate?: boolean; targetLocation?: string | null }
+): { eligible: boolean; label: string; reason: string };
+export declare function assembleTelegramAlbums(
+  messages: Array<Record<string, unknown>>
+): Array<Record<string, unknown>>;
+export declare function reconcileTelegramMaterials<T = Record<string, unknown>>(
+  messages: Array<Record<string, unknown>>,
+  options?: {
+    extract?: (material: Record<string, unknown>) => T | Promise<T>;
+    maxOcrPhotos?: number;
+    ocr?: (mediaId: unknown) => string | Promise<string>;
+    targetLocation?: string | null;
+  }
+): Promise<{
+  accepted: T[];
+  complete: boolean;
+  reviewQueue: Array<Record<string, unknown>>;
+}>;
+
+export declare const TRACE_SCHEMA_VERSION: 1;
+export declare const TRACE_STATUSES: Set<string>;
+export declare function redactTraceValue(value: unknown): unknown;
+export declare function createSegmentLedger(
+  value: unknown,
+  classify?: (segment: {
+    index: number;
+    text: string;
+  }) => Record<string, unknown>
+): {
+  segments: Array<Record<string, unknown>>;
+  summary: {
+    coverage: number;
+    error: number;
+    mapped: number;
+    reviewedUnknown: number;
+  };
+};
+export declare class TraceRecorder {
+  constructor(options?: Record<string, unknown>);
+  record(event: Record<string, unknown>): Record<string, unknown>;
+  export(): {
+    dropped: number;
+    events: Array<Record<string, unknown>>;
+    schemaVersion: 1;
+  };
+  persist(): Promise<Record<string, unknown>>;
+}
 
 export declare const DEFAULT_WEB_SOURCES: AccommodationSource[];
 export declare const DEFAULT_TELEGRAM_SOURCES: AccommodationSource[];
@@ -400,7 +706,12 @@ export declare class MediaCache {
 export declare class SourceRegistry {
   constructor(options?: Record<string, unknown>);
   list(type?: 'web' | 'telegram'): Promise<AccommodationSource[]>;
-  update(options?: { count?: number }): Promise<{
+  update(options?: {
+    count?: number;
+    focusCount?: number;
+    telegramCount?: number;
+    webCount?: number;
+  }): Promise<{
     web: AccommodationSource[];
     telegram: AccommodationSource[];
   }>;
@@ -410,7 +721,12 @@ export declare class BrowserCollector {
   constructor(options?: Record<string, unknown>);
   collect(
     sources: AccommodationSource[],
-    query?: string
+    query?: string,
+    options?: {
+      runId?: string;
+      signal?: AbortSignal;
+      traceRecorder?: TraceRecorder;
+    }
   ): Promise<AccommodationOffer[]>;
 }
 
@@ -531,7 +847,11 @@ export declare function validateTelegramConfiguration(options?: {
   apiId?: number | string;
   botToken?: string;
   session?: string;
-}): { mode: 'bot-only' | 'user-only' | 'both' };
+  sessionFormat?: string;
+}): {
+  mode: 'bot-only' | 'user-only' | 'both';
+  userUnavailable?: string;
+};
 
 export declare function resolveTelegramSecrets(
   env?: Record<string, string | undefined>
@@ -540,6 +860,7 @@ export declare function resolveTelegramSecrets(
   apiId?: string;
   botToken?: string;
   session?: string;
+  sessionFormat: string;
 }>;
 
 export declare function preflightTelegram(
@@ -605,9 +926,20 @@ export declare class MtcuteTelegramProvider {
   capabilities: Set<string>;
   transport: 'mtproto';
   identity(): Promise<{ id: number; username?: string }>;
+  discover(options?: {
+    focus?: 'nha-trang';
+    queries?: TelegramDiscoveryQuery[];
+    signal?: AbortSignal;
+  }): Promise<TelegramDiscoveryCandidate[]>;
   history(
     source: AccommodationSource,
-    options?: { since?: Date }
+    options?: {
+      resume?: {
+        oldestMessageDate: string;
+        oldestMessageId: number | string;
+      };
+      since?: Date;
+    }
   ): Promise<AsyncIterable<Record<string, unknown>>>;
   liveUpdates(
     handler: (event: Record<string, unknown>) => unknown,
@@ -681,5 +1013,6 @@ export declare function createApplication(options?: Record<string, unknown>): {
   registry: SourceRegistry;
   service: SearchService;
   store: LinksStore;
+  traceRecorder: TraceRecorder;
   updateDeduplicator: UpdateDeduplicator;
 };

@@ -62,6 +62,60 @@ describe('Telegram service lifecycle', () => {
     expect(calls).not.toContain('resource:close');
   });
 
+  it('continues bot-only when optional user authentication fails', async () => {
+    const warnings = [];
+    const runtime = new TelegramRuntime({
+      bot: {
+        api: { getMe: async () => ({ id: 1 }) },
+        start: async ({ onStart }) => onStart(),
+        stop: async () => {},
+      },
+      healthPort: null,
+      logger: {
+        info: () => {},
+        warn: (...values) => warnings.push(values),
+      },
+      userAuth: {
+        validate: async () => {
+          throw new Error('session=super-secret is no longer authorized');
+        },
+      },
+      userAuthOptional: true,
+    });
+
+    await runtime.start();
+    expect(runtime.health()).toEqual({ status: 'ready' });
+    expect(warnings[0][0]).toContain('continuing bot-only');
+    expect(warnings[0][1].message).toContain('session=[REDACTED]');
+    expect(warnings[0][1].message).not.toContain('super-secret');
+    await runtime.stop('test');
+  });
+
+  it('fails closed when user authentication is not optional', async () => {
+    const runtime = new TelegramRuntime({
+      bot: {
+        api: { getMe: async () => ({ id: 1 }) },
+        stop: async () => {},
+      },
+      healthPort: null,
+      logger: { error: () => {}, info: () => {} },
+      userAuth: {
+        validate: async () => {
+          throw new Error('AUTH_KEY_UNREGISTERED');
+        },
+      },
+    });
+
+    let failure;
+    try {
+      await runtime.start();
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure.message).toContain('AUTH_KEY_UNREGISTERED');
+    expect(runtime.exitCode).toBe(20);
+  });
+
   it('drains tracked middleware and maps fatal auth failures to a distinct exit code', async () => {
     let release;
     const blocked = new Promise((resolve) => {

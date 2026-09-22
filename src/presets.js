@@ -1,5 +1,7 @@
 import { clearInterval, setInterval } from 'node:timers';
 
+import { TraceRecorder } from './trace.js';
+
 function validName(value) {
   const name = String(value || '')
     .normalize('NFC')
@@ -295,6 +297,8 @@ export class SubscriptionScheduler {
     now = () => new Date(),
     presets,
     search,
+    store,
+    traceRecorder,
   }) {
     this.deliver = deliver;
     this.intervalMs = intervalMs;
@@ -303,6 +307,7 @@ export class SubscriptionScheduler {
     this.now = now;
     this.presets = presets;
     this.search = search;
+    this.trace = traceRecorder || new TraceRecorder({ now, store });
     this.running = undefined;
     this.timer = undefined;
   }
@@ -343,30 +348,79 @@ export class SubscriptionScheduler {
       const key = groupKey(subscription.options);
       groups.set(key, [...(groups.get(key) || []), subscription]);
     }
+    let groupIndex = 0;
     for (const group of groups.values()) {
+      groupIndex += 1;
       const now = this.now();
-      const offers = (await this.search(group[0].options)).filter((offer) => {
-        const collectedAt = new Date(offer.collectedAt).getTime();
-        const age = now.getTime() - collectedAt;
-        return Number.isFinite(collectedAt) && age >= 0 && age <= this.maxAgeMs;
+      const runId = `subscription:${now.toISOString()}:${groupIndex}`;
+      this.trace.record({
+        runId,
+        stage: 'subscription-search',
+        status: 'start',
       });
+      let offers;
+      try {
+        offers = (
+          await this.search({ ...group[0].options, traceRunId: runId })
+        ).filter((offer) => {
+          const collectedAt = new Date(offer.collectedAt).getTime();
+          const age = now.getTime() - collectedAt;
+          return (
+            Number.isFinite(collectedAt) && age >= 0 && age <= this.maxAgeMs
+          );
+        });
+        this.trace.record({
+          runId,
+          stage: 'subscription-search',
+          status: 'success',
+          metadata: { offers: offers.length },
+        });
+      } catch (error) {
+        this.trace.record({
+          runId,
+          stage: 'subscription-search',
+          status: 'failure',
+          metadata: { code: error?.code, message: error?.message },
+        });
+        await this.trace.persist();
+        throw error;
+      }
       for (const subscription of group) {
         await this.presets.markSuccessfulRun(subscription.userId, now);
         const unseen = await this.presets.unseen(subscription.userId, offers);
         for (const offer of unseen) {
+          this.trace.record({
+            runId,
+            offerId: offer.id,
+            stage: 'delivery',
+            status: 'start',
+          });
           try {
-            await this.deliver(subscription.userId, [offer]);
+            await this.deliver(subscription.userId, [offer], { runId });
             await this.presets.markDelivered(subscription.userId, [offer]);
+            this.trace.record({
+              runId,
+              offerId: offer.id,
+              stage: 'delivery',
+              status: 'success',
+            });
           } catch (error) {
+            this.trace.record({
+              runId,
+              offerId: offer.id,
+              stage: 'delivery',
+              status: 'failure',
+              metadata: { code: error?.code, message: error?.message },
+            });
             this.logger.warn?.('subscription delivery failed', {
               error: error.message,
               offerId: offer.id,
-              userId: subscription.userId,
             });
             break;
           }
         }
       }
+      await this.trace.persist();
     }
   }
 }

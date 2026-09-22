@@ -175,9 +175,13 @@ describe('Telegram bot edge behavior', () => {
   it('reports successful source updates', async () => {
     const bot = fakeBot();
     const replies = [];
+    const updates = [];
     registerTelegramHandlers(bot, {
       registry: {
-        update: async () => ({ telegram: [{}, {}], web: [{}] }),
+        update: async (options) => {
+          updates.push(options);
+          return { telegram: [{}, {}], web: [{}] };
+        },
       },
       service: { search: async () => [] },
     });
@@ -186,6 +190,9 @@ describe('Telegram bot edge behavior', () => {
       reply: async (value) => replies.push(value),
     });
     expect(replies[0]).toContain('Updated 1 web and 2 Telegram');
+    expect(updates).toEqual([
+      { focusCount: 40, telegramCount: 20, webCount: 20 },
+    ]);
   });
 
   it('ingests priced messages with rates and ignores incomplete updates', async () => {

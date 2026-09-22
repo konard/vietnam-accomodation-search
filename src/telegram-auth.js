@@ -1,7 +1,14 @@
-import { mkdir, open, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdir, open, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { durableWrite } from './link-cli-mirror.js';
+import {
+  SESSION_FORMAT,
+  createSessionEnvelope,
+  inspectSessionFormat,
+  inspectSessionEnvelope,
+  nativeSessionPayload,
+} from './session-envelope.js';
 import { createMtcuteClient } from './telegram-user.js';
 
 export function validateTelegramConfiguration({
@@ -9,6 +16,7 @@ export function validateTelegramConfiguration({
   apiId,
   botToken,
   session,
+  sessionFormat = SESSION_FORMAT,
 } = {}) {
   const userValues = {
     TELEGRAM_API_HASH: apiHash,
@@ -20,11 +28,24 @@ export function validateTelegramConfiguration({
     .filter(([, value]) => !value)
     .map(([name]) => name);
   if (hasUserValue && missing.length) {
-    throw new Error(
-      `Incomplete Telegram user credentials; missing ${missing.join(', ')}.`
-    );
+    const userUnavailable = `Incomplete Telegram user credentials; missing ${missing.join(', ')}.`;
+    if (botToken) {
+      return { mode: 'bot-only', userUnavailable };
+    }
+    throw new Error(userUnavailable);
   }
   const user = hasUserValue && !missing.length;
+  if (user && sessionFormat !== SESSION_FORMAT) {
+    const format = inspectSessionFormat(sessionFormat);
+    const userUnavailable =
+      format.state === 'relogin-required'
+        ? `Telegram session format ${sessionFormat} cannot be converted losslessly. Re-login explicitly with mtcute, validate the pinned account, then revoke the old session.`
+        : `Unsupported Telegram session format: ${sessionFormat}. Re-authenticate with mtcute.`;
+    if (botToken) {
+      return { mode: 'bot-only', userUnavailable };
+    }
+    throw new Error(userUnavailable);
+  }
   return { mode: botToken && user ? 'both' : user ? 'user-only' : 'bot-only' };
 }
 
@@ -42,6 +63,9 @@ export async function resolveTelegramSecrets(env = process.env) {
     apiId: await secretValue(env, 'TELEGRAM_API_ID'),
     botToken: await secretValue(env, 'TELEGRAM_BOT_TOKEN'),
     session: await secretValue(env, 'TELEGRAM_USER_SESSION'),
+    sessionFormat:
+      (await secretValue(env, 'TELEGRAM_USER_SESSION_FORMAT')) ||
+      SESSION_FORMAT,
   };
 }
 
@@ -89,6 +113,7 @@ export async function preflightTelegram({
       apiId: credentials.apiId,
       expectedUserId: env.TELEGRAM_EXPECTED_USER_ID,
       session: credentials.session,
+      sessionFormat: credentials.sessionFormat,
     }).validate();
   }
   await mirror?.preflight?.();
@@ -121,9 +146,11 @@ export class TelegramAuthService {
     clientFactory = createMtcuteClient,
     expectedUserId,
     onSession,
+    onSessionEnvelope,
     prompt,
     qrCodeHandler,
     session,
+    sessionFormat = SESSION_FORMAT,
     sessionFile,
   } = {}) {
     this.apiHash = apiHash;
@@ -131,9 +158,11 @@ export class TelegramAuthService {
     this.clientFactory = clientFactory;
     this.expectedUserId = expectedUserId;
     this.onSession = onSession;
+    this.onSessionEnvelope = onSessionEnvelope;
     this.prompt = prompt;
     this.qrCodeHandler = qrCodeHandler;
     this.session = session;
+    this.sessionFormat = sessionFormat;
     this.sessionFile = sessionFile;
   }
 
@@ -182,8 +211,19 @@ export class TelegramAuthService {
     return { id: me.id, username: me.username };
   }
 
-  async #writeSession(session) {
+  async #writeSession(session, identity) {
+    const envelope = createSessionEnvelope(session, {
+      expectedUserId: identity.id,
+      provider: 'mtcute',
+      sessionId: `telegram-user:${String(identity.id)}`,
+    });
+    if (this.onSessionEnvelope) {
+      await this.onSessionEnvelope(envelope);
+      return;
+    }
     if (this.onSession) {
+      // Retain the original callback contract for embedders. New callers that
+      // persist session material should use onSessionEnvelope instead.
       await this.onSession(session);
       return;
     }
@@ -192,7 +232,7 @@ export class TelegramAuthService {
         'Choose an explicit session file or session output handler.'
       );
     }
-    await durableWrite(this.sessionFile, session);
+    await durableWrite(this.sessionFile, envelope);
   }
 
   async login({ code, password, phone, qr = false } = {}) {
@@ -221,7 +261,7 @@ export class TelegramAuthService {
             : {}),
         });
         const identity = this.#identity(await client.getMe());
-        await this.#writeSession(await client.exportSession());
+        await this.#writeSession(await client.exportSession(), identity);
         return identity;
       });
     } finally {
@@ -240,20 +280,90 @@ export class TelegramAuthService {
     if (!session) {
       throw new Error('No Telegram user session is configured.');
     }
+    // Validate representation locally before constructing a client. A bad or
+    // foreign envelope must never trigger trial network logins.
+    const payload = nativeSessionPayload(session, this.sessionFormat);
     const client = await this.clientFactory(this.credentials());
     return this.#withClient(client, async () => {
-      await client.importSession(session);
-      return this.#identity(await client.getMe());
+      await client.importSession(payload);
+      const identity = this.#identity(await client.getMe());
+      if (
+        this.sessionFile &&
+        inspectSessionEnvelope(session).state === 'malformed'
+      ) {
+        await durableWrite(
+          this.sessionFile,
+          createSessionEnvelope(session, {
+            expectedUserId: identity.id,
+            provider: 'mtcute',
+            sessionId: `telegram-user:${String(identity.id)}`,
+          })
+        );
+      }
+      if (this.sessionFile) {
+        await chmod(this.sessionFile, 0o600);
+      }
+      return identity;
     });
   }
 
+  // eslint-disable-next-line complexity -- Status exposes each safe session classification without constructing a client unnecessarily.
   async status() {
-    const configured = Boolean(
-      this.session || (await readOptional(this.sessionFile))
-    );
-    return configured
-      ? { configured, identity: await this.validate() }
-      : { configured };
+    const session = this.session || (await readOptional(this.sessionFile));
+    if (!session) {
+      return { configured: false };
+    }
+    const declaredFormat = inspectSessionFormat(this.sessionFormat);
+    if (declaredFormat.state !== 'supported') {
+      return {
+        configured: true,
+        format: this.sessionFormat,
+        reason: declaredFormat.reason,
+        state: declaredFormat.state,
+      };
+    }
+    const inspection = inspectSessionEnvelope(session);
+    if (
+      ['partial', 'unsupported'].includes(inspection.state) ||
+      (inspection.state === 'malformed' && session.trimStart().startsWith('{'))
+    ) {
+      return {
+        configured: true,
+        ...(inspection.format ? { format: inspection.format } : {}),
+        ...(inspection.reason ? { reason: inspection.reason } : {}),
+        state:
+          inspection.state === 'unsupported' &&
+          inspectSessionFormat(inspection.format).state === 'relogin-required'
+            ? 'relogin-required'
+            : inspection.state,
+      };
+    }
+    try {
+      const identity = await this.validate();
+      return {
+        configured: true,
+        identity,
+        state:
+          inspection.state === 'malformed'
+            ? 'active-migrated-native'
+            : 'active',
+      };
+    } catch (error) {
+      const message = String(error?.message || '');
+      const code = String(error?.code || '');
+      const state = /identity mismatch/iu.test(message)
+        ? 'identity-mismatch'
+        : /AUTH_KEY_UNREGISTERED|SESSION_REVOKED|SESSION_EXPIRED|expired|revoked/iu.test(
+              `${code} ${message}`
+            )
+          ? 'expired-or-revoked'
+          : 'degraded';
+      return {
+        configured: true,
+        reason: code || 'session-validation-failed',
+        state,
+      };
+    }
   }
 
   async logout({ revoke = true } = {}) {
@@ -261,7 +371,9 @@ export class TelegramAuthService {
     if (session && revoke) {
       const client = await this.clientFactory(this.credentials());
       await this.#withClient(client, async () => {
-        await client.importSession(session);
+        await client.importSession(
+          nativeSessionPayload(session, this.sessionFormat)
+        );
         await client.logOut?.();
       });
     }

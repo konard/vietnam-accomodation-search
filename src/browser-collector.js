@@ -1,6 +1,14 @@
 import { normalizeOffer } from './offers.js';
 import { parseTelegramOffer } from './telegram-parser.js';
+import { classifyTelegramPost } from './telegram-pipeline.js';
+import { TraceRecorder } from './trace.js';
 import { settleCleanup } from './utils.js';
+import {
+  DomainScheduler,
+  PAGE_CLASSIFICATIONS,
+  browserAdapterFor,
+  classifyListingPage,
+} from './browser-adapters.js';
 
 export function buildSearchUrl(source, query = '') {
   return source.searchUrl.replaceAll('{query}', encodeURIComponent(query));
@@ -88,6 +96,24 @@ function extractOfficialListing() {
   };
 }
 
+function extractPageState() {
+  const documentRef = globalThis.document;
+  return {
+    status: 200,
+    title: documentRef?.title || '',
+    url: documentRef?.location?.href || globalThis.location?.href || '',
+  };
+}
+
+export class BrowserPageError extends Error {
+  constructor(classification, url) {
+    super(`Browser page rejected as ${classification}: ${url}`);
+    this.code = `BROWSER_PAGE_${classification.toLocaleUpperCase('en').replaceAll('-', '_')}`;
+    this.classification = classification;
+    this.url = url;
+  }
+}
+
 function telegramMessage(item, source) {
   const messageId = item.url?.match(/\/(\d+)(?:\?.*)?$/u)?.[1];
   const username = source.url.match(/t\.me\/(?:s\/)?([^/?]+)/u)?.[1];
@@ -95,6 +121,12 @@ function telegramMessage(item, source) {
     ...item,
     chat: { title: source.name, username },
     date: item.date,
+    ...(source.location || source.focus === 'nha-trang'
+      ? {
+          inheritedLocation: source.location || 'Nha Trang, Vietnam',
+          inheritedLocationSource: source.id,
+        }
+      : {}),
     messageId,
     sourceId: source.id,
   };
@@ -165,6 +197,9 @@ export class BrowserCollector {
     now,
     rateProvider,
     rates,
+    scheduler,
+    store,
+    traceRecorder,
   } = {}) {
     this.browserLaunchOptions = browserLaunchOptions || {};
     this.browserRuntime = browserRuntime;
@@ -173,9 +208,46 @@ export class BrowserCollector {
     this.now = now || (() => new Date());
     this.rateProvider = rateProvider;
     this.rates = rates || { VND: 1 };
+    this.scheduler = scheduler || new DomainScheduler();
+    this.trace =
+      traceRecorder || new TraceRecorder({ maxEvents: 2_000, now, store });
   }
 
-  async collectTelegramRows(commander, source, query) {
+  async navigate(commander, url, { signal } = {}) {
+    await this.scheduler.run(
+      url,
+      () => commander.goto({ url, waitForNetworkIdle: false }),
+      { signal }
+    );
+  }
+
+  async assertListingPage(commander, url, cards, { expectedLocation } = {}) {
+    const extracted = await commander.evaluate(extractPageState);
+    const state = Array.isArray(extracted) ? {} : extracted || {};
+    const classification = classifyListingPage({
+      cards,
+      ...state,
+      expectedLocation,
+      url: state.url || url,
+    });
+    if (
+      [
+        PAGE_CLASSIFICATIONS.CHALLENGE,
+        PAGE_CLASSIFICATIONS.CONSENT,
+        PAGE_CLASSIFICATIONS.EMPTY,
+        PAGE_CLASSIFICATIONS.LANDING,
+        PAGE_CLASSIFICATIONS.LOGIN,
+        PAGE_CLASSIFICATIONS.SALE,
+        PAGE_CLASSIFICATIONS.SELECTOR_DRIFT,
+        PAGE_CLASSIFICATIONS.WRONG_LOCATION,
+      ].includes(classification)
+    ) {
+      throw new BrowserPageError(classification, state.url || url);
+    }
+    return classification;
+  }
+
+  async collectTelegramRows(commander, source, query, { signal } = {}) {
     const firstUrl = buildSearchUrl(source, query);
     const rowsByUrl = new Map();
     const visited = new Set();
@@ -188,7 +260,7 @@ export class BrowserCollector {
       page += 1
     ) {
       visited.add(url);
-      await commander.goto({ url, waitForNetworkIdle: false });
+      await this.navigate(commander, url, { signal });
       const rows =
         (await commander.evaluate(extractPageListings, 'telegram')) || [];
       for (const row of rows) {
@@ -209,26 +281,53 @@ export class BrowserCollector {
       if (!ids.length) {
         break;
       }
-      url = beforeUrl(firstUrl, Math.min(...ids));
+      const nextUrl = beforeUrl(firstUrl, Math.min(...ids));
+      if (visited.has(nextUrl)) {
+        throw new BrowserPageError(
+          PAGE_CLASSIFICATIONS.NAVIGATION_LOOP,
+          nextUrl
+        );
+      }
+      url = nextUrl;
     }
     return [...rowsByUrl.values()];
   }
 
-  async collectSource(commander, source, query, rates) {
+  // eslint-disable-next-line complexity -- Source collection keeps transport, paging, and parser failure boundaries together.
+  async collectSource(commander, source, query, rates, { signal } = {}) {
+    const requestedUrl = buildSearchUrl(source, query);
+    const adapter = browserAdapterFor(requestedUrl);
+    if (!adapter.enabled) {
+      throw new BrowserPageError('disabled-adapter', requestedUrl);
+    }
     let rows;
     if (source.type === 'telegram') {
-      rows = await this.collectTelegramRows(commander, source, query);
-    } else {
-      await commander.goto({
-        url: buildSearchUrl(source, query),
-        waitForNetworkIdle: false,
+      rows = await this.collectTelegramRows(commander, source, query, {
+        signal,
       });
+    } else {
+      const url = requestedUrl;
+      await this.navigate(commander, url, { signal });
       rows = await commander.evaluate(extractPageListings, source.type);
+      await this.assertListingPage(commander, url, rows?.length || 0, {
+        expectedLocation: /nha\s*trang|nhatrang|нячанг/iu.test(query)
+          ? 'nha-trang'
+          : undefined,
+      });
     }
     const offers = [];
 
     for (const row of rows || []) {
       const raw = { ...row };
+      if (source.type === 'telegram') {
+        const relevance = classifyTelegramPost(row.text, {
+          targetLocation: source.focus === 'nha-trang' ? 'nha-trang' : null,
+        });
+        if (!relevance.eligible) {
+          continue;
+        }
+        raw.relevance = relevance;
+      }
       const offer =
         source.type === 'telegram'
           ? await parseTelegramOffer(telegramMessage(row, source), {
@@ -259,7 +358,14 @@ export class BrowserCollector {
     return offers;
   }
 
-  async collectOfficialOffers(commander, offers, query, rates) {
+  // eslint-disable-next-line complexity -- Official-page reconciliation isolates every per-offer failure in one pass.
+  async collectOfficialOffers(
+    commander,
+    offers,
+    query,
+    rates,
+    { signal } = {}
+  ) {
     const targets = new Map();
     for (const offer of offers) {
       if (
@@ -273,8 +379,13 @@ export class BrowserCollector {
     const officialOffers = [];
     for (const [url, parent] of [...targets].slice(0, 100)) {
       try {
-        await commander.goto({ url, waitForNetworkIdle: false });
+        await this.navigate(commander, url, { signal });
         const row = (await commander.evaluate(extractOfficialListing)) || {};
+        await this.assertListingPage(commander, url, 1, {
+          expectedLocation: /nha\s*trang|nhatrang|нячанг/iu.test(query)
+            ? 'nha-trang'
+            : undefined,
+        });
         const hostname = new globalThis.URL(url).hostname.replace(
           /^www\./u,
           ''
@@ -297,13 +408,26 @@ export class BrowserCollector {
           officialOffers.push(offer);
         }
       } catch (error) {
+        if (
+          signal?.aborted ||
+          error?.name === 'AbortError' ||
+          error?.code === 'ABORT_ERR'
+        ) {
+          throw error;
+        }
         this.logger.debug(`Official price check failed for ${url}`, error);
       }
     }
     return officialOffers;
   }
 
-  async collect(sources, query = '') {
+  // eslint-disable-next-line complexity -- The collection coordinator owns the complete browser lifecycle and trace outcome.
+  async collect(
+    sources,
+    query = '',
+    { runId: parentRunId, signal, traceRecorder } = {}
+  ) {
+    const trace = traceRecorder || this.trace;
     const runtime = this.browserRuntime || (await loadDefaultBrowserRuntime());
     const rates = this.rateProvider
       ? await this.rateProvider.getRates()
@@ -317,21 +441,89 @@ export class BrowserCollector {
     const offers = [];
 
     try {
-      for (const source of sources) {
+      for (const source of sources.filter(({ enabled }) => enabled !== false)) {
+        const runId =
+          parentRunId || `browser:${source.id}:${this.now().toISOString()}`;
+        trace.record({
+          runId,
+          sourceId: source.id,
+          stage: 'collection',
+          status: 'start',
+        });
         try {
-          offers.push(
-            ...(await this.collectSource(commander, source, query, rates))
+          trace.record({
+            runId,
+            sourceId: source.id,
+            stage: 'normalization',
+            status: 'start',
+          });
+          const collected = await this.collectSource(
+            commander,
+            source,
+            query,
+            rates,
+            { signal }
           );
+          offers.push(...collected);
+          trace.record({
+            runId,
+            sourceId: source.id,
+            stage: 'normalization',
+            status: 'success',
+            metadata: { offers: collected.length },
+          });
+          trace.record({
+            runId,
+            sourceId: source.id,
+            stage: 'collection',
+            status: 'success',
+            metadata: { offers: collected.length },
+          });
         } catch (error) {
+          const cancelled =
+            signal?.aborted ||
+            error?.name === 'AbortError' ||
+            error?.code === 'ABORT_ERR';
+          trace.record({
+            runId,
+            sourceId: source.id,
+            stage: 'collection',
+            status: cancelled ? 'cancelled' : 'failure',
+            metadata: {
+              category:
+                error?.classification || error?.code || 'collection-failure',
+              message: error?.message,
+              retry: 'source-stopped',
+            },
+          });
+          trace.record({
+            runId,
+            sourceId: source.id,
+            stage: 'normalization',
+            status: cancelled ? 'cancelled' : 'failure',
+            metadata: {
+              category:
+                error?.classification || error?.code || 'normalization-failure',
+            },
+          });
           this.logger.debug(`Collection failed for ${source.id}`, error);
+          if (cancelled) {
+            throw error;
+          }
         }
       }
       offers.push(
-        ...(await this.collectOfficialOffers(commander, offers, query, rates))
+        ...(await this.collectOfficialOffers(commander, offers, query, rates, {
+          signal,
+        }))
       );
     } finally {
       await settleCleanup(
-        [() => commander.destroy(), () => browser.close()],
+        [
+          () => trace.persist(),
+          () => commander.destroy(),
+          () => browser.close(),
+        ],
         'Browser collection cleanup was incomplete.'
       );
     }

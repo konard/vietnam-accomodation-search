@@ -228,7 +228,12 @@ describe('Telegram user-session availability checks', () => {
     expect(status).toBe(0);
     expect(calls).toEqual([
       {
-        credentials: { apiHash: 'hash', apiId: '123', session: 'session' },
+        credentials: {
+          apiHash: 'hash',
+          apiId: '123',
+          session: 'session',
+          sessionFormat: 'mtcute/session-string-v1',
+        },
         offerId: 'offer-1',
         options: { recipient: '@owner' },
       },

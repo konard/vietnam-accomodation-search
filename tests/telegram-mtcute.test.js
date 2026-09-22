@@ -314,7 +314,7 @@ describe('MTProto ingestion lifecycle', () => {
           date: '2026-09-20T00:00:00Z',
           id: 1,
           sourceId: source.id,
-          text: 'Studio 8,000,000 VND/month',
+          text: 'Studio 8,000,000 VND/month, contact +84123456789',
         },
       ],
       liveUpdates: async (handler) => {
@@ -341,7 +341,7 @@ describe('MTProto ingestion lifecycle', () => {
         editDate: '2026-09-22T02:00:00Z',
         id: 1,
         sourceId: source.id,
-        text: 'Studio 7,000,000 VND/month',
+        text: 'Studio 7,000,000 VND/month, contact +84123456789',
       },
       sourceId: source.id,
       type: 'edit',
@@ -365,6 +365,24 @@ describe('MTProto ingestion lifecycle', () => {
       'edit',
       'delete',
     ]);
+    expect(records['domain-records'].some(({ type }) => type === 'offer')).toBe(
+      false
+    );
+    expect(
+      records['domain-records'].some(({ type }) => type === 'parser-run')
+    ).toBe(false);
+    expect(
+      records['domain-records'].some(({ type }) => type === 'contact')
+    ).toBe(false);
+    expect(
+      records['domain-records'].some(
+        ({ predicate, object }) =>
+          predicate === 'deletion.eventType' && object === 'delete'
+      )
+    ).toBe(true);
+    expect(records.traces.some(({ status }) => status === 'success')).toBe(
+      true
+    );
     await service.destroy();
   });
 

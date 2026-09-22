@@ -98,3 +98,24 @@ the `DOCKERHUB_TOKEN` secret to enable it. Inspect a release with:
 ```bash
 docker buildx imagetools inspect OWNER/IMAGE:VERSION
 ```
+
+## Example application and GitHub Pages
+
+GitHub Pages deployment is optional by default. Pull requests and ordinary
+repositories without a Pages site still build the web app and publish the
+`universal-example-web` workflow artifact. They do not receive Pages write or
+OIDC permissions.
+
+To make Pages a required main-branch deployment:
+
+1. In repository **Settings → Pages**, select **GitHub Actions** as the build
+   and deployment source. This is a one-time administrator action.
+2. Set the repository variable `EXAMPLE_APP_PAGES_POLICY` to `required`.
+3. Re-run the Example app workflow.
+
+The read-only `pages-policy` job runs before package installation and expensive
+matrix jobs. Required mode fails immediately with a classified reason when the
+site is missing, the token cannot read it, or organization/repository policy
+disables Pages. It never hides a required deployment failure. Once enabled,
+the workflow uses GitHub's supported configure, artifact upload, and deploy
+actions. Only the deploy job receives `pages: write` and `id-token: write`.

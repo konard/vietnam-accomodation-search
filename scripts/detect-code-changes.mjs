@@ -35,7 +35,8 @@
 //   js-changed, docs-changed, any-code-changed
 
 import { execFileSync } from 'child_process';
-import { appendFileSync } from 'fs';
+import { appendFileSync, existsSync, readFileSync, readdirSync } from 'fs';
+import { join } from 'path';
 
 import { getJsRoot, parseJsRootConfig } from './js-paths.mjs';
 
@@ -317,6 +318,34 @@ function isExcludedFromCodeChanges(filePath) {
   return filePath.startsWith('docs/');
 }
 
+function hasPendingChangeset(prefix) {
+  const packageJsonPath = join(prefix || '.', 'package.json');
+  const directory = join(prefix || '.', '.changeset');
+  if (!existsSync(packageJsonPath) || !existsSync(directory)) {
+    return false;
+  }
+  let packageName;
+  try {
+    packageName = JSON.parse(readFileSync(packageJsonPath, 'utf8')).name;
+  } catch {
+    return false;
+  }
+  if (typeof packageName !== 'string' || !packageName) {
+    return false;
+  }
+  const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const declaration = new RegExp(
+    `^["']${escapedName}["']:\\s+(?:major|minor|patch)\\s*$`,
+    'mu'
+  );
+  return readdirSync(directory).some(
+    (file) =>
+      file !== 'README.md' &&
+      file.endsWith('.md') &&
+      declaration.test(readFileSync(join(directory, file), 'utf8'))
+  );
+}
+
 async function detectChanges() {
   console.log('Detecting file changes for CI/CD...\n');
 
@@ -330,10 +359,8 @@ async function detectChanges() {
   }
   console.log('');
 
-  const packageChangedFiles = toPackagePaths(
-    changedFiles,
-    getPackagePathPrefix()
-  );
+  const packagePrefix = getPackagePathPrefix();
+  const packageChangedFiles = toPackagePaths(changedFiles, packagePrefix);
 
   const relevantChangedFiles = packageChangedFiles.filter(
     (file) => !ignoredPathPrefixes.some((prefix) => file.startsWith(prefix))
@@ -360,10 +387,15 @@ async function detectChanges() {
   console.log('');
 
   const codeFileExtensionPattern = /\.(mjs|cjs|js|json|yml|yaml)$/;
-  const anyCodeChanged = codeChangedFiles.some(
-    (file) =>
-      codeFileExtensionPattern.test(file) || file.startsWith(workflowPathPrefix)
-  );
+  const pendingChangeset = hasPendingChangeset(packagePrefix);
+  setOutput('pending-changeset', pendingChangeset ? 'true' : 'false');
+  const anyCodeChanged =
+    pendingChangeset ||
+    codeChangedFiles.some(
+      (file) =>
+        codeFileExtensionPattern.test(file) ||
+        file.startsWith(workflowPathPrefix)
+    );
   setOutput('any-code-changed', anyCodeChanged ? 'true' : 'false');
 
   console.log('\nChange detection completed.');
