@@ -23,12 +23,12 @@ export interface AccommodationSource {
 
 export interface AccommodationAttributes {
   propertyId?: string;
+  rooms?: number;
   bedrooms?: number;
   bathrooms?: number;
   areaM2?: number;
   floor?: number;
   district?: string;
-  rooms?: number;
   beds?: number;
   guests?: number;
   availableFrom?: string;
@@ -156,6 +156,12 @@ export interface SearchOptions {
   minPerRoomVnd?: number;
   minRooms?: number;
   minTotalVnd?: number;
+  maxPricePerBedVnd?: number;
+  maxPricePerRoomVnd?: number;
+  maxTotalPriceVnd?: number;
+  minPricePerBedVnd?: number;
+  minPricePerRoomVnd?: number;
+  minTotalPriceVnd?: number;
   query?: string;
   refresh?: boolean;
   types?: string[];
@@ -201,11 +207,12 @@ export declare function parseSearchCommand(
   input?: string,
   options?: { defaults?: true }
 ): Required<Pick<SearchOptions, 'cheapest' | 'limit' | 'query'>> &
-  Omit<SearchOptions, 'cheapest' | 'limit' | 'query'>;
+  Omit<SearchOptions, 'cheapest' | 'limit' | 'query' | 'refresh'>;
 export declare function parseSearchCommand(
   input: string,
   options: { defaults: false }
 ): SearchOptions;
+export declare function parseSearchOverrides(input?: string): SearchOptions;
 export declare function buildSearchUrl(
   source: Pick<AccommodationSource, 'searchUrl'>,
   query?: string
@@ -231,6 +238,8 @@ export declare function serializeSources(
 export declare function deserializeSources(
   value: string
 ): AccommodationSource[];
+export declare function serializeSearchState(state: SearchState): string;
+export declare function deserializeSearchState(value: string): SearchState;
 export declare function deduplicateOffers(
   offers: AccommodationOffer[]
 ): AccommodationOffer[];
@@ -271,6 +280,8 @@ export declare class LinksStore {
     sourceId: string,
     messageIds: Array<number | string>
   ): Promise<void>;
+  loadSearchState(): Promise<SearchState>;
+  saveSearchState(state: SearchState): Promise<void>;
   loadSources(): Promise<AccommodationSource[]>;
   saveSources(sources: AccommodationSource[]): Promise<void>;
 }
@@ -291,6 +302,86 @@ export declare class LinkCliMirror {
     kind: string;
     notation: string;
   }): Promise<{ activate: () => Promise<void>; sha256: string }>;
+}
+
+export interface SearchPreset {
+  active: boolean;
+  name: string;
+  options: SearchOptions;
+  subscribed: boolean;
+}
+
+export interface SearchState {
+  id?: string;
+  users: Record<
+    string,
+    {
+      activePreset: string;
+      presets: Record<string, SearchOptions>;
+      shownOfferIds: string[];
+      subscription?: { preset: string; startedAt: string };
+    }
+  >;
+}
+
+export declare function normalizePresetName(value: string): string;
+export declare function mergeSearchOptions(
+  base?: SearchOptions,
+  overrides?: SearchOptions
+): SearchOptions;
+export declare class SearchPresetService {
+  constructor(options?: {
+    now?: () => Date;
+    store?: Pick<LinksStore, 'loadSearchState' | 'saveSearchState'>;
+  });
+  resolve(
+    userId: string | number,
+    overrides?: SearchOptions,
+    presetName?: string
+  ): Promise<SearchOptions>;
+  list(userId: string | number): Promise<SearchPreset[]>;
+  save(
+    userId: string | number,
+    presetName: string,
+    overrides?: SearchOptions
+  ): Promise<{ name: string; options: SearchOptions }>;
+  use(
+    userId: string | number,
+    presetName: string
+  ): Promise<{ name: string; options: SearchOptions }>;
+  remove(userId: string | number, presetName: string): Promise<string>;
+  subscribe(
+    userId: string | number,
+    presetName?: string
+  ): Promise<{ name: string; options: SearchOptions }>;
+  unsubscribe(userId: string | number): Promise<
+    | {
+        preset: string;
+        startedAt: string;
+      }
+    | undefined
+  >;
+  markShown(
+    userId: string | number,
+    offers: AccommodationOffer[]
+  ): Promise<void>;
+}
+
+export declare class TelegramSubscriptionService {
+  constructor(options: {
+    delivery: (userId: string, offers: AccommodationOffer[]) => Promise<void>;
+    intervalMs?: number;
+    logger?: Pick<Console, 'error'>;
+    presets: SearchPresetService;
+    search: SearchService;
+  });
+  runFor(
+    userId: string | number,
+    presetName?: string
+  ): Promise<AccommodationOffer[]>;
+  runOnce(): Promise<void>;
+  start(): void;
+  stop(): void;
 }
 
 export declare class MediaCache {

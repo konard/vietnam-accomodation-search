@@ -1,7 +1,6 @@
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-
 import { Link, Parser, formatLinks } from 'links-notation';
 
 import { LinkCliMirror, durableWrite } from './link-cli-mirror.js';
@@ -230,6 +229,10 @@ export const serializeSources = (sources) =>
   serializeRecords('source', sources);
 export const deserializeSources = (notation) =>
   deserializeRecords('source', notation);
+export const serializeSearchState = (state) =>
+  serializeRecords('search-state', [{ id: 'telegram', ...state }]);
+export const deserializeSearchState = (notation) =>
+  deserializeRecords('search-state', notation)[0] || { users: {} };
 
 async function readOrEmpty(path) {
   try {
@@ -294,6 +297,7 @@ export class LinksStore {
   } = {}) {
     this.directory = directory;
     this.offersPath = join(directory, 'offers.lino');
+    this.searchStatePath = join(directory, 'search-state.lino');
     this.sourcesPath = join(directory, 'sources.lino');
     this.maxBytes = maxBytes;
     this.mirror = mirror || (binaryMirror ? new LinkCliMirror() : undefined);
@@ -488,5 +492,33 @@ export class LinksStore {
 
   saveSources(sources) {
     return this.saveRecords('sources', sources);
+  }
+
+  loadSearchState() {
+    const load = async () => {
+      const notation = await readOrEmpty(this.searchStatePath);
+      await this.mirror?.ensure?.({
+        directory: this.directory,
+        kind: 'search-state',
+        notation,
+      });
+      return deserializeSearchState(notation);
+    };
+    return this.mirror ? this.#locked(load) : load();
+  }
+
+  saveSearchState(state) {
+    return this.#locked(async () => {
+      const notation = serializeSearchState(state);
+      const staged = this.mirror
+        ? await this.mirror.stage({
+            directory: this.directory,
+            kind: 'search-state',
+            notation,
+          })
+        : undefined;
+      await durableWrite(this.searchStatePath, notation);
+      await staged?.activate();
+    });
   }
 }

@@ -87,6 +87,7 @@
     "jscpd": "^4.0.5",
     "lint-staged": "^16.2.6",
     "prettier": "^3.6.2",
+    "teleproto": "^1.229.0",
     "test-anywhere": "^0.8.48"
   },
   "lint-staged": {

@@ -230,6 +230,8 @@ See [open-source competitor research](docs/COMPETITOR-RESEARCH.md) for the
 reproducible search snapshot and capability comparison, and
 [Issue 1 development notes](docs/ISSUE-1-DEVELOPMENT-NOTES.md) for the durable
 architecture, parser, security, and validation findings from the work logs.
+The [implementation handoff](docs/IMPLEMENTATION-HANDOFF.md) tracks the audited
+deployment, Telegram, subscription, and associative-storage workstreams.
 
 ## Contributing
 

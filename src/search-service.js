@@ -112,24 +112,50 @@ function inRange(value, minimum, maximum) {
   );
 }
 
+function effectiveRange(options, minimum, maximum, minimumAlias, maximumAlias) {
+  return [
+    options[minimum] ?? options[minimumAlias],
+    options[maximum] ?? options[maximumAlias],
+  ];
+}
+
 function matchesNamedFilters(offer, options) {
   const rooms = finiteCount(offer, 'rooms');
   const beds = finiteCount(offer, 'beds');
   const total = offer.priceVnd;
+  const totalRange = effectiveRange(
+    options,
+    'minTotalVnd',
+    'maxTotalVnd',
+    'minTotalPriceVnd',
+    'maxTotalPriceVnd'
+  );
+  const roomRange = effectiveRange(
+    options,
+    'minPerRoomVnd',
+    'maxPerRoomVnd',
+    'minPricePerRoomVnd',
+    'maxPricePerRoomVnd'
+  );
+  const bedRange = effectiveRange(
+    options,
+    'minPerBedVnd',
+    'maxPerBedVnd',
+    'minPricePerBedVnd',
+    'maxPricePerBedVnd'
+  );
   return (
     (!options.types?.length ||
       options.types.map(normalizedValue).includes(normalizedType(offer))) &&
     inRange(rooms, options.minRooms, options.maxRooms) &&
-    inRange(total, options.minTotalVnd, options.maxTotalVnd) &&
+    inRange(total, ...totalRange) &&
     inRange(
       Number.isFinite(rooms) && rooms > 0 ? total / rooms : undefined,
-      options.minPerRoomVnd,
-      options.maxPerRoomVnd
+      ...roomRange
     ) &&
     inRange(
       Number.isFinite(beds) && beds > 0 ? total / beds : undefined,
-      options.minPerBedVnd,
-      options.maxPerBedVnd
+      ...bedRange
     )
   );
 }

@@ -2,15 +2,17 @@ export { add, delay, multiply } from './math.js';
 
 export { createApplication } from './application.js';
 export { BrowserCollector, buildSearchUrl } from './browser-collector.js';
-export { parseSearchCommand } from './commands.js';
+export { parseSearchCommand, parseSearchOverrides } from './commands.js';
 export {
   LinksStore,
   deserializeRecords,
   deserializeOffers,
+  deserializeSearchState,
   deserializeSources,
   queryRecords,
   serializeRecords,
   serializeOffers,
+  serializeSearchState,
   serializeSources,
 } from './links-store.js';
 export { LinkCliMirror } from './link-cli-mirror.js';
@@ -26,6 +28,12 @@ export {
 export { ExchangeRateProvider, convertToVnd, parsePrice } from './pricing.js';
 export { PresetService, SubscriptionScheduler } from './presets.js';
 export { SearchService } from './search-service.js';
+export {
+  SearchPresetService,
+  TelegramSubscriptionService,
+  mergeSearchOptions,
+  normalizePresetName,
+} from './search-presets.js';
 export { BrowserSourceDiscoverer } from './source-discovery.js';
 export {
   DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,

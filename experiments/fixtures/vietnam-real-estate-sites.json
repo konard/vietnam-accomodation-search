@@ -1,0 +1,66 @@
+[
+  {
+    "id": "batdongsan-rent",
+    "name": "Batdongsan.com.vn rentals",
+    "languages": ["vi"],
+    "url": "https://batdongsan.com.vn/nha-dat-cho-thue?query=Nha%20Trang",
+    "provenance": "configured-production-source"
+  },
+  {
+    "id": "nhatot-configured-sale-route",
+    "name": "Nha Tot configured route",
+    "languages": ["vi"],
+    "url": "https://www.chotot.com/mua-ban-bat-dong-san?q=Nha%20Trang",
+    "provenance": "configured-production-source",
+    "knownRisk": "The configured Chotot URL redirects to a Nha Tot sale-results route."
+  },
+  {
+    "id": "nha-trang-renting",
+    "name": "Nha Trang Renting",
+    "languages": ["en"],
+    "url": "https://nhatrangrenting.com/estate-contract/for-rent/",
+    "provenance": "multilingual-browser-discovery"
+  },
+  {
+    "id": "dot-property-nha-trang",
+    "name": "Dot Property Nha Trang rentals",
+    "languages": ["en", "vi"],
+    "url": "https://www.dotproperty.com.vn/en/properties-for-rent/kh%C3%A1nh-h%C3%B2a/nha-trang",
+    "provenance": "multilingual-browser-discovery"
+  },
+  {
+    "id": "vietdom",
+    "name": "Vietdom",
+    "languages": ["ru"],
+    "url": "https://vietdom.com/",
+    "provenance": "multilingual-browser-discovery"
+  },
+  {
+    "id": "xmetr-nha-trang",
+    "name": "Xmetr Nha Trang rentals",
+    "languages": ["ru"],
+    "url": "https://xmetr.com/ru/arenda-nedvizimosti/vietnam-nha-trang",
+    "provenance": "multilingual-browser-discovery"
+  },
+  {
+    "id": "be-jib-nha-trang",
+    "name": "Be Jib Nha Trang rentals",
+    "languages": ["ru"],
+    "url": "https://be-jib.com/ru/nha-trang/rentals",
+    "provenance": "multilingual-browser-discovery"
+  },
+  {
+    "id": "vietnam-real-estate-rent",
+    "name": "Vietnam Real Estate rentals",
+    "languages": ["ru"],
+    "url": "https://vietnam-real.estate/ru/rent/",
+    "provenance": "multilingual-browser-discovery"
+  },
+  {
+    "id": "icekem-nha-trang",
+    "name": "ICEKEM Nha Trang rentals",
+    "languages": ["ru"],
+    "url": "https://icekem.com/ru/s/rent-nhatrang",
+    "provenance": "multilingual-browser-discovery"
+  }
+]

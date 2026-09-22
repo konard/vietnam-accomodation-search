@@ -1,0 +1,177 @@
+[
+  {
+    "id": "ru-monthly-apartment-structured-terms",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Сдаётся квартира с 2 спальнями.\nРайон: [РАЙОН]\nЦена: 14,5 млн VND / месяц\nДепозит: 1 месяц\nСвободно с 05/10/26\nКоммунальные платежи оплачиваются отдельно\nМожно с небольшими животными\nКонтакт: [TELEGRAM_HANDLE]"
+    },
+    "expected": {
+      "relevant": true,
+      "kind": "apartment",
+      "location": "[РАЙОН]",
+      "price": { "amount": 14500000, "currency": "VND", "period": "month" },
+      "attributes": {
+        "bedrooms": 2,
+        "depositMonths": 1,
+        "availableFrom": "2026-10-05",
+        "petsAllowed": true,
+        "utilitiesIncluded": false
+      }
+    }
+  },
+  {
+    "id": "ru-absolute-deposit-not-months",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Аренда квартиры, 2 спальни. Цена: 18 млн VND/месяц. Депозит: 25 млн VND. Контракт: 12 месяцев."
+    },
+    "expected": {
+      "relevant": true,
+      "kind": "apartment",
+      "price": { "amount": 18000000, "currency": "VND", "period": "month" },
+      "attributes": {
+        "bedrooms": 2,
+        "deposit": { "amount": 25000000, "currency": "VND" },
+        "minimumStayMonths": 12
+      }
+    }
+  },
+  {
+    "id": "ru-symbol-price-and-itemized-utilities",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Сдаётся квартира с двумя спальнями. 500$ в месяц. Депозит в размере месячного платежа. Управление: 25$. Интернет: 11$. Электричество и вода по счётчикам."
+    },
+    "expected": {
+      "relevant": true,
+      "kind": "apartment",
+      "price": { "amount": 500, "currency": "USD", "period": "month" },
+      "attributes": {
+        "bedrooms": 2,
+        "depositMonths": 1,
+        "utilitiesIncluded": false,
+        "utilityCharges": ["management", "internet", "electricity", "water"]
+      }
+    }
+  },
+  {
+    "id": "ru-partial-availability-date",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Сдаётся квартира. Доступно с 27.9. Стоимость аренды: 16 млн донгов/месяц. 2 спальни, 2 санузла."
+    },
+    "expected": {
+      "relevant": true,
+      "kind": "apartment",
+      "price": { "amount": 16000000, "currency": "VND", "period": "month" },
+      "attributes": {
+        "availableFrom": "2026-09-27",
+        "bedrooms": 2,
+        "bathrooms": 2
+      }
+    }
+  },
+  {
+    "id": "en-wc-and-dot-grouped-vnd",
+    "language": "en",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "For rent: new 2 bedroom, 2WC apartment. Price: 15.000.000 VND/month. Available now. Location: [DISTRICT]."
+    },
+    "expected": {
+      "relevant": true,
+      "kind": "apartment",
+      "location": "[DISTRICT]",
+      "price": { "amount": 15000000, "currency": "VND", "period": "month" },
+      "attributes": { "bedrooms": 2, "bathrooms": 2, "availableNow": true }
+    }
+  },
+  {
+    "id": "vi-villa-rental",
+    "language": "vi",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Cho thuê biệt thự tại Nha Trang. Giá 45 triệu VND/tháng. 3 phòng ngủ, 3 phòng tắm. Đặt cọc 2 tháng. Địa chỉ: [KHU_VỰC]."
+    },
+    "expected": {
+      "relevant": true,
+      "kind": "villa",
+      "location": "[KHU_VỰC]",
+      "price": { "amount": 45000000, "currency": "VND", "period": "month" },
+      "attributes": { "bedrooms": 3, "bathrooms": 3, "depositMonths": 2 }
+    }
+  },
+  {
+    "id": "telegram-album-is-one-offer",
+    "language": "en",
+    "input": {
+      "messages": [
+        {
+          "groupedId": "[ALBUM_ID]",
+          "media": "[PHOTO_1]",
+          "text": "Apartment for rent in Nha Trang, 12 million VND/month"
+        },
+        { "groupedId": "[ALBUM_ID]", "media": "[PHOTO_2]", "text": "" },
+        { "groupedId": "[ALBUM_ID]", "media": "[PHOTO_3]", "text": "" }
+      ]
+    },
+    "expected": {
+      "relevant": true,
+      "offerCount": 1,
+      "photoCount": 3,
+      "price": { "amount": 12000000, "currency": "VND", "period": "month" }
+    }
+  },
+  {
+    "id": "exclude-accommodation-request",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Ищу квартиру в Нячанге до 12 млн VND, нужна одна спальня."
+    },
+    "expected": { "relevant": false, "reason": "demand" }
+  },
+  {
+    "id": "exclude-sim-advertisement",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "SIM-карта и безлимитный интернет. Можем приехать прямо в ваш отель. Со следующего месяца — 80 000 VND."
+    },
+    "expected": { "relevant": false, "reason": "unrelated-service" }
+  },
+  {
+    "id": "exclude-currency-exchange",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Выгодный обмен валют. Офис находится в жилом комплексе. Бесплатная доставка по городу от 25 млн VND."
+    },
+    "expected": { "relevant": false, "reason": "unrelated-service" }
+  },
+  {
+    "id": "exclude-property-sale",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Продаётся меблированная студия в Нячанге. Цена: 84 000 USD. Сдача объекта в 2027 году."
+    },
+    "expected": { "relevant": false, "reason": "sale-not-accommodation-stay" }
+  },
+  {
+    "id": "exclude-other-city",
+    "language": "ru",
+    "input": {
+      "postedAt": "2026-09-22T00:00:00.000Z",
+      "text": "Светлая студия в центре Дананга. Аренда 6 500 000 VND в месяц. Канал также публикует жильё в Нячанге."
+    },
+    "expected": {
+      "relevant": false,
+      "reason": "listing-location-outside-query"
+    }
+  }
+]
