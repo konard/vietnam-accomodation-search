@@ -247,12 +247,21 @@ function sourceVariant(offer) {
     sourceId: offer.sourceId,
     ...optional('sourceType', offer.sourceType),
     title: offer.title,
+    ...optional('kind', offer.kind),
+    ...optional('location', offer.location),
+    ...optional('attributes', offer.attributes),
+    ...optional('contacts', offer.contacts),
+    ...optional('identifiers', offer.identifiers),
+    ...optional('identityKeys', offer.identityKeys),
     ...optional('url', offer.url),
     ...optional('officialUrl', offer.officialUrl),
     price: offer.price,
     priceVnd: offer.priceVnd,
+    photos: offer.photos || [],
+    ...optional('searchQuery', offer.searchQuery),
     ...optional('postedAt', offer.postedAt),
     collectedAt: offer.collectedAt,
+    ...optional('provenance', offer.provenance),
     raw: offer.raw,
   };
 }
@@ -464,4 +473,24 @@ export function deduplicateOffers(offers) {
     groups.set(root, [...(groups.get(root) || []), offer]);
   }
   return [...groups.values()].map(mergeOfferGroup);
+}
+
+export function removeOfferMessageVariants(offer, sourceId, messageIds) {
+  const matches = (variant) => {
+    const provenance = variant.provenance;
+    return (
+      String(provenance?.sourceId || variant.sourceId) === String(sourceId) &&
+      messageIds.has(String(provenance?.messageId))
+    );
+  };
+  const variants = variantsFrom(offer);
+  const remaining = variants.filter((variant) => !matches(variant));
+  if (remaining.length === variants.length) {
+    return offer;
+  }
+  if (!remaining.length) {
+    return undefined;
+  }
+  const rebuilt = deduplicateOffers(remaining)[0];
+  return { ...rebuilt, id: offer.id };
 }

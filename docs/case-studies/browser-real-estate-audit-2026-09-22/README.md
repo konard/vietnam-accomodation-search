@@ -1,9 +1,11 @@
 # Multilingual Vietnam real-estate browser audit — 2026-09-22
 
-This privacy-safe baseline tests public real-estate pages through a local Chrome
-session and an explicitly invoked `browser-commander` experiment. It does not
-claim that the production collector is complete. No account data, cookies, raw
-listing text, contact details, or reusable browser state is committed.
+This privacy-safe document is a **pre-PR #11 historical baseline**: it tests
+public real-estate pages through a local Chrome session and an explicitly
+invoked `browser-commander` experiment at the audited commit. Its failures are
+preserved and are not claims about the post-implementation runtime. No account
+data, cookies, raw listing text, contact details, or reusable browser state is
+committed.
 
 ## Browser observations
 
@@ -24,8 +26,10 @@ Important defects were reproduced:
 
 The candidate manifest is
 [`experiments/fixtures/vietnam-real-estate-sites.json`](../../../experiments/fixtures/vietnam-real-estate-sites.json).
-Issue #17 requires reproducible popularity evidence before any candidate is
-called a “top” source.
+The audit correctly declined to call a candidate “top” without reproducible
+popularity evidence. PR #11 persists metric, value, evidence URL, and timestamp
+for current rankings rather than turning this historical discovery set into a
+timeless popularity claim.
 
 ## Manual `browser-commander` E2E result
 
@@ -76,15 +80,16 @@ GitHub Actions workflow. The browser runner refuses to start when common CI/CD
 environment markers are present. The code remains committed under
 `experiments/` so a release operator can reproduce the audit locally.
 
-## Required follow-up
+## Post-baseline disposition
 
-- [#17](https://github.com/konard/vietnam-accomodation-search/issues/17) owns
-  ranked multilingual real-estate sources, correct rental routes, polite
-  site-specific adapters, and challenge-aware collection.
-- [#18](https://github.com/konard/vietnam-accomodation-search/issues/18) owns
-  correlated Telegram/web traces, per-segment completeness, redaction, and
-  replay.
-- [#16](https://github.com/konard/vietnam-accomodation-search/issues/16) owns the
-  next-release manual E2E comparison.
-- [#8](https://github.com/konard/vietnam-accomodation-search/issues/8) remains the
-  final Issue #1 gate.
+PR #11 implements ranked evidence records, rental-intent validation after
+redirect, polite per-domain scheduling, challenge classification, correlated
+redacted decision traces, and manual-only reusable E2E harnesses. The current
+public smoke completed without a harness error but the selected public Telegram
+preview yielded zero offers; that degraded observation is recorded in the
+[Issue #1 revalidation](../issue-1-revalidation/README.md).
+
+Issues #16–#18 remain useful historical decomposition/context, but none of
+Issues #3–#9 is deferred to them. A new credentialed or mutable-site run must
+still report what it actually observes; these 25 cards and 103 unconsumed
+segments remain a failed baseline, not a retroactive success.

@@ -89,6 +89,31 @@ describe('accommodation search service', () => {
     expect(results.length).toBe(1);
   });
 
+  it('does not treat a future-dated cache entry as fresh', async () => {
+    const store = memoryStore([
+      {
+        collectedAt: '2026-09-22T02:00:00.000Z',
+        id: 'future',
+        priceVnd: 700_000,
+      },
+    ]);
+    let collections = 0;
+    const service = new SearchService({
+      collector: {
+        collect: async () => {
+          collections += 1;
+          return [];
+        },
+      },
+      now: () => new Date('2026-09-22T01:00:00Z'),
+      registry: { list: async () => [] },
+      store,
+    });
+
+    await service.search();
+    expect(collections).toBe(1);
+  });
+
   it('deduplicates offers and orders converted VND prices', async () => {
     const store = memoryStore([
       { id: 'same', title: 'old', priceVnd: 900000 },

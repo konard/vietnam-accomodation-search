@@ -412,7 +412,7 @@ jobs:
         # it declares its deadline with a step-level timeout-minutes: an
         # exhausted step budget fails the step, while an exhausted job cap
         # only cancels the job.
-        timeout-minutes: 20
+        timeout-minutes: 17
         uses: docker/build-push-action@v7
         with:
           context: ${{ steps.docker_config.outputs.context }}
@@ -427,6 +427,61 @@ jobs:
           # the rest of the pipeline reads.
           cache-from: type=gha,scope=docker-image
           cache-to: type=gha,mode=max,scope=docker-image
+
+      - name: Smoke-test image tools and health contract
+        if: steps.docker_config.outputs.enabled == 'true'
+        timeout-minutes: 3
+        run: |
+          docker run --rm --entrypoint node "pr-check:${{ github.sha }}" bin/vietnam-accomodation-search.js --help
+          docker run --rm --entrypoint clink "pr-check:${{ github.sha }}" --help
+          docker run --rm --entrypoint node "pr-check:${{ github.sha }}" --input-type=module -e "
+            import { chromium } from 'playwright';
+            const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+            await browser.close();
+          "
+          docker run --rm --entrypoint node "pr-check:${{ github.sha }}" --input-type=module -e "
+            import { mkdtemp, rm } from 'node:fs/promises';
+            import { tmpdir } from 'node:os';
+            import { join } from 'node:path';
+            import { LinksStore } from './src/links-store.js';
+              const directory = await mkdtemp(join(tmpdir(), 'clink-smoke-'));
+              try {
+                const store = new LinksStore({ binaryMirror: true, directory });
+                await store.saveRecords('presets', [{ id: 'image-smoke', active: true, raw: { unknown: 'preserved' } }]);
+                const records = await store.loadRecords('presets');
+                if (records[0]?.raw?.unknown !== 'preserved') process.exitCode = 1;
+                await store.saveOffers([
+                  { id: 'delete-me', provenance: { messageId: 1, sourceId: 'image-smoke' } },
+                  { id: 'keep-me', provenance: { messageId: 2, sourceId: 'image-smoke' } },
+                ]);
+                await store.deleteOffersByMessages('image-smoke', [1]);
+                const offers = await store.listOffers();
+                if (offers.length !== 1 || offers[0]?.id !== 'keep-me') process.exitCode = 1;
+              } finally {
+              await rm(directory, { force: true, recursive: true });
+            }
+          "
+          container="accommodation-health-${{ github.run_id }}"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker run -d --name "$container" --entrypoint node "pr-check:${{ github.sha }}" \
+            --input-type=module -e "
+              import { TelegramRuntime } from './src/telegram-runtime.js';
+              const bot = {
+                api: { getMe: async () => ({ id: 1 }) },
+                catch() {},
+                start: ({ onStart }) => { onStart(); return new Promise(() => {}); },
+                stop: async () => {},
+              };
+              await new TelegramRuntime({ bot }).start();
+            "
+          for _attempt in {1..30}; do
+            status="$(docker inspect --format '{{.State.Health.Status}}' "$container")"
+            [[ "$status" == healthy ]] && exit 0
+            [[ "$status" == unhealthy ]] && break
+            sleep 1
+          done
+          docker logs "$container"
+          exit 1
 
   # === DOCUMENTATION VALIDATION ===
   # Validate documentation files when docs change (hive-mind principle #12)

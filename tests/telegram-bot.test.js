@@ -190,6 +190,7 @@ describe('Telegram bot edge behavior', () => {
 
   it('ingests priced messages with rates and ignores incomplete updates', async () => {
     const bot = fakeBot();
+    const deleted = [];
     const saved = [];
     let rates = 0;
     registerTelegramHandlers(bot, {
@@ -201,7 +202,11 @@ describe('Telegram bot edge behavior', () => {
       },
       registry: { update: async () => ({ telegram: [], web: [] }) },
       service: { search: async () => [] },
-      store: { saveOffers: async (offers) => saved.push(offers) },
+      store: {
+        deleteOffersByMessages: async (...arguments_) =>
+          deleted.push(arguments_),
+        saveOffers: async (offers) => saved.push(offers),
+      },
     });
     const ingest = bot.listeners.get('message:text');
 
@@ -222,10 +227,32 @@ describe('Telegram bot edge behavior', () => {
         text: 'Room 10 USD/night',
       },
     });
+    await bot.listeners.get('edited_message:text')({
+      editedMessage: {
+        chat: { username: 'rental_owner' },
+        date: '2026-09-21T00:00:00Z',
+        edit_date: '2026-09-21T01:00:00Z',
+        message_id: 10,
+        text: 'Room 12 USD/night',
+      },
+    });
+    await bot.listeners.get('edited_channel_post:text')({
+      editedChannelPost: {
+        chat: { username: 'rental_channel' },
+        date: '2026-09-21T00:00:00Z',
+        edit_date: '2026-09-21T02:00:00Z',
+        message_id: 11,
+        text: 'Room 14 USD/night',
+      },
+    });
 
-    expect(rates).toBe(2);
-    expect(saved.length).toBe(1);
+    expect(rates).toBe(4);
+    expect(saved.length).toBe(3);
     expect(saved[0][0].priceVnd).toBe(250_000);
+    expect(deleted).toEqual([
+      ['telegram:rental_owner', [10]],
+      ['telegram:rental_channel', [11]],
+    ]);
   });
 
   it('requires a token before loading the Telegram bot runtime', async () => {
@@ -236,5 +263,37 @@ describe('Telegram bot edge behavior', () => {
       error = caught;
     }
     expect(error.message).toContain('TELEGRAM_BOT_TOKEN');
+  });
+
+  it('wires subscription delivery through the concrete bot API', async () => {
+    // The Deno CI leg intentionally grants read-only permissions. grammY's
+    // Node adapter inspects process.env during module initialization, so the
+    // concrete adapter is exercised by Node and Bun instead.
+    if (typeof Deno !== 'undefined') {
+      return;
+    }
+    const records = [];
+    const bot = await createTelegramBot(
+      '123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi',
+      {
+        presetService: {},
+        registry: {},
+        service: {},
+        store: {
+          loadRecords: async () => records,
+          saveRecords: async (_kind, values) =>
+            records.splice(0, records.length, ...values),
+        },
+      }
+    );
+    const sent = [];
+    bot.api.sendMessage = async (...arguments_) => sent.push(arguments_);
+
+    await bot.subscriptionScheduler.deliver('42', [
+      { id: 'offer', priceVnd: 1, title: 'Room' },
+    ]);
+
+    expect(sent[0][0]).toBe('42');
+    expect(records.length).toBe(1);
   });
 });

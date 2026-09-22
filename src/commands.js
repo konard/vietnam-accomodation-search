@@ -1,12 +1,18 @@
 const RANGE_OPTIONS = new Map([
-  ['--min-rooms', 'minRooms'],
-  ['--max-rooms', 'maxRooms'],
-  ['--min-price-per-room', 'minPricePerRoomVnd'],
-  ['--max-price-per-room', 'maxPricePerRoomVnd'],
-  ['--min-price-per-bed', 'minPricePerBedVnd'],
+  ['--max-per-bed-vnd', 'maxPerBedVnd'],
+  ['--max-per-room-vnd', 'maxPerRoomVnd'],
   ['--max-price-per-bed', 'maxPricePerBedVnd'],
-  ['--min-total-price', 'minTotalPriceVnd'],
+  ['--max-price-per-room', 'maxPricePerRoomVnd'],
+  ['--max-rooms', 'maxRooms'],
   ['--max-total-price', 'maxTotalPriceVnd'],
+  ['--max-total-vnd', 'maxTotalVnd'],
+  ['--min-per-bed-vnd', 'minPerBedVnd'],
+  ['--min-per-room-vnd', 'minPerRoomVnd'],
+  ['--min-price-per-bed', 'minPricePerBedVnd'],
+  ['--min-price-per-room', 'minPricePerRoomVnd'],
+  ['--min-rooms', 'minRooms'],
+  ['--min-total-price', 'minTotalPriceVnd'],
+  ['--min-total-vnd', 'minTotalVnd'],
 ]);
 
 function filterValue(rawValue) {
@@ -64,14 +70,15 @@ function extractFilters(tokens) {
 function extractTypes(tokens) {
   const types = [];
   for (let index = 0; index < tokens.length; ) {
-    if (tokens[index] !== '--type') {
+    if (tokens[index] !== '--type' && tokens[index] !== '--types') {
       index += 1;
       continue;
     }
+    const option = tokens[index];
     const value = takeOption(
       tokens,
       index,
-      'Accommodation types must use --type TYPE.'
+      `${option} requires an accommodation type.`
     );
     for (const type of value.split(',').map((entry) => entry.trim())) {
       if (!/^[\p{L}\p{N}][\p{L}\p{N} _-]{0,31}$/u.test(type)) {
@@ -92,20 +99,18 @@ function extractRanges(tokens) {
       continue;
     }
     const option = tokens[index];
-    const rawValue = takeOption(
-      tokens,
-      index,
-      `${option} requires a non-negative number.`
+    const value = Number(
+      takeOption(tokens, index, `${option} requires a non-negative number.`)
     );
-    const value = Number(rawValue);
-    if (!Number.isFinite(value) || value < 0) {
-      throw new RangeError(`${option} requires a non-negative number.`);
-    }
+    const rooms = field === 'minRooms' || field === 'maxRooms';
     if (
-      (field === 'minRooms' || field === 'maxRooms') &&
-      !Number.isInteger(value)
+      !Number.isFinite(value) ||
+      value < 0 ||
+      (rooms && !Number.isInteger(value))
     ) {
-      throw new RangeError(`${option} requires a whole number.`);
+      throw new RangeError(
+        `${option} requires a non-negative${rooms ? ' whole' : ''} number.`
+      );
     }
     ranges[field] = value;
   }
@@ -123,27 +128,23 @@ function validateRange(options, minimum, maximum, label) {
 }
 
 function validateRanges(options) {
-  validateRange(options, 'minRooms', 'maxRooms', 'Room count');
-  validateRange(
-    options,
-    'minPricePerRoomVnd',
-    'maxPricePerRoomVnd',
-    'Price per room'
-  );
-  validateRange(
-    options,
-    'minPricePerBedVnd',
-    'maxPricePerBedVnd',
-    'Price per bed'
-  );
-  validateRange(options, 'minTotalPriceVnd', 'maxTotalPriceVnd', 'Total price');
+  for (const [minimum, maximum, label] of [
+    ['minRooms', 'maxRooms', 'Room count'],
+    ['minPricePerRoomVnd', 'maxPricePerRoomVnd', 'Price per room'],
+    ['minPricePerBedVnd', 'maxPricePerBedVnd', 'Price per bed'],
+    ['minTotalPriceVnd', 'maxTotalPriceVnd', 'Total price'],
+    ['minPerRoomVnd', 'maxPerRoomVnd', 'Price per room'],
+    ['minPerBedVnd', 'maxPerBedVnd', 'Price per bed'],
+    ['minTotalVnd', 'maxTotalVnd', 'Total price'],
+  ]) {
+    validateRange(options, minimum, maximum, label);
+  }
 }
 
 function extractOrdering(tokens, partial) {
   const result = partial ? {} : { cheapest: false, limit: 10 };
   const cheapestIndex = tokens.indexOf('--cheapest');
   const newestIndex = tokens.indexOf('--newest');
-
   if (cheapestIndex >= 0 && newestIndex >= 0) {
     throw new TypeError('--cheapest and --newest cannot be used together.');
   }
@@ -161,7 +162,6 @@ function extractOrdering(tokens, partial) {
     result.cheapest = false;
     tokens.splice(newestIndex, 1);
   }
-
   const limitIndex = tokens.indexOf('--limit');
   if (limitIndex >= 0) {
     result.limit = Number(
@@ -183,7 +183,6 @@ function parseSearchTokens(input, { partial = false } = {}) {
     .trim();
   const tokens = body ? body.split(/\s+/u) : [];
   const result = extractOrdering(tokens, partial);
-
   const filters = extractFilters(tokens);
   const types = extractTypes(tokens);
   Object.assign(result, extractRanges(tokens));
@@ -201,8 +200,8 @@ function parseSearchTokens(input, { partial = false } = {}) {
   return result;
 }
 
-export function parseSearchCommand(input = '') {
-  return parseSearchTokens(input);
+export function parseSearchCommand(input = '', { defaults = true } = {}) {
+  return parseSearchTokens(input, { partial: !defaults });
 }
 
 export function parseSearchOverrides(input = '') {

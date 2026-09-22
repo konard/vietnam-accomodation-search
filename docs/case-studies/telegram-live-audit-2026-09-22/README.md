@@ -1,9 +1,11 @@
 # Telegram accommodation live-audit baseline — 2026-09-22
 
-This is a privacy-preserving baseline for the Telegram ingestion and parsing
-requirements. It records aggregates and synthetic/anonymized conformance cases,
-not Telegram message bodies, private identities, tokens, API hashes, or session
-strings.
+This is a privacy-preserving **pre-PR #11 historical baseline** for Telegram
+ingestion and parsing. It records aggregates and synthetic/anonymized
+conformance cases at the audited commit—not Telegram message bodies, private
+identities, tokens, API hashes, or session strings. Its successful identity and
+source observations and its parser failures are both preserved verbatim; they
+are not relabeled as post-change live evidence.
 
 ## Scope and method
 
@@ -99,14 +101,14 @@ prices; absolute versus month-count deposits; itemized utilities; partial dates;
 `WC`; Telegram albums; requests; unrelated services; sales; and wrong-city
 listings.
 
-## Associative-storage result
+## Associative-storage result at the audited commit
 
-All 9,093 parser outputs passed the existing text serializer. That does not meet
-the associative-stack requirement: the current serializer places the complete
-semantic record in one opaque base64url JSON `data` value. It does not prove that
-offer fields, messages, albums, media, observations, contacts, unknown labeled
-fields, or transport provenance are independently addressable typed links, and
-it does not exercise a transactional `link-cli` binary mirror.
+All 9,093 parser outputs passed the then-existing text serializer. That did not
+meet the associative-stack requirement: that serializer placed the complete
+semantic record in one opaque base64url JSON `data` value. That result did not
+prove that offer fields, messages, albums, media, observations, contacts,
+unknown labeled fields, or transport provenance were independently addressable
+typed links, and it did not exercise a transactional `link-cli` binary mirror.
 
 ## Privacy and repeatability rules
 
@@ -122,17 +124,17 @@ it does not exercise a transactional `link-cli` binary mirror.
 6. A future release passes only after the reviewed corpus and a fresh live audit
    reach the acceptance criteria tracked in the linked follow-up issues.
 
-## Follow-up contracts
+## Post-baseline disposition
 
-- [#12](https://github.com/konard/vietnam-accomodation-search/issues/12):
-  community-only folder ingestion and up-to-40 multilingual discovery.
-- [#13](https://github.com/konard/vietnam-accomodation-search/issues/13):
-  human-reviewed relevance and complete multilingual parsing corpus.
-- [#14](https://github.com/konard/vietnam-accomodation-search/issues/14):
-  typed associative Telegram graph and query/round-trip conformance.
-- [#15](https://github.com/konard/vietnam-accomodation-search/issues/15):
-  explicit session formats and safe GramJS/mtcute migration.
-- [#16](https://github.com/konard/vietnam-accomodation-search/issues/16):
-  next-release privacy-safe revalidation.
-- [#18](https://github.com/konard/vietnam-accomodation-search/issues/18):
-  correlated stage/segment traces and manual-only real-data E2E isolation.
+PR #11 adds community-only discovery filters, bounded resumable history,
+complete event adapters, classified bot/user routing, explicit session
+destinations, typed associative v2 records, transactional `clink` mirroring,
+and correlated privacy-safe decision traces. Issues #12–#18 remain useful
+historical decomposition/context, but none of Issues #3–#9 is deferred to them.
+
+This preserved corpus still found false positives and missing parser signals.
+Without the original credentials, PR #11 cannot ethically rerun those private
+sources or assert 100% current live recall. The [Issue #1
+revalidation](../issue-1-revalidation/README.md) therefore distinguishes the
+implemented/tested contract, this authorized baseline, and the current
+no-credential behavior instead of fabricating a pass.

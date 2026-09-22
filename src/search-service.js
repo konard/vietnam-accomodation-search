@@ -2,9 +2,8 @@ import { deduplicateOffers } from './offers.js';
 
 function isFresh(offer, now, maxAgeMs) {
   const collectedAt = new Date(offer.collectedAt).getTime();
-  return (
-    Number.isFinite(collectedAt) && now.getTime() - collectedAt <= maxAgeMs
-  );
+  const age = now.getTime() - collectedAt;
+  return Number.isFinite(collectedAt) && age >= 0 && age <= maxAgeMs;
 }
 
 function normalizedQuery(value) {
@@ -85,48 +84,78 @@ function matchesFilters(offer, filters) {
   });
 }
 
-function withinRange(value, minimum, maximum) {
-  if (!Number.isFinite(minimum) && !Number.isFinite(maximum)) {
+function normalizedType(offer) {
+  return normalizedValue(
+    offer.kind || offer.type || offer.attributes?.type || ''
+  );
+}
+
+function finiteCount(offer, name) {
+  const direct = offer.attributes?.[name];
+  if (Number.isFinite(direct)) {
+    return direct;
+  }
+  const labeled = offer.attributes?.labeledFields?.[name];
+  const first = Array.isArray(labeled) ? labeled[0] : labeled;
+  const match = String(first || '').match(/\d+(?:\.\d+)?/u);
+  return match ? Number(match[0]) : undefined;
+}
+
+function inRange(value, minimum, maximum) {
+  if (minimum === undefined && maximum === undefined) {
     return true;
   }
   return (
     Number.isFinite(value) &&
-    (!Number.isFinite(minimum) || value >= minimum) &&
-    (!Number.isFinite(maximum) || value <= maximum)
+    (minimum === undefined || value >= minimum) &&
+    (maximum === undefined || value <= maximum)
   );
 }
 
-function roomCount(offer) {
-  const rooms = offer.attributes?.rooms;
-  if (Number.isFinite(rooms)) {
-    return rooms;
-  }
-  const bedrooms = offer.attributes?.bedrooms;
-  return bedrooms === 0 ? 1 : bedrooms;
+function effectiveRange(options, minimum, maximum, minimumAlias, maximumAlias) {
+  return [
+    options[minimum] ?? options[minimumAlias],
+    options[maximum] ?? options[maximumAlias],
+  ];
 }
 
-function matchesStructuredFilters(offer, options) {
-  const rooms = roomCount(offer);
-  const beds = offer.attributes?.beds;
-  const kind = normalizedValue(offer.kind || 'accommodation');
-  const types = (options.types || []).map(normalizedValue);
+function matchesNamedFilters(offer, options) {
+  const rooms = finiteCount(offer, 'rooms');
+  const beds = finiteCount(offer, 'beds');
+  const total = offer.priceVnd;
+  const totalRange = effectiveRange(
+    options,
+    'minTotalVnd',
+    'maxTotalVnd',
+    'minTotalPriceVnd',
+    'maxTotalPriceVnd'
+  );
+  const roomRange = effectiveRange(
+    options,
+    'minPerRoomVnd',
+    'maxPerRoomVnd',
+    'minPricePerRoomVnd',
+    'maxPricePerRoomVnd'
+  );
+  const bedRange = effectiveRange(
+    options,
+    'minPerBedVnd',
+    'maxPerBedVnd',
+    'minPricePerBedVnd',
+    'maxPricePerBedVnd'
+  );
   return (
-    (!types.length || types.includes(kind)) &&
-    withinRange(rooms, options.minRooms, options.maxRooms) &&
-    withinRange(
-      Number.isFinite(rooms) ? offer.priceVnd / rooms : undefined,
-      options.minPricePerRoomVnd,
-      options.maxPricePerRoomVnd
+    (!options.types?.length ||
+      options.types.map(normalizedValue).includes(normalizedType(offer))) &&
+    inRange(rooms, options.minRooms, options.maxRooms) &&
+    inRange(total, ...totalRange) &&
+    inRange(
+      Number.isFinite(rooms) && rooms > 0 ? total / rooms : undefined,
+      ...roomRange
     ) &&
-    withinRange(
-      Number.isFinite(beds) && beds > 0 ? offer.priceVnd / beds : undefined,
-      options.minPricePerBedVnd,
-      options.maxPricePerBedVnd
-    ) &&
-    withinRange(
-      offer.priceVnd,
-      options.minTotalPriceVnd,
-      options.maxTotalPriceVnd
+    inRange(
+      Number.isFinite(beds) && beds > 0 ? total / beds : undefined,
+      ...bedRange
     )
   );
 }
@@ -202,7 +231,7 @@ export class SearchService {
         isForQuery(offer, query) &&
         telegramOfferMatches(offer, query) &&
         matchesFilters(offer, filters) &&
-        matchesStructuredFilters(offer, options)
+        matchesNamedFilters(offer, options)
     );
     unique.sort((left, right) =>
       cheapest

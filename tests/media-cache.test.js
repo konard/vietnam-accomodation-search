@@ -66,4 +66,41 @@ describe('bounded photo cache', () => {
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it('counts canonical, binary, and media files in one shared budget', async () => {
+    if (typeof Deno !== 'undefined') {
+      return;
+    }
+
+    const directory = await mkdtemp(join(tmpdir(), 'shared-cache-budget-'));
+    const media = join(directory, 'media', 'photo.jpg');
+    try {
+      await mkdir(join(directory, '.binary', 'offers-hash'), {
+        recursive: true,
+      });
+      await mkdir(join(directory, 'media'), { recursive: true });
+      await writeFile(join(directory, 'offers.lino'), '123456');
+      await writeFile(
+        join(directory, '.binary', 'offers-hash', 'data.links'),
+        '123456'
+      );
+      await writeFile(media, '12345678');
+      const offer = {
+        cachedPhotos: [{ path: media }],
+        photos: ['https://img.example/photo.jpg'],
+      };
+
+      const result = await new MediaCache({
+        directory,
+        maxBytes: 15,
+      }).enforceBudget([offer]);
+
+      expect(result.usage).toBe(12);
+      expect(result.removed).toEqual([media]);
+      expect(offer.cachedPhotos).toEqual([]);
+      expect(offer.photos).toEqual(['https://img.example/photo.jpg']);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });

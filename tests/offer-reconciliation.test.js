@@ -114,6 +114,50 @@ describe('cross-source accommodation reconciliation', () => {
     expect(merged[0].photos).toEqual(['https://img.example/one.jpg']);
   });
 
+  it('reconciles one Telegram post across preview, Bot API, and MTProto provenance', () => {
+    const common = {
+      identityKeys: ['telegram-post:nha-trang:77'],
+      sourceId: 'telegram:nha-trang',
+      sourceType: 'telegram',
+    };
+    const merged = deduplicateOffers([
+      webOffer({
+        ...common,
+        collectedAt: '2026-09-22T01:00:00.000Z',
+        id: 'preview-77',
+        provenance: { messageId: 77, transport: 'public-preview' },
+      }),
+      webOffer({
+        ...common,
+        collectedAt: '2026-09-22T01:01:00.000Z',
+        id: 'bot-77',
+        provenance: { messageId: 77, transport: 'bot-api' },
+      }),
+      webOffer({
+        ...common,
+        collectedAt: '2026-09-22T01:02:00.000Z',
+        id: 'mtproto-77',
+        provenance: {
+          groupedId: 'album-9',
+          messageId: 77,
+          topicId: 4,
+          transport: 'mtproto',
+        },
+      }),
+    ]);
+
+    expect(merged.length).toBe(1);
+    expect(
+      merged[0].variants.map(({ provenance }) => provenance.transport)
+    ).toEqual(['public-preview', 'bot-api', 'mtproto']);
+    expect(merged[0].variants.at(-1).provenance).toEqual({
+      groupedId: 'album-9',
+      messageId: 77,
+      topicId: 4,
+      transport: 'mtproto',
+    });
+  });
+
   it('does not merge weakly similar listings with conflicting contacts', () => {
     const offers = deduplicateOffers([
       webOffer({

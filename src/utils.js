@@ -14,6 +14,18 @@ export function stableHash(value) {
   return (hash >>> 0).toString(36);
 }
 
+export async function settleCleanup(operations, message) {
+  const results = await Promise.allSettled(
+    operations.map((operation) => operation())
+  );
+  const failures = results
+    .filter(({ status }) => status === 'rejected')
+    .map(({ reason }) => reason);
+  if (failures.length) {
+    throw new AggregateError(failures, message);
+  }
+}
+
 const TRACKING_PARAMETERS = new Set([
   'fbclid',
   'gclid',
