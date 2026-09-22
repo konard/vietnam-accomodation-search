@@ -234,8 +234,9 @@ function extractAttributes(text, fields, referenceDate) {
   const bedrooms =
     numericBedrooms ??
     wordNumber(text, [
-      /([\p{L}-]+)\s+(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)/iu,
-      /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s+(?:с|with)?\s*([\p{L}-]+)/iu,
+      /([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)[ \t]+(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)/iu,
+      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+(?:с|with)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
+      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
     ]);
   const bathrooms = matchedNumber(text, [
     /(\d{1,2})\s*(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)/iu,
@@ -368,6 +369,14 @@ function detectKind(text) {
   );
 }
 
+function trimTrailingCharacters(value, characters) {
+  let end = value.length;
+  while (end > 0 && characters.includes(value[end - 1])) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
 function detectLocation(text, fields) {
   const location =
     firstLabeledValue(fields, [
@@ -385,15 +394,13 @@ function detectLocation(text, fields) {
         /(?:address|location|district|địa\s*chỉ|khu\s*vực|quận|адрес|район)\s*:\s*([^\n\r]+)/iu
       )?.[1]
       ?.trim();
-  return location?.replace(/[.,;!]+$/u, '').trim();
+  return location
+    ? trimTrailingCharacters(location.trim(), '.,;!').trim()
+    : location;
 }
 
 function trimTrailingUrlPunctuation(value) {
-  let end = value.length;
-  while (end > 0 && '.,;!?'.includes(value[end - 1])) {
-    end -= 1;
-  }
-  return value.slice(0, end);
+  return trimTrailingCharacters(value, '.,;!?');
 }
 
 function officialUrl(text) {
