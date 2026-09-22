@@ -47,6 +47,7 @@ describe('container runtime contract', () => {
     expect(deploy).toContain('candidate-${Date.now()}');
     expect(deploy).toContain('telegram preflight');
     expect(deploy).toContain('chromium.launch');
+    expect(deploy).toContain('await syncDirectory(dirname(path))');
     expect(deploy).toContain('docker image tag ${imageId} ${rollbackImage}');
     expect(deploy).toContain(
       'Candidate readiness failed; previous image restored'

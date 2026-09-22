@@ -28,6 +28,22 @@ function sha256File(path) {
   });
 }
 
+export async function syncDirectory(
+  path,
+  { openDirectory = open, platform = process.platform } = {}
+) {
+  const directory = await openDirectory(path, 'r');
+  try {
+    await directory.sync();
+  } catch (error) {
+    if (platform !== 'win32' || error?.code !== 'EPERM') {
+      throw error;
+    }
+  } finally {
+    await directory.close();
+  }
+}
+
 export async function durableWrite(path, contents) {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
@@ -40,12 +56,7 @@ export async function durableWrite(path, contents) {
       await file.close();
     }
     await rename(temporary, path);
-    const directory = await open(dirname(path), 'r');
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await syncDirectory(dirname(path));
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => {});
     throw error;

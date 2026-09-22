@@ -9,6 +9,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { Parser } from 'links-notation';
 import { describe, expect, it } from 'test-anywhere';
@@ -20,7 +21,7 @@ import {
   queryRecords,
   serializeRecords,
 } from '../src/index.js';
-import { durableWrite, sha256 } from '../src/link-cli-mirror.js';
+import { durableWrite, sha256, syncDirectory } from '../src/link-cli-mirror.js';
 import { staleLock } from '../src/links-store.js';
 
 describe('canonical associative storage', () => {
@@ -423,6 +424,45 @@ describe('canonical associative storage', () => {
     }
   });
 
+  it('only tolerates unsupported directory fsync on Windows', async () => {
+    const unsupported = Object.assign(new Error('operation not permitted'), {
+      code: 'EPERM',
+    });
+    let closeCount = 0;
+    const openDirectory = async () => ({
+      close: async () => {
+        closeCount += 1;
+      },
+      sync: async () => {
+        throw unsupported;
+      },
+    });
+
+    await syncDirectory('state', { openDirectory, platform: 'win32' });
+    expect(closeCount).toBe(1);
+
+    const wrongPlatform = await Promise.allSettled([
+      syncDirectory('state', { openDirectory, platform: 'linux' }),
+    ]);
+    expect(wrongPlatform[0].reason).toBe(unsupported);
+
+    const wrongError = Object.assign(new Error('disk failed'), {
+      code: 'EIO',
+    });
+    const failedSync = await Promise.allSettled([
+      syncDirectory('state', {
+        openDirectory: async () => ({
+          close: async () => {},
+          sync: async () => {
+            throw wrongError;
+          },
+        }),
+        platform: 'win32',
+      }),
+    ]);
+    expect(failedSync[0].reason).toBe(wrongError);
+  });
+
   it('recovers a write lock left behind by a terminated process', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;
@@ -501,7 +541,7 @@ describe('canonical associative storage', () => {
       new Promise((resolve, reject) => {
         const child = spawn(
           process.execPath,
-          [fixture.pathname, directory, id],
+          [fileURLToPath(fixture), directory, id],
           {
             stdio: 'inherit',
           }

@@ -3,6 +3,7 @@
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
+import { syncDirectory } from '../src/link-cli-mirror.js';
 import { bootstrapDependencies } from './bootstrap-dependencies.mjs';
 import { loadCommandStream, loadLinoArguments } from './use-module.mjs';
 
@@ -54,12 +55,7 @@ async function durableJson(path, value) {
       await file.close();
     }
     await rename(temporary, path);
-    const directory = await open(dirname(path), 'r');
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await syncDirectory(dirname(path));
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => {});
     throw error;
