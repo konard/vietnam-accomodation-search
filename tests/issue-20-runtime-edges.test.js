@@ -21,6 +21,8 @@ import {
 } from '../src/index.js';
 
 const isDenoRuntime = typeof globalThis.Deno !== 'undefined';
+const isWindowsRuntime =
+  typeof globalThis.process !== 'undefined' && process.platform === 'win32';
 
 async function failureOf(operation) {
   try {
@@ -190,9 +192,9 @@ describe('issue 20 composition and failure tracing', () => {
 
 describe('issue 20 browser, release, auth, and history runtime edges', () => {
   it('atomically replaces release-audit output with private permissions', async () => {
-    // This assertion needs environment access for tmpdir plus filesystem write
-    // access, neither of which belongs in Deno's read-only CI permission set.
-    if (isDenoRuntime) {
+    // This assertion needs environment and filesystem write access, which the
+    // Deno leg omits; Windows does not implement POSIX permission mode bits.
+    if (isDenoRuntime || isWindowsRuntime) {
       return;
     }
     const directory = await mkdtemp(join(tmpdir(), 'release-audit-'));
