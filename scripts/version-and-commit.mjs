@@ -28,6 +28,7 @@ import {
 import { bootstrapDependencies } from './bootstrap-dependencies.mjs';
 import { loadCommandStream, loadLinoArguments } from './use-module.mjs';
 import { printUntrusted } from './github-actions-log.mjs';
+import { formattableStagedFiles } from './release-formatting.mjs';
 
 // Import link-foundation libraries
 // Loaded through bootstrapDependencies: when the use-m CDN is unreachable,
@@ -180,13 +181,11 @@ async function getVersion(source = 'local') {
  * would land on main unnoticed and fail only after the tag exists.
  */
 async function checkStagedFormatting() {
-  const stagedResult = await $`git diff --cached --name-only`.run({
-    capture: true,
-  });
-  const formattable = stagedResult.stdout
-    .split('\n')
-    .map((file) => file.trim())
-    .filter((file) => /\.(m?js|json|md|ts)$/.test(file));
+  const stagedResult =
+    await $`git diff --cached --name-only -z --diff-filter=ACMR`.run({
+      capture: true,
+    });
+  const formattable = formattableStagedFiles(stagedResult.stdout);
 
   if (formattable.length > 0) {
     console.log(
@@ -236,6 +235,9 @@ async function main() {
         console.log(
           'Assuming version bump was already completed in a previous attempt.'
         );
+        // Verification and evidence collection run immediately after this
+        // script, so move the worktree to the exact candidate they inspect.
+        await $`git merge --ff-only origin/main`;
         setOutput('version_committed', 'false');
         setOutput('already_released', 'true');
         setOutput('new_version', remoteVersion);

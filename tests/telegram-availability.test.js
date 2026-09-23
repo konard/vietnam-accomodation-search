@@ -221,6 +221,7 @@ describe('Telegram user-session availability checks', () => {
         TELEGRAM_API_HASH: 'hash',
         TELEGRAM_API_ID: '123',
         TELEGRAM_USER_SESSION: 'session',
+        TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
       },
       stdout: (line) => output.push(line),
     });

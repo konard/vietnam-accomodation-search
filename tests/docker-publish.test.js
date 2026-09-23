@@ -58,6 +58,31 @@ function expectOrdered(text, markers) {
 }
 
 describe('optional Docker Hub publishing workflow', () => {
+  it('retests and records the exact version commit before either npm publish path', () => {
+    for (const jobName of ['release', 'instant-release']) {
+      const job = getWorkflowJob(releaseWorkflow, jobName);
+
+      expectOrdered(job, [
+        '- name: Version packages and commit to main',
+        '- name: Verify exact release candidate',
+        '- name: Record exact release candidate identity',
+        '- name: Publish to npm',
+      ]);
+      expect(job).toContain('npm ci');
+      expect(job).toContain('npm run check');
+      expect(job).toContain('npm run test:coverage');
+      expect(job).toContain('bun install --no-save');
+      expect(job).toContain('bun test --timeout 30000');
+      expect(job).toContain("rmSync('bun.lock', { force: true })");
+      expect(job).toContain('deno test --frozen --allow-read');
+      expect(job).toContain('record-release-candidate.mjs');
+      expect(job).toContain(
+        '--evidence-output /tmp/release-evidence/published-package.json'
+      );
+      expect(job).toContain('name: release-candidate-${{ github.run_id }}');
+    }
+  });
+
   it('adds a Docker publish job downstream of npm release jobs', () => {
     const configJob = getWorkflowJob(releaseWorkflow, 'docker-publish-config');
 
@@ -135,6 +160,9 @@ describe('optional Docker Hub publishing workflow', () => {
     expect(buildJob).toContain('platform: linux/arm64');
     expect(buildJob).toContain('runner: ubuntu-24.04-arm');
     expect(buildJob).toContain('runs-on: ${{ matrix.runner }}');
+    expect(buildJob).toContain(
+      'ref: v${{ needs.docker-publish-config.outputs.version }}'
+    );
     expect(dockerHubAction).toContain('platforms: ${{ inputs.platform }}');
     expect(dockerHubAction).toContain('push-by-digest=true');
     expect(releaseWorkflow).not.toContain('docker/setup-qemu-action');
@@ -150,6 +178,20 @@ describe('optional Docker Hub publishing workflow', () => {
     for (const step of downloadSteps) {
       expect(step).toContain('NODE_OPTIONS: --disable-warning=DEP0005');
     }
+  });
+
+  it('publishes a machine-generated immutable identity after Docker publication', () => {
+    const identityJob = getWorkflowJob(releaseWorkflow, 'release-identity');
+
+    expect(identityJob).toContain(
+      'needs: [release, instant-release, docker-publish-config, docker-publish]'
+    );
+    expect(identityJob).toContain(
+      'docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw'
+    );
+    expect(identityJob).toContain('collect-release-identity.mjs');
+    expect(identityJob).toContain('actions/upload-artifact@v7');
+    expect(identityJob).toContain('gh release upload');
   });
 });
 

@@ -1,12 +1,27 @@
 #!/usr/bin/env node
 
-import { writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Api, TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 
-import { parseTelegramOffer, serializeOffers } from '../src/index.js';
+import {
+  GRAMJS_SESSION_FORMAT,
+  LinksStore,
+  classifyTelegramPost,
+} from '../src/index.js';
+import {
+  auditTelegramBatch,
+  collectTelegramWindow,
+  loadAuditCheckpoint,
+  retryTelegramFloodWait,
+  saveAuditCheckpoint,
+  sourceCompletion,
+  verifyAuditStorage,
+} from './telegram-live-audit-runtime.mjs';
 import {
   DEFAULT_DISCOVERY_QUERIES,
   anonymizeListing,
@@ -35,6 +50,7 @@ function parseArguments(values) {
     maxSources: 40,
     months: 2,
     redactedExcerpts: false,
+    stateDirectory: '.vietnam-accomodation-search/telegram-live-audit',
   };
   const valued = new Map([
     ['--bot-env', 'botEnv'],
@@ -43,6 +59,8 @@ function parseArguments(values) {
     ['--max-sources', 'maxSources'],
     ['--months', 'months'],
     ['--output', 'output'],
+    ['--state-directory', 'stateDirectory'],
+    ['--tesseract-command', 'tesseractCommand'],
     ['--user-env', 'userEnv'],
   ]);
   for (let index = 0; index < values.length; index += 1) {
@@ -63,6 +81,11 @@ function parseArguments(values) {
     if (!Number.isInteger(result[property]) || result[property] < 1) {
       throw new RangeError(`${property} must be a positive integer.`);
     }
+  }
+  if (result.maxSources > 40) {
+    throw new RangeError(
+      'maxSources must not exceed the audited 40-source limit.'
+    );
   }
   return result;
 }
@@ -92,6 +115,114 @@ function cutoffDate(now, months) {
   return cutoff;
 }
 
+function mediaIdentity(message) {
+  return (
+    message.mediaId ??
+    message.media?.id ??
+    message.media ??
+    message.photo?.id ??
+    message.document?.id ??
+    message.photos?.[0]
+  );
+}
+
+function tesseract(command, bytes) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      command,
+      ['stdin', 'stdout', '--dpi', '150', '-l', 'eng+rus+vie'],
+      { shell: false, stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout = `${stdout}${chunk}`.slice(0, 1024 * 1024);
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr = `${stderr}${chunk}`.slice(-4096);
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(stdout.trim());
+      } else {
+        const error = new Error(
+          `Media extraction exited with ${code}: ${stderr.trim()}`
+        );
+        error.code = 'MEDIA_EXTRACTION_FAILED';
+        reject(error);
+      }
+    });
+    child.stdin.end(bytes);
+  });
+}
+
+function mediaOcr(client, messages, command) {
+  if (!command) {
+    return undefined;
+  }
+  const byIdentity = new Map(
+    messages
+      .map((message) => [mediaIdentity(message), message.media])
+      .filter(([identity, media]) => identity !== undefined && media)
+  );
+  return async (identity) => {
+    const media = byIdentity.get(identity);
+    if (!media) {
+      const error = new Error('Telegram media was not present in the batch.');
+      error.code = 'MEDIA_NOT_FOUND';
+      throw error;
+    }
+    const bytes = await client.downloadMedia(media);
+    return tesseract(command, bytes);
+  };
+}
+
+async function corpusClassificationMetrics() {
+  const corpus = JSON.parse(
+    await readFile(
+      new globalThis.URL(
+        './fixtures/telegram-accommodation-parser-cases.json',
+        import.meta.url
+      ),
+      'utf8'
+    )
+  );
+  const counters = {
+    falseNegative: 0,
+    falsePositive: 0,
+    trueNegative: 0,
+    truePositive: 0,
+  };
+  for (const testCase of corpus.cases.filter(({ input }) => input.text)) {
+    const expected = testCase.expected.relevant;
+    const actual = classifyTelegramPost(testCase.input.text).eligible;
+    const key = actual
+      ? expected
+        ? 'truePositive'
+        : 'falsePositive'
+      : expected
+        ? 'falseNegative'
+        : 'trueNegative';
+    counters[key] += 1;
+  }
+  const precisionDenominator = counters.truePositive + counters.falsePositive;
+  const recallDenominator = counters.truePositive + counters.falseNegative;
+  return {
+    ...counters,
+    corpusSchemaVersion: corpus.schemaVersion,
+    languages: [
+      ...new Set(corpus.cases.map(({ language }) => language)),
+    ].sort(),
+    precision: precisionDenominator
+      ? counters.truePositive / precisionDenominator
+      : null,
+    recall: recallDenominator
+      ? counters.truePositive / recallDenominator
+      : null,
+  };
+}
+
 function folderTitle(filter) {
   return textValue(filter?.title);
 }
@@ -117,6 +248,7 @@ async function resolveFolderEntities(client, filter) {
   const resolved = new Map();
   const ignoredPrivateDialogs = new Set();
   const ignoredUnsupportedPeers = new Set();
+  let resolutionErrors = 0;
   const add = (entity, method) => {
     const key = entityKey(entity);
     if (isTelegramCommunity(entity)) {
@@ -135,23 +267,31 @@ async function resolveFolderEntities(client, filter) {
   const peers = [...(filter.pinnedPeers || []), ...(filter.includePeers || [])];
   for (const peer of peers) {
     try {
-      add(await client.getEntity(peer), 'folder-filter');
+      add(
+        await retryTelegramFloodWait(() => client.getEntity(peer)),
+        'folder-filter'
+      );
     } catch {
       // One inaccessible peer must not hide the remaining folder.
+      resolutionErrors += 1;
     }
   }
   try {
-    const dialogs = await client.getDialogs({ folder: filter.id, limit: 500 });
+    const dialogs = await retryTelegramFloodWait(() =>
+      client.getDialogs({ folder: filter.id, limit: 500 })
+    );
     for (const dialog of dialogs) {
       add(dialog.entity, 'folder-dialog');
     }
   } catch {
     // Custom folders may be fully represented by includePeers alone.
+    resolutionErrors += 1;
   }
   return {
     entities: resolved,
     ignoredPrivateDialogs: ignoredPrivateDialogs.size,
     ignoredUnsupportedPeers: ignoredUnsupportedPeers.size,
+    resolutionErrors,
   };
 }
 
@@ -180,8 +320,8 @@ async function discoverPublicSources(client) {
   const errors = [];
   for (const query of DEFAULT_DISCOVERY_QUERIES) {
     try {
-      const found = await client.invoke(
-        new Api.contacts.Search({ limit: 100, q: query })
+      const found = await retryTelegramFloodWait(() =>
+        client.invoke(new Api.contacts.Search({ limit: 100, q: query }))
       );
       for (const entity of found.chats || []) {
         mergePublicCandidate(candidates, entity, query);
@@ -237,13 +377,13 @@ function emptySourceAudit(alias) {
   return {
     alias,
     accommodationRequests: 0,
-    linksSerialized: 0,
     mediaOnlyCandidates: 0,
     messagesScanned: 0,
     missingDetails: [],
+    offersWithAllExpectedFields: 0,
     parserOffers: 0,
     relevantOffers: 0,
-    truncated: false,
+    terminalMaterials: {},
   };
 }
 
@@ -291,66 +431,178 @@ function addExamples(report, source, text, offer, problems, enabled) {
   }
 }
 
-function recordMessage(audit, message, source, options, report, alias) {
-  const text = message.message || message.text || '';
-  const classification = classifyAccommodationPost(
-    text,
-    Boolean(message.media)
-  );
-  if (classification.mediaOnlyCandidate) {
-    audit.mediaOnlyCandidates += 1;
-  }
-  if (classification.demand && classification.accommodation) {
-    audit.accommodationRequests += 1;
-  }
-  if (!classification.relevant) {
-    return;
-  }
-  audit.relevantOffers += 1;
-  const offer = parseTelegramOffer({
-    chat: { username: source.public?.username },
+function normalizedAuditMessage(message, alias) {
+  return {
+    chatId: `telegram:${alias}`,
     date: dateValue(message.date),
-    messageId: message.id,
+    editDate: message.editDate,
+    groupedId: message.groupedId ?? message.grouped_id,
+    id: message.id,
+    mediaId: mediaIdentity(message),
     sourceId: `telegram:${alias}`,
-    text,
-  });
-  if (!offer) {
-    return;
-  }
-  audit.parserOffers += 1;
-  const problems = offerProblems(offer, text);
-  audit.missingDetails.push(...problems);
-  try {
-    serializeOffers([offer]);
-    audit.linksSerialized += 1;
-  } catch {
-    audit.missingDetails.push('links-serialization-failed');
-  }
-  addExamples(report, alias, text, offer, problems, options.redactedExcerpts);
+    text: message.message || message.text || '',
+  };
 }
 
-async function auditSource(client, source, options, report, privateIndex) {
+// eslint-disable-next-line complexity, max-lines-per-function, max-params, max-statements -- A source audit keeps retrieval, checkpoint, reconciliation, and durable commit in one ordered privacy boundary.
+async function auditSource(
+  client,
+  source,
+  options,
+  report,
+  privateIndex,
+  checkpointStore,
+  auditStore
+) {
   const alias =
     source.public?.username || `private-folder-source-${privateIndex}`;
   const audit = emptySourceAudit(alias);
   const cutoff = cutoffDate(report.generatedAt, options.months);
+  const previous = await loadAuditCheckpoint(checkpointStore, alias);
+  const resume = previous?.complete === false ? previous : undefined;
+  let offsetId = resume?.oldestMessageId;
+  let messages = [];
+  let exhausted = false;
+  let hitCap = false;
+  let reachedCutoff = false;
+  let sourceError;
   try {
-    for await (const message of client.iterMessages(source.entity, {
-      limit: options.maxMessages,
-    })) {
-      const date = dateValue(message.date);
-      if (!Number.isFinite(date.getTime()) || date < cutoff) {
-        break;
-      }
-      audit.messagesScanned += 1;
-      recordMessage(audit, message, source, options, report, alias);
-    }
-    audit.truncated = audit.messagesScanned >= options.maxMessages;
+    const collected = await collectTelegramWindow({
+      cutoff,
+      iterate: (iteratorOptions) =>
+        client.iterMessages(source.entity, iteratorOptions),
+      maxMessages: options.maxMessages,
+      offsetId,
+    });
+    ({ exhausted, hitCap, messages, offsetId, reachedCutoff } = collected);
   } catch (error) {
-    audit.error = errorSummary(error);
+    sourceError = errorSummary(error);
   }
+  const normalizedMessages = messages.map((message) =>
+    normalizedAuditMessage(message, alias)
+  );
+  const batch = await auditTelegramBatch(normalizedMessages, {
+    now: new Date(report.generatedAt),
+    ocr: mediaOcr(client, messages, options.tesseractCommand),
+    sourceAlias: alias,
+  });
+  for (const message of messages) {
+    const classification = classifyAccommodationPost(
+      message.message || message.text || '',
+      Boolean(message.media)
+    );
+    audit.mediaOnlyCandidates += Number(classification.mediaOnlyCandidate);
+    audit.accommodationRequests += Number(
+      classification.demand && classification.accommodation
+    );
+  }
+  for (const offer of batch.offers) {
+    const text = offer.text || offer.raw?.text || '';
+    const problems = offerProblems(offer, text);
+    audit.missingDetails.push(...problems);
+    audit.offersWithAllExpectedFields += Number(problems.length === 0);
+    addExamples(report, alias, text, offer, problems, options.redactedExcerpts);
+  }
+  const completion = sourceCompletion({
+    error: sourceError,
+    exhausted,
+    hitCap,
+    reachedCutoff,
+  });
+  audit.completion = completion;
+  audit.currentRunMessages = messages.length;
+  audit.error = sourceError;
+  audit.messagesScanned = (resume?.messagesScanned || 0) + messages.length;
+  audit.parserOffers = batch.offers.length;
+  audit.relevantOffers =
+    batch.offers.length +
+    batch.reviewQueue.filter(
+      ({ reason }) => reason === 'offer-extraction-failed'
+    ).length;
+  audit.segments = batch.segments;
+  audit.terminalMaterials = batch.materials.terminal;
+  audit.traces = countBy(batch.traceRecords.map(({ status }) => status));
+  audit.unaccountedMaterials = batch.materials.unaccounted;
+  audit.unresolvedMediaOnly = batch.reviewQueue.filter(
+    ({ reason }) =>
+      reason === 'photo-only-ocr-unavailable' ||
+      reason === 'photo-only-ocr-failed'
+  ).length;
   audit.missingDetails = countBy(audit.missingDetails);
-  return audit;
+  if (resume?.metrics) {
+    audit.accommodationRequests += resume.metrics.accommodationRequests || 0;
+    audit.mediaOnlyCandidates += resume.metrics.mediaOnlyCandidates || 0;
+    audit.offersWithAllExpectedFields +=
+      resume.metrics.offersWithAllExpectedFields || 0;
+    audit.parserOffers += resume.metrics.parserOffers || 0;
+    audit.relevantOffers += resume.metrics.relevantOffers || 0;
+    audit.unresolvedMediaOnly += resume.metrics.unresolvedMediaOnly || 0;
+    audit.unaccountedMaterials += resume.metrics.unaccountedMaterials || 0;
+    for (const [key, count] of Object.entries(
+      resume.metrics.missingDetails || {}
+    )) {
+      audit.missingDetails[key] = (audit.missingDetails[key] || 0) + count;
+    }
+    for (const [state, count] of Object.entries(
+      resume.metrics.segments || {}
+    )) {
+      audit.segments[state] = (audit.segments[state] || 0) + count;
+    }
+    for (const [state, count] of Object.entries(
+      resume.metrics.terminalMaterials || {}
+    )) {
+      audit.terminalMaterials[state] =
+        (audit.terminalMaterials[state] || 0) + count;
+    }
+    for (const [status, count] of Object.entries(resume.metrics.traces || {})) {
+      audit.traces[status] = (audit.traces[status] || 0) + count;
+    }
+  }
+  await auditStore.updateRecords('domain-records', (current) => {
+    const byId = new Map(current.map((record) => [record.id, record]));
+    for (const record of batch.domainRecords) {
+      byId.set(record.id, record);
+    }
+    return [...byId.values()];
+  });
+  await auditStore.updateRecords('traces', (current) => {
+    const byId = new Map(current.map((record) => [record.id, record]));
+    for (const record of batch.traceRecords) {
+      byId.set(record.id, record);
+    }
+    return [...byId.values()];
+  });
+  await auditStore.saveOffers(batch.offers);
+  await saveAuditCheckpoint(checkpointStore, {
+    complete: completion.pass,
+    cutoff: cutoff.toISOString(),
+    id: alias,
+    messagesScanned: audit.messagesScanned,
+    ...(offsetId === undefined
+      ? {}
+      : {
+          oldestMessageDate: messages.at(-1)
+            ? dateValue(messages.at(-1).date).toISOString()
+            : resume?.oldestMessageDate,
+          oldestMessageId: offsetId,
+        }),
+    metrics: {
+      accommodationRequests: audit.accommodationRequests,
+      mediaOnlyCandidates: audit.mediaOnlyCandidates,
+      missingDetails: audit.missingDetails,
+      offersWithAllExpectedFields: audit.offersWithAllExpectedFields,
+      parserOffers: audit.parserOffers,
+      relevantOffers: audit.relevantOffers,
+      segments: audit.segments,
+      terminalMaterials: audit.terminalMaterials,
+      traces: audit.traces,
+      unaccountedMaterials: audit.unaccountedMaterials,
+      unresolvedMediaOnly: audit.unresolvedMediaOnly,
+    },
+    state: completion.state,
+    updatedAt: new Date().toISOString(),
+  });
+  return { audit, domainRecords: batch.domainRecords, offers: batch.offers };
 }
 
 async function botStatus(token) {
@@ -373,6 +625,7 @@ async function botStatus(token) {
   }
 }
 
+// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- The live runner assembles a single evidence report across discovery, ingestion, storage, and acceptance gates.
 export async function runAudit(options) {
   const environment = await loadCredentialEnvironment([
     options.userEnv,
@@ -388,6 +641,20 @@ export async function runAudit(options) {
       'A complete Telegram user session and API credential set is required.'
     );
   }
+  if (credentials.sessionFormat !== GRAMJS_SESSION_FORMAT) {
+    throw new Error(
+      `This read-only audit requires an explicitly declared ${GRAMJS_SESSION_FORMAT} session; it will not trial-convert raw or foreign sessions.`
+    );
+  }
+  const checkpointStore = new LinksStore({
+    binaryMirror: false,
+    directory: join(options.stateDirectory, 'checkpoints'),
+  });
+  const auditStore = new LinksStore({
+    binaryMirror: true,
+    directory: join(options.stateDirectory, 'typed-results'),
+  });
+  await auditStore.mirror.preflight();
   const report = {
     bot: await botStatus(credentials.botToken),
     discovery: {},
@@ -400,8 +667,8 @@ export async function runAudit(options) {
       months: options.months,
     },
     links: {
-      canonicalTypedAssociations: false,
-      note: 'Links Notation output stores an opaque JSON data link, so a typed binary/text projection is still required.',
+      canonicalTypedAssociations: true,
+      transactionalClinkMirror: true,
     },
     parser: {},
     user: { active: false },
@@ -419,8 +686,8 @@ export async function runAudit(options) {
     if (!report.user.active) {
       throw new Error('The Telegram user session is not authorized.');
     }
-    const filtersResult = await client.invoke(
-      new Api.messages.GetDialogFilters()
+    const filtersResult = await retryTelegramFloodWait(() =>
+      client.invoke(new Api.messages.GetDialogFilters())
     );
     const filters = filtersResult.filters || filtersResult;
     const filter = filters.find(
@@ -437,12 +704,14 @@ export async function runAudit(options) {
           entities: new Map(),
           ignoredPrivateDialogs: 0,
           ignoredUnsupportedPeers: 0,
+          resolutionErrors: 0,
         };
     const folderEntities = folderResolution.entities;
     report.folder.ignoredPrivateDialogs =
       folderResolution.ignoredPrivateDialogs;
     report.folder.ignoredUnsupportedPeers =
       folderResolution.ignoredUnsupportedPeers;
+    report.folder.resolutionErrors = folderResolution.resolutionErrors;
     report.folder.sourceCount = folderEntities.size;
 
     const discovery = await discoverPublicSources(client);
@@ -463,42 +732,102 @@ export async function runAudit(options) {
     report.discovery.privateFolderSources = sources.filter(
       (source) => !source.public
     ).length;
+    report.discovery.recall = {
+      reviewedGroundTruth: false,
+      value: null,
+      reason:
+        'Live search results have no complete human-reviewed source universe; candidate and selected counts are reported separately.',
+    };
 
     const audits = [];
+    const domainRecords = [];
+    const offers = [];
     let privateIndex = 0;
     for (const source of sources) {
       if (!source.public) {
         privateIndex += 1;
       }
-      audits.push(
-        await auditSource(client, source, options, report, privateIndex)
+      const result = await auditSource(
+        client,
+        source,
+        options,
+        report,
+        privateIndex,
+        checkpointStore,
+        auditStore
       );
+      audits.push(result.audit);
+      domainRecords.push(...result.domainRecords);
+      offers.push(...result.offers);
     }
     report.sources = audits;
+    const mergeById = (records) => [
+      ...new Map(records.map((record) => [record.id, record])).values(),
+    ];
+    const storedDomainRecords = await auditStore.loadRecords('domain-records');
+    const mergedDomainRecords = mergeById([
+      ...storedDomainRecords,
+      ...domainRecords,
+    ]);
+    report.storage = mergedDomainRecords.length
+      ? await verifyAuditStorage(
+          auditStore,
+          mergedDomainRecords,
+          'domain-records'
+        )
+      : { delete: false, edit: false, query: false, roundTrip: false };
+    await auditStore.saveOffers(offers);
+    report.classification = await corpusClassificationMetrics();
+    const fieldProblems = countBy(
+      audits.flatMap((audit) =>
+        Object.entries(audit.missingDetails).flatMap(([key, count]) =>
+          Array.from({ length: count }, () => key)
+        )
+      )
+    );
+    const terminalMaterials = audits.reduce((totals, audit) => {
+      for (const [state, count] of Object.entries(audit.terminalMaterials)) {
+        totals[state] = (totals[state] || 0) + count;
+      }
+      return totals;
+    }, {});
+    report.fieldExtraction = {
+      acceptedOffers: offers.length,
+      missingExpectedFields: fieldProblems,
+      offersWithAllExpectedFields: audits.reduce(
+        (total, audit) => total + audit.offersWithAllExpectedFields,
+        0
+      ),
+    };
+    report.mediaHandling = {
+      mediaOnlyCandidates: audits.reduce(
+        (total, audit) => total + audit.mediaOnlyCandidates,
+        0
+      ),
+      terminal: terminalMaterials,
+      unaccounted: audits.reduce(
+        (total, audit) => total + audit.unaccountedMaterials,
+        0
+      ),
+      unresolvedMediaOnly: audits.reduce(
+        (total, audit) => total + audit.unresolvedMediaOnly,
+        0
+      ),
+    };
+    const sourceErrors = audits.filter((audit) => audit.error).length;
+    const incompleteSources = audits.filter(
+      (audit) => !audit.completion.pass
+    ).length;
     report.parser = {
       accommodationRequestsExcluded: audits.reduce(
         (total, audit) => total + audit.accommodationRequests,
-        0
-      ),
-      linksSerialized: audits.reduce(
-        (total, audit) => total + audit.linksSerialized,
-        0
-      ),
-      mediaOnlyCandidates: audits.reduce(
-        (total, audit) => total + audit.mediaOnlyCandidates,
         0
       ),
       messagesScanned: audits.reduce(
         (total, audit) => total + audit.messagesScanned,
         0
       ),
-      missingDetails: countBy(
-        audits.flatMap((audit) =>
-          Object.entries(audit.missingDetails).flatMap(([key, count]) =>
-            Array.from({ length: count }, () => key)
-          )
-        )
-      ),
+      missingDetails: fieldProblems,
       parserOffers: audits.reduce(
         (total, audit) => total + audit.parserOffers,
         0
@@ -507,9 +836,59 @@ export async function runAudit(options) {
         (total, audit) => total + audit.relevantOffers,
         0
       ),
-      sourceErrors: audits.filter((audit) => audit.error).length,
-      truncatedSources: audits.filter((audit) => audit.truncated).length,
+      sourceErrors,
+      incompleteSources,
+      segments: audits.reduce((totals, audit) => {
+        for (const [state, count] of Object.entries(audit.segments)) {
+          totals[state] = (totals[state] || 0) + count;
+        }
+        return totals;
+      }, {}),
+      traces: audits.reduce((totals, audit) => {
+        for (const [status, count] of Object.entries(audit.traces)) {
+          totals[status] = (totals[status] || 0) + count;
+        }
+        return totals;
+      }, {}),
     };
+    report.acceptance = {
+      checks: {
+        botIdentity: report.bot.active === true,
+        canonicalTypedStorage: Object.values(report.storage).every(Boolean),
+        completeFortySourceCohort:
+          options.maxSources === 40 && sources.length === 40,
+        correlatedTerminalTraces:
+          Object.values(report.parser.traces).reduce(
+            (total, count) => total + count,
+            0
+          ) ===
+          Object.values(terminalMaterials).reduce(
+            (total, count) => total + count,
+            0
+          ),
+        folderFound: report.folder.found === true,
+        expectedFieldsExtracted:
+          Object.values(fieldProblems).reduce(
+            (total, count) => total + count,
+            0
+          ) === 0,
+        noDiscoveryErrors: discovery.errors.length === 0,
+        noFolderResolutionErrors: report.folder.resolutionErrors === 0,
+        noSourceErrors: sourceErrors === 0,
+        noTruncation: incompleteSources === 0,
+        noTerminalErrors: (terminalMaterials.error || 0) === 0,
+        noSegmentErrors: (report.parser.segments.error || 0) === 0,
+        sourceLimitRespected: sources.length <= 40,
+        reviewedPrecision: report.classification.precision === 1,
+        reviewedRecall: report.classification.recall === 1,
+        terminalMaterials: report.mediaHandling.unaccounted === 0,
+        unresolvedMediaOnly: report.mediaHandling.unresolvedMediaOnly === 0,
+        userIdentity: report.user.active === true,
+      },
+    };
+    report.acceptance.pass = Object.values(report.acceptance.checks).every(
+      Boolean
+    );
   } finally {
     await client.disconnect().catch(() => {});
     await client.destroy?.().catch(() => {});

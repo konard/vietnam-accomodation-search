@@ -117,6 +117,7 @@ export function telegramCredentials(environment) {
     ),
     botToken: environment.TELEGRAM_BOT_TOKEN,
     session: environment.TELEGRAM_USER_SESSION,
+    sessionFormat: environment.TELEGRAM_USER_SESSION_FORMAT,
   };
 }
 

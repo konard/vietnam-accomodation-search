@@ -7,6 +7,7 @@ import {
   DomainScheduler,
   classifyListingPage,
 } from '../src/browser-adapters.js';
+import { BrowserPageError } from '../src/browser-collector.js';
 import {
   createDomainRecords,
   createSemanticValue,
@@ -565,6 +566,74 @@ describe('issue 20 browser, release, and Pages gates', () => {
     expect(overlap).toBe(true);
   });
 
+  it('persists challenge cooldowns, stops that domain, and continues unrelated domains', async () => {
+    let records = [];
+    const store = {
+      loadRecords: async () => records,
+      updateRecords: async (_kind, update) => {
+        records = update(records);
+      },
+    };
+    let attempts = 0;
+    let now = 1_000;
+    const scheduler = new DomainScheduler({
+      delay: async () => {},
+      maxAttempts: 3,
+      now: () => now,
+      store,
+    });
+    let challenge;
+    try {
+      await scheduler.run('https://blocked.example/search', async () => {
+        attempts += 1;
+        throw new BrowserPageError(
+          PAGE_CLASSIFICATIONS.CHALLENGE,
+          'https://blocked.example/search'
+        );
+      });
+    } catch (error) {
+      challenge = error;
+    }
+    expect(challenge.classification).toBe(PAGE_CLASSIFICATIONS.CHALLENGE);
+    expect(attempts).toBe(1);
+    expect(records[0].domain).toBe('blocked.example');
+    expect(records[0].blockedUntil > 1_000).toBe(true);
+
+    let stopped;
+    try {
+      await scheduler.run('https://blocked.example/again', async () => 'no');
+    } catch (error) {
+      stopped = error;
+    }
+    expect(stopped.code).toBe('BROWSER_DOMAIN_CHALLENGED');
+    expect(stopped.retryAfterMs).toBe(records[0].blockedUntil - now);
+    expect(
+      await scheduler.run('https://healthy.example', async () => 'ok')
+    ).toBe('ok');
+
+    const persistedRecords = records.map((record) => ({ ...record }));
+    now = records[0].blockedUntil;
+    expect(
+      await scheduler.run('https://blocked.example/future', async () => 'ok')
+    ).toBe('ok');
+
+    const delays = [];
+    const restarted = new DomainScheduler({
+      delay: async (milliseconds) => delays.push(milliseconds),
+      now: () => 1_000,
+      store: {
+        loadRecords: async () => persistedRecords,
+        updateRecords: async (_kind, update) => {
+          await update(persistedRecords);
+        },
+      },
+    });
+    expect(
+      await restarted.run('https://blocked.example/later', async () => 'ok')
+    ).toBe('ok');
+    expect(delays.some((milliseconds) => milliseconds >= 30_000)).toBe(true);
+  });
+
   it('keeps release baselines immutable and marks missing live credentials pending', () => {
     const baseline = {
       release: { tag: 'v1', sha: 'abc' },
@@ -595,7 +664,11 @@ describe('issue 20 browser, release, and Pages gates', () => {
     const report = createReleaseAudit({
       mode: 'live',
       credentials: false,
-      release: { tag: 'v2', commitSha: 'abc', packageVersion: '1.0.0' },
+      release: {
+        tag: 'v1.0.0',
+        commitSha: 'a'.repeat(40),
+        packageVersion: '1.0.0',
+      },
       runtime: { token: 'must-not-persist' },
       now: () => new Date('2026-09-22T00:00:00Z'),
     });

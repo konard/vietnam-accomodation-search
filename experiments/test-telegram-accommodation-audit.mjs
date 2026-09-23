@@ -34,7 +34,7 @@ describe('Telegram accommodation audit helpers', () => {
         'utf8'
       )
     );
-    expect(corpus.schemaVersion).toBe(1);
+    expect(corpus.schemaVersion).toBe(2);
     expect(corpus.dataPolicy).toBe('synthetic-and-anonymized-only');
     const fixtures = corpus.cases;
     expect(new Set(fixtures.map(({ id }) => id)).size).toBe(fixtures.length);
@@ -70,6 +70,7 @@ describe('Telegram accommodation audit helpers', () => {
       apiId: 123,
       botToken: 'bot',
       session: 'session',
+      sessionFormat: undefined,
     });
     expect(reference.apiId).toBe(123);
     expect(reference.apiHash).toBe('hash');

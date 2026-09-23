@@ -569,6 +569,7 @@ describe('Telegram user authentication', () => {
         apiHash: 'hash',
         apiId: '1',
         session: 's',
+        sessionFormat: 'mtcute/session-string-v1',
       }).mode
     ).toBe('user-only');
   });
@@ -752,6 +753,7 @@ describe('Telegram user authentication', () => {
             TELEGRAM_API_HASH_FILE: apiHashFile,
             TELEGRAM_API_ID_FILE: apiIdFile,
             TELEGRAM_USER_SESSION_FILE: sessionFile,
+            TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
           },
           stdout: () => {},
         })
@@ -778,6 +780,7 @@ describe('Telegram user authentication', () => {
             TELEGRAM_API_HASH_FILE: apiHashFile,
             TELEGRAM_API_ID_FILE: apiIdFile,
             TELEGRAM_USER_SESSION_FILE: sessionFile,
+            TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
           },
           stdout: () => {},
         })
@@ -815,6 +818,7 @@ describe('Telegram user authentication', () => {
           TELEGRAM_BOT_TOKEN: 'bot-secret',
           TELEGRAM_EXPECTED_BOT_ID: '42',
           TELEGRAM_USER_SESSION: 'user-session',
+          TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
         },
         fetchImpl: async (url) => {
           requests.push(url);
@@ -836,11 +840,215 @@ describe('Telegram user authentication', () => {
       expect(result.mode).toBe('both');
       expect(result.identities.bot.id).toBe(42);
       expect(result.identities.user.id).toBe(7);
+      expect(result.capabilities.effectiveMode).toBe('both');
+      expect(result.capabilities.user.state).toBe('ready');
       expect(requests).toEqual([
         'https://api.telegram.org/botbot-secret/getMe',
       ]);
       expect(requests[0]).not.toContain('getUpdates');
       expect(mirrorChecks).toBe(1);
+
+      const userOnly = await preflightTelegram({
+        authFactory: () => ({
+          validate: async () => ({ id: 7, username: 'owner' }),
+        }),
+        directory,
+        env: {
+          TELEGRAM_API_HASH: 'hash',
+          TELEGRAM_API_ID: '1',
+          TELEGRAM_USER_SESSION: 'user-session',
+          TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
+        },
+        fetchImpl: async () => {
+          throw new Error('user-only preflight must not call the Bot API');
+        },
+      });
+      expect(userOnly.mode).toBe('user-only');
+      expect(userOnly.capabilities).toEqual({
+        bot: { available: false, state: 'not-configured' },
+        effectiveMode: 'user-only',
+        user: { available: true, state: 'ready' },
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('degrades combined preflight without trial-importing foreign or revoked sessions', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'telegram-degraded-'));
+    const fetchImpl = async () => ({
+      json: async () => ({ ok: true, result: { id: 42 } }),
+      ok: true,
+      status: 200,
+    });
+    try {
+      let foreignClients = 0;
+      const foreign = await preflightTelegram({
+        authFactory: () => {
+          foreignClients += 1;
+          return { validate: async () => ({ id: 7 }) };
+        },
+        directory,
+        env: {
+          TELEGRAM_API_HASH: 'hash',
+          TELEGRAM_API_ID: '1',
+          TELEGRAM_BOT_TOKEN: 'bot-secret',
+          TELEGRAM_USER_SESSION: 'foreign-session',
+          TELEGRAM_USER_SESSION_FORMAT: 'teleproto/string-session-v1',
+        },
+        fetchImpl,
+      });
+      expect(foreignClients).toBe(0);
+      expect(foreign.mode).toBe('bot-only');
+      expect(foreign.capabilities.user).toEqual({
+        available: false,
+        reason: 'foreign-session-format',
+        state: 'relogin-required',
+      });
+
+      const revoked = new Error('the private session must never be echoed');
+      revoked.code = 'SESSION_REVOKED';
+      const expired = await preflightTelegram({
+        authFactory: () => ({
+          validate: async () => {
+            throw revoked;
+          },
+        }),
+        directory,
+        env: {
+          TELEGRAM_API_HASH: 'hash',
+          TELEGRAM_API_ID: '1',
+          TELEGRAM_BOT_TOKEN: 'bot-secret',
+          TELEGRAM_USER_SESSION: 'native-secret',
+          TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
+        },
+        fetchImpl,
+      });
+      expect(expired.mode).toBe('bot-only');
+      expect(expired.capabilities.user).toEqual({
+        available: false,
+        reason: 'SESSION_REVOKED',
+        state: 'expired-or-revoked',
+      });
+      expect(JSON.stringify(expired)).not.toContain('native-secret');
+      expect(JSON.stringify(expired)).not.toContain('must never be echoed');
+
+      const expiredWithoutCode = await preflightTelegram({
+        authFactory: () => ({
+          validate: async () => {
+            throw new Error('session expired');
+          },
+        }),
+        directory,
+        env: {
+          TELEGRAM_API_HASH: 'hash',
+          TELEGRAM_API_ID: '1',
+          TELEGRAM_BOT_TOKEN: 'bot-secret',
+          TELEGRAM_USER_SESSION: 'native-secret',
+          TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
+        },
+        fetchImpl,
+      });
+      expect(expiredWithoutCode.capabilities.user).toEqual({
+        available: false,
+        reason: 'SESSION_INVALID',
+        state: 'expired-or-revoked',
+      });
+
+      const mismatch = await capturedFailure(() =>
+        preflightTelegram({
+          authFactory: () => ({
+            validate: async () => {
+              throw new Error(
+                'Telegram identity mismatch: expected 7, received 8.'
+              );
+            },
+          }),
+          directory,
+          env: {
+            TELEGRAM_API_HASH: 'hash',
+            TELEGRAM_API_ID: '1',
+            TELEGRAM_BOT_TOKEN: 'bot-secret',
+            TELEGRAM_USER_SESSION: 'native-secret',
+            TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
+          },
+          fetchImpl,
+        })
+      );
+      expect(mismatch.message).toContain('identity mismatch');
+      expect(mismatch.message).not.toContain('expected 7');
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('requires a declared format for raw sessions and keeps user-only fail-closed', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    let constructed = 0;
+    const directory = await mkdtemp(join(tmpdir(), 'telegram-format-'));
+    const fetchImpl = async () => ({
+      json: async () => ({ ok: true, result: { id: 42 } }),
+      ok: true,
+      status: 200,
+    });
+    try {
+      const degraded = await preflightTelegram({
+        authFactory: () => {
+          constructed += 1;
+          return { validate: async () => ({ id: 7 }) };
+        },
+        directory,
+        env: {
+          TELEGRAM_API_HASH: 'hash',
+          TELEGRAM_API_ID: '1',
+          TELEGRAM_BOT_TOKEN: 'bot-secret',
+          TELEGRAM_USER_SESSION: 'undeclared-raw-session',
+        },
+        fetchImpl,
+      });
+      expect(constructed).toBe(0);
+      expect(degraded.capabilities.user.state).toBe('format-required');
+
+      const missingFormat = await capturedFailure(() =>
+        preflightTelegram({
+          authFactory: () => {
+            constructed += 1;
+            return { validate: async () => ({ id: 7 }) };
+          },
+          directory,
+          env: {
+            TELEGRAM_API_HASH: 'hash',
+            TELEGRAM_API_ID: '1',
+            TELEGRAM_USER_SESSION: 'undeclared-raw-session',
+          },
+          fetchImpl,
+        })
+      );
+      expect(missingFormat.message).toContain('format');
+
+      const revoked = new Error('secret-bearing remote failure');
+      revoked.code = 'SESSION_REVOKED';
+      const revokedFailure = await capturedFailure(() =>
+        preflightTelegram({
+          authFactory: () => ({
+            validate: async () => Promise.reject(revoked),
+          }),
+          directory,
+          env: {
+            TELEGRAM_API_HASH: 'hash',
+            TELEGRAM_API_ID: '1',
+            TELEGRAM_USER_SESSION: 'native-secret',
+            TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
+          },
+          fetchImpl,
+        })
+      );
+      expect(revokedFailure.message).toContain('SESSION_REVOKED');
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -930,6 +1138,7 @@ describe('Telegram user authentication', () => {
         TELEGRAM_API_ID: '1',
         TELEGRAM_BOT_TOKEN: 'bot-token',
         TELEGRAM_USER_SESSION: 'session',
+        TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
       },
       stderr: (line) => errors.push(line),
     });

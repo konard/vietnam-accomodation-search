@@ -1,8 +1,23 @@
-import { readFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdtemp,
+  mkdir,
+  realpath,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'test-anywhere';
 
-import { deploymentStateMachine } from '../scripts/deploy.mjs';
+import {
+  assertComposeDataMount,
+  deploymentStateMachine,
+} from '../scripts/deploy.mjs';
+import { validateDataDirectory } from '../scripts/data-directory.mjs';
 
 async function source(path) {
   return readFile(new globalThis.URL(`../${path}`, import.meta.url), 'utf8');
@@ -27,7 +42,13 @@ describe('container runtime contract', () => {
     const compose = await source('compose.yaml');
     expect(compose).toContain('127.0.0.1:${HEALTH_PORT:-8080}:8080');
     expect(compose).toContain('HEALTH_HOST: 0.0.0.0');
-    expect(compose).toContain('accommodation-data:/data');
+    expect(compose).toContain('type: bind');
+    expect(compose).toContain(
+      'source: ${DATA_DIRECTORY_HOST:-./.vietnam-accomodation-search}'
+    );
+    expect(compose).toContain('target: /data');
+    expect(compose).toContain('create_host_path: false');
+    expect(compose).not.toContain('accommodation-data:/data');
     expect(compose).toContain('stop_grace_period: 30s');
     expect(compose).toContain('read_only: true');
     expect(compose).toContain('no-new-privileges:true');
@@ -44,6 +65,10 @@ describe('container runtime contract', () => {
       "useModule('command-stream'"
     );
     expect(deploy).toContain('operation.lock');
+    expect(deploy).toContain("option('data-directory'");
+    expect(deploy).toContain('DATA_DIRECTORY_HOST');
+    expect(deploy).toContain('validateDataDirectory');
+    expect(deploy).toContain('storagePreflight');
     expect(deploy).toContain('candidate-${Date.now()}');
     expect(deploy).toContain('telegram preflight');
     expect(deploy).toContain('chromium.launch');
@@ -56,6 +81,119 @@ describe('container runtime contract', () => {
       deploy.indexOf('stop -t 30 app')
     );
     expect(deploy).not.toContain('console.log(process.env');
+  });
+
+  it('validates a private durable host directory and rejects unsafe targets', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    // macOS exposes /var as a system symlink. Resolve the temporary root so
+    // this success fixture does not accidentally exercise the rejection path.
+    const root = await realpath(
+      await mkdtemp(join(tmpdir(), 'accommodation-data-'))
+    );
+    try {
+      const directory = join(root, 'state');
+      expect(await validateDataDirectory(directory)).toBe(directory);
+      if (process.platform !== 'win32') {
+        expect((await lstat(directory)).mode & 0o777).toBe(0o700);
+      }
+
+      await writeFile(
+        join(directory, '.state-schema.json'),
+        '{"schemaVersion":999}\n'
+      );
+      let incompatible;
+      try {
+        await validateDataDirectory(directory);
+      } catch (error) {
+        incompatible = error;
+      }
+      expect(incompatible.message).toContain('newer schema');
+
+      const file = join(root, 'file');
+      await writeFile(file, 'not a directory');
+      let fileFailure;
+      try {
+        await validateDataDirectory(file);
+      } catch (error) {
+        fileFailure = error;
+      }
+      expect(fileFailure.message).toContain('directory');
+
+      const target = join(root, 'target');
+      const link = join(root, 'link');
+      await mkdir(target);
+      await symlink(
+        target,
+        link,
+        process.platform === 'win32' ? 'junction' : undefined
+      );
+      let linkFailure;
+      try {
+        await validateDataDirectory(join(link, 'escaped'));
+      } catch (error) {
+        linkFailure = error;
+      }
+      expect(linkFailure.message).toContain('symbolic link');
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it('rejects empty, filesystem-root, home, and secret host paths', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    for (const directory of ['', '/', tmpdir(), join(tmpdir(), '.ssh')]) {
+      let error;
+      try {
+        await validateDataDirectory(directory, {
+          homeDirectory: tmpdir(),
+        });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error instanceof Error).toBe(true);
+    }
+  });
+
+  it('requires the rendered Compose model to use the exact validated bind', () => {
+    const dataDirectory = resolve('accommodation-compose-state');
+    expect(
+      assertComposeDataMount(
+        {
+          services: {
+            app: {
+              volumes: [
+                { source: dataDirectory, target: '/data', type: 'bind' },
+              ],
+            },
+          },
+        },
+        dataDirectory
+      )
+    ).toBe(dataDirectory);
+
+    for (const volume of [
+      { source: 'legacy-volume', target: '/data', type: 'volume' },
+      {
+        source: resolve('accommodation-wrong'),
+        target: '/data',
+        type: 'bind',
+      },
+    ]) {
+      let error;
+      try {
+        assertComposeDataMount(
+          { services: { app: { volumes: [volume] } } },
+          dataDirectory
+        );
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error.message).toContain('exact bind mount');
+    }
   });
 
   it('never stops the current service for a broken candidate', async () => {

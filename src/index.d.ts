@@ -325,6 +325,11 @@ export declare function classifyListingPage(options?: {
   title?: string;
   url?: string;
 }): (typeof PAGE_CLASSIFICATIONS)[keyof typeof PAGE_CLASSIFICATIONS];
+export declare function classifyBrowserFailure(error: unknown): {
+  category: string;
+  retryable: boolean;
+  stopDomain: boolean;
+};
 export declare class BrowserPageError extends Error {
   classification: string;
   code: string;
@@ -338,11 +343,15 @@ export declare class DomainScheduler {
     ) => Promise<void>;
     maxAttempts?: number;
     maxBackoffMs?: number;
+    maxCooldownMs?: number;
     maxConcurrentDomains?: number;
     maxDelayMs?: number;
     maxRequestsPerDomain?: number;
     minDelayMs?: number;
+    now?: () => number;
     random?: () => number;
+    retryCooldownMs?: number;
+    store?: Record<string, unknown>;
   });
   run<T>(
     url: string,
@@ -371,7 +380,7 @@ export declare function createDomainRecords(options: {
 }): Array<Record<string, unknown>>;
 export declare function validatePublicRecord(value: unknown): true;
 
-export declare const RELEASE_AUDIT_SCHEMA_VERSION: 1;
+export declare const RELEASE_AUDIT_SCHEMA_VERSION: 2;
 export declare const RELEASE_AUDIT_GATES: readonly string[];
 export declare function compareReleaseAudit(
   baseline?: Record<string, unknown>,
@@ -382,7 +391,7 @@ export declare function compareReleaseAudit(
   changed: boolean;
   improvements: string[];
   regressions: string[];
-  schemaVersion: 1;
+  schemaVersion: 2;
 };
 export declare function evaluateReleaseGate(options?: {
   competingPoller?: boolean;
@@ -860,7 +869,7 @@ export declare function resolveTelegramSecrets(
   apiId?: string;
   botToken?: string;
   session?: string;
-  sessionFormat: string;
+  sessionFormat?: string;
 }>;
 
 export declare function preflightTelegram(
@@ -868,6 +877,11 @@ export declare function preflightTelegram(
 ): Promise<{
   identities: Record<string, { id: number; username?: string }>;
   mode: 'bot-only' | 'user-only' | 'both';
+  capabilities: {
+    effectiveMode: 'bot-only' | 'user-only' | 'both';
+    bot: { available: boolean; state: string; reason?: string };
+    user: { available: boolean; state: string; reason?: string };
+  };
 }>;
 
 export declare class TelegramAccessPolicy {

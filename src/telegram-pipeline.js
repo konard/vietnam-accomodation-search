@@ -152,6 +152,7 @@ export function assembleTelegramAlbums(messages) {
   });
 }
 
+// eslint-disable-next-line complexity -- Reconciliation accounts explicitly for every media, classification, OCR, and extraction terminal state.
 export async function reconcileTelegramMaterials(
   messages,
   { extract, maxOcrPhotos = 3, ocr, targetLocation = 'nha-trang' } = {}
@@ -197,7 +198,25 @@ export async function reconcileTelegramMaterials(
       continue;
     }
     const reconciled = { ...material, ocrState, relevance, text };
-    accepted.push(extract ? await extract(reconciled) : reconciled);
+    try {
+      const extracted = extract ? await extract(reconciled) : reconciled;
+      if (extracted) {
+        accepted.push(extracted);
+      } else {
+        reviewQueue.push({
+          id: material.id,
+          reason: 'offer-extraction-empty',
+          state: 'error',
+        });
+      }
+    } catch (error) {
+      reviewQueue.push({
+        id: material.id,
+        reason: 'offer-extraction-failed',
+        state: 'error',
+        error: error?.code || 'parser-failure',
+      });
+    }
   }
   return {
     accepted: accepted.filter(Boolean),

@@ -28,9 +28,9 @@ function expectSubset(actual, expected) {
   }
 }
 
-describe('reviewed Telegram parser corpus v1', () => {
+describe('reviewed Telegram parser corpus v2', () => {
   it('is versioned, multilingual, unique, and free of live identities', () => {
-    expect(corpus.schemaVersion).toBe(1);
+    expect(corpus.schemaVersion).toBe(2);
     expect(corpus.dataPolicy).toBe('synthetic-and-anonymized-only');
     expect(new Set(corpus.cases.map(({ id }) => id)).size).toBe(
       corpus.cases.length
@@ -93,6 +93,33 @@ describe('reviewed Telegram parser corpus v1', () => {
     });
     expect(result.accepted.length).toBe(testCase.expected.offerCount);
     expect(result.accepted[0].photos.length).toBe(testCase.expected.photoCount);
+    expectSubset(result.accepted[0], { price: testCase.expected.price });
+  });
+
+  it('classifies a reviewed photo-only case through bounded OCR', async () => {
+    const testCase = corpus.cases.find(
+      ({ id }) => id === 'telegram-photo-only-ocr-offer'
+    );
+    const messages = testCase.input.messages.map((message, index) => ({
+      ...message,
+      chatId: 'synthetic-chat',
+      id: index + 1,
+    }));
+    const result = await reconcileTelegramMaterials(messages, {
+      extract: (material) =>
+        parseTelegramOffer(
+          {
+            ...material,
+            chat: { username: 'synthetic_fixture' },
+            date: '2026-09-22T00:00:00.000Z',
+            messageId: material.messageIds[0],
+          },
+          { now: new Date('2026-09-22T00:00:00.000Z') }
+        ),
+      ocr: async () => testCase.input.ocrText,
+    });
+    expect(result.accepted.length).toBe(testCase.expected.offerCount);
+    expect(result.accepted[0].raw.ocrState).toBe(testCase.expected.ocrState);
     expectSubset(result.accepted[0], { price: testCase.expected.price });
   });
 

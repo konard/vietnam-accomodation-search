@@ -295,9 +295,16 @@ describe('issue 20 browser, release, auth, and history runtime edges', () => {
 
   it('preserves structured release evidence and rejects foreign sessions', async () => {
     const audit = createReleaseAudit({
-      gates: { 'offline-fixtures': { note: 'verified', status: 'pass' } },
+      gates: {
+        'offline-quality-and-clean-install': {
+          note: 'verified',
+          status: 'pass',
+        },
+      },
     });
-    expect(audit.gates['offline-fixtures'].note).toBe('verified');
+    expect(audit.gates['offline-quality-and-clean-install'].note).toBe(
+      'verified'
+    );
     expect(() =>
       validateTelegramConfiguration({
         apiHash: 'hash',
