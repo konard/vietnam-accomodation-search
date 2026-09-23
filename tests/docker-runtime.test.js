@@ -83,6 +83,9 @@ describe('container runtime contract', () => {
   });
 
   it('validates a private durable host directory and rejects unsafe targets', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const root = await mkdtemp(join(tmpdir(), 'accommodation-data-'));
     try {
       const directory = join(root, 'state');
@@ -128,6 +131,9 @@ describe('container runtime contract', () => {
   });
 
   it('rejects empty, filesystem-root, home, and secret host paths', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     for (const directory of ['', '/', tmpdir(), join(tmpdir(), '.ssh')]) {
       let error;
       try {

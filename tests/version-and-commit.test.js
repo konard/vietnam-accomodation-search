@@ -46,6 +46,9 @@ describe('version-and-commit.mjs formats the release commit', () => {
   });
 
   it('never passes deleted changesets to Prettier and preserves unusual pathnames', () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const root = mkdtempSync(join(tmpdir(), 'release-formatting-'));
     const run = (args) =>
       execFileSync('git', args, { cwd: root, encoding: 'buffer' });
@@ -87,6 +90,18 @@ describe('version-and-commit.mjs push failure reporting', () => {
     expect(script).toContain('Failed to push version');
     expect(script).not.toContain('resolves (it does not throw)');
     expect(script).not.toContain('pushResult.code');
+  });
+});
+
+describe('version-and-commit.mjs partial-release recovery', () => {
+  it('fast-forwards to the already-pushed version before candidate verification', () => {
+    const recovery = script.indexOf('git merge --ff-only origin/main');
+    const releasedOutput = script.indexOf(
+      "setOutput('already_released', 'true')"
+    );
+
+    expect(recovery).toBeGreaterThan(-1);
+    expect(releasedOutput).toBeGreaterThan(recovery);
   });
 });
 

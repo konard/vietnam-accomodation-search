@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto';
 const SENSITIVE_KEY =
   /(?:authorization|cookie|token|secret|session|password|phone|email|address|handle|username|access.?hash|private.?peer)/iu;
 const EMAIL = /[\p{L}\d.!#$%&'*+/=?^_`{|}~-]+@[\p{L}\d-]+(?:\.[\p{L}\d-]+)+/giu;
-const PHONE = /\+?\d[\d\s().-]{7,20}\d/gu;
+// A slash-delimited numeric path is an immutable artifact/run identifier, not
+// a phone number. Requiring a non-slash boundary keeps those URLs intact while
+// preserving redaction for ordinary prose and key/value contacts.
+const PHONE = /(?<![/\d])\+?\d[\d\s().-]{7,20}\d/gu;
 const AUTHORIZATION = /\b(?:Basic|Bearer)\s+[A-Za-z\d._~+/=-]+/giu;
 const BOT_TOKEN = /\b\d{6,12}:[A-Za-z\d_-]{20,}\b/gu;
 const SECRET_ASSIGNMENT =
@@ -24,7 +27,9 @@ function redactString(value) {
     .replace(BOT_TOKEN, '[REDACTED]')
     .replace(SECRET_ASSIGNMENT, '[REDACTED]')
     .replace(EMAIL, '[REDACTED]')
-    .replace(PHONE, '[REDACTED]');
+    .replace(PHONE, (candidate) =>
+      /^\d{4}-\d{2}-\d{2}$/u.test(candidate) ? candidate : '[REDACTED]'
+    );
 }
 
 // eslint-disable-next-line complexity -- Recursive redaction handles each scalar, error, cycle, array, and object boundary explicitly.

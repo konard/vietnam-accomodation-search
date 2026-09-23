@@ -32,11 +32,14 @@ describe('smoke-test-package.mjs', () => {
           'serve --port 38217',
           '--server-health-url',
           'http://localhost:38217/health',
+          '--evidence-output',
+          '/tmp/published-package.json',
         ],
         {}
       )
     ).toEqual({
       cliArgs: ['add', '2', '3'],
+      evidenceOutput: '/tmp/published-package.json',
       jsRoot: '',
       maxAttempts: 2,
       packageName: '@scope/pkg',

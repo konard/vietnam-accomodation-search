@@ -286,6 +286,7 @@ describe('CI timeout policy', () => {
       'changeset-pr': 10,
       'pipeline-status': 5,
       'release-preflight': 5,
+      'release-identity': 10,
     };
 
     expect(listWorkflowJobs(releaseWorkflow).sort()).toEqual(

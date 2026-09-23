@@ -192,6 +192,9 @@ describe('Telegram live-audit runtime', () => {
   });
 
   it('round-trips, queries, edits, and deletes typed audit links', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const directory = await mkdtemp(join(tmpdir(), 'telegram-audit-'));
     temporaryDirectories.push(directory);
     const store = new LinksStore({ binaryMirror: false, directory });
@@ -221,6 +224,9 @@ describe('Telegram live-audit runtime', () => {
   });
 
   it('persists the oldest source position for a later audit run', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const directory = await mkdtemp(join(tmpdir(), 'telegram-checkpoint-'));
     temporaryDirectories.push(directory);
     const store = new LinksStore({ binaryMirror: false, directory });

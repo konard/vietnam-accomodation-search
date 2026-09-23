@@ -651,7 +651,11 @@ describe('issue 20 browser, release, and Pages gates', () => {
     const report = createReleaseAudit({
       mode: 'live',
       credentials: false,
-      release: { tag: 'v2', commitSha: 'abc', packageVersion: '1.0.0' },
+      release: {
+        tag: 'v1.0.0',
+        commitSha: 'a'.repeat(40),
+        packageVersion: '1.0.0',
+      },
       runtime: { token: 'must-not-persist' },
       now: () => new Date('2026-09-22T00:00:00Z'),
     });

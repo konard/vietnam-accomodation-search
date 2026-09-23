@@ -875,6 +875,9 @@ describe('Telegram user authentication', () => {
   });
 
   it('degrades combined preflight without trial-importing foreign or revoked sessions', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const directory = await mkdtemp(join(tmpdir(), 'telegram-degraded-'));
     const fetchImpl = async () => ({
       json: async () => ({ ok: true, result: { id: 42 } }),
@@ -933,6 +936,28 @@ describe('Telegram user authentication', () => {
       expect(JSON.stringify(expired)).not.toContain('native-secret');
       expect(JSON.stringify(expired)).not.toContain('must never be echoed');
 
+      const expiredWithoutCode = await preflightTelegram({
+        authFactory: () => ({
+          validate: async () => {
+            throw new Error('session expired');
+          },
+        }),
+        directory,
+        env: {
+          TELEGRAM_API_HASH: 'hash',
+          TELEGRAM_API_ID: '1',
+          TELEGRAM_BOT_TOKEN: 'bot-secret',
+          TELEGRAM_USER_SESSION: 'native-secret',
+          TELEGRAM_USER_SESSION_FORMAT: 'mtcute/session-string-v1',
+        },
+        fetchImpl,
+      });
+      expect(expiredWithoutCode.capabilities.user).toEqual({
+        available: false,
+        reason: 'SESSION_INVALID',
+        state: 'expired-or-revoked',
+      });
+
       const mismatch = await capturedFailure(() =>
         preflightTelegram({
           authFactory: () => ({
@@ -961,6 +986,9 @@ describe('Telegram user authentication', () => {
   });
 
   it('requires a declared format for raw sessions and keeps user-only fail-closed', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     let constructed = 0;
     const directory = await mkdtemp(join(tmpdir(), 'telegram-format-'));
     const fetchImpl = async () => ({

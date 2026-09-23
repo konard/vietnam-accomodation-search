@@ -151,6 +151,13 @@ the `DOCKERHUB_TOKEN` secret to enable it. Inspect a release with:
 docker buildx imagetools inspect OWNER/IMAGE:VERSION
 ```
 
+Docker builds check out the final `vVERSION` tag, not the pre-version workflow
+event SHA. After npm, the GitHub Release, and both native manifests exist, the
+workflow cross-checks their versions and digests against the exact retested
+candidate. It uploads `release-identity.json` as a retained workflow artifact
+and a GitHub Release asset. If Docker Hub publishing is not configured, no
+identity artifact is created and the post-release audit remains pending.
+
 ## Example application and GitHub Pages
 
 GitHub Pages deployment is optional by default. Pull requests and ordinary

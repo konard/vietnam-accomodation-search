@@ -96,7 +96,7 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   const result = await runReleaseAudit(process.argv.slice(2));
-  if (result.report.status === 'failure') {
+  if (result.report.status !== 'pass') {
     process.exitCode = 1;
   }
 }

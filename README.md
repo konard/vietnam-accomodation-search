@@ -57,10 +57,12 @@ docker compose up --build -d
 docker compose ps
 ```
 
-The health endpoint is bound to `127.0.0.1:8080` by default. State lives in
-the `vietnam-accomodation-search-data` named volume and survives image
-replacement. See [deployment and recovery](docs/deployment.md) for candidate
-preflight, redeploy, rollback, logs, backup, restore, and Docker Hub setup.
+The health endpoint is bound to `127.0.0.1:8080` by default. State lives in the
+operator-owned `./.vietnam-accomodation-search` host directory by default (or
+the absolute `DATA_DIRECTORY_HOST` path) and survives container, Compose, and
+Docker removal. See [deployment and recovery](docs/deployment.md) for candidate
+preflight, redeploy, rollback, migration, logs, backup, restore, and Docker Hub
+setup.
 
 ## Configuration
 

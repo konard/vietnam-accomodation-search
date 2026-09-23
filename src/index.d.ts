@@ -380,7 +380,7 @@ export declare function createDomainRecords(options: {
 }): Array<Record<string, unknown>>;
 export declare function validatePublicRecord(value: unknown): true;
 
-export declare const RELEASE_AUDIT_SCHEMA_VERSION: 1;
+export declare const RELEASE_AUDIT_SCHEMA_VERSION: 2;
 export declare const RELEASE_AUDIT_GATES: readonly string[];
 export declare function compareReleaseAudit(
   baseline?: Record<string, unknown>,
@@ -391,7 +391,7 @@ export declare function compareReleaseAudit(
   changed: boolean;
   improvements: string[];
   regressions: string[];
-  schemaVersion: 1;
+  schemaVersion: 2;
 };
 export declare function evaluateReleaseGate(options?: {
   competingPoller?: boolean;

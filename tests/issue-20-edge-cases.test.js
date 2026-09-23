@@ -10,6 +10,7 @@ import {
   DomainScheduler,
   PAGE_CLASSIFICATIONS,
   browserAdapterFor,
+  classifyBrowserFailure,
   classifyListingPage,
 } from '../src/browser-adapters.js';
 import {
@@ -24,6 +25,7 @@ import {
   evaluateReleaseGate,
   selectReleaseForAudit,
 } from '../src/release-audit.js';
+
 import {
   GRAMJS_SESSION_FORMAT,
   SESSION_FORMAT,
@@ -50,6 +52,69 @@ import {
   createSegmentLedger,
   redactTraceValue,
 } from '../src/trace.js';
+
+const auditDigest = `sha256:${'a'.repeat(64)}`;
+const auditRunId = '123456789012';
+const auditSha = 'b'.repeat(40);
+
+function passingReleaseEvidence() {
+  return Object.fromEntries(
+    RELEASE_AUDIT_GATES.map((gate) => [
+      gate,
+      {
+        evidence: [
+          {
+            sha256: auditDigest,
+            url: `https://github.com/konard/vietnam-accomodation-search/actions/runs/${auditRunId}#${gate}`,
+          },
+        ],
+        observedAt: '2026-09-22T00:00:00.000Z',
+        status: 'pass',
+      },
+    ])
+  );
+}
+
+function immutableReleaseIdentity() {
+  return {
+    baseline: { tag: 'v0.11.30' },
+    commitSha: auditSha,
+    docker: {
+      image: 'ghcr.io/konard/vietnam-accomodation-search',
+      manifestDigest: auditDigest,
+      platforms: {
+        'linux/amd64': { digest: `sha256:${'c'.repeat(64)}` },
+        'linux/arm64': { digest: `sha256:${'d'.repeat(64)}` },
+      },
+      version: '1.0.0',
+    },
+    draft: false,
+    package: {
+      integrity: auditDigest,
+      installedVersion: '1.0.0',
+      name: 'vietnam-accomodation-search',
+      version: '1.0.0',
+    },
+    prerelease: false,
+    publishedAt: '2026-09-22T00:00:00.000Z',
+    releaseUrl:
+      'https://github.com/konard/vietnam-accomodation-search/releases/tag/v1.0.0',
+    runtimes: {
+      bun: '1.2.23',
+      deno: '2.5.2',
+      node: 'v24.9.0',
+    },
+    schemas: {
+      domainGraph: 1,
+      linksNotation: 1,
+      releaseAudit: 2,
+      trace: 1,
+    },
+    tag: 'v1.0.0',
+    tagTargetSha: auditSha,
+    workflowRunUrl: `https://github.com/konard/vietnam-accomodation-search/actions/runs/${auditRunId}`,
+  };
+}
 
 async function failureOf(operation) {
   try {
@@ -82,6 +147,88 @@ describe('issue 20 browser edge contracts', () => {
     expect(browserAdapterFor('https://sub.booking.com/search').id).toBe(
       'booking-rental-v1'
     );
+  });
+
+  it('classifies scheduler failures and persists through the storage fallback', async () => {
+    const failureCases = [
+      [
+        { classification: PAGE_CLASSIFICATIONS.EMPTY },
+        { category: 'empty', retryable: false, stopDomain: false },
+      ],
+      [
+        { status: 429 },
+        { category: 'rate-limit', retryable: true, stopDomain: false },
+      ],
+      [
+        { message: 'navigation timeout' },
+        { category: 'timeout', retryable: true, stopDomain: false },
+      ],
+      [
+        { code: 'ECONNRESET' },
+        { category: 'transport', retryable: true, stopDomain: false },
+      ],
+      [
+        new Error('temporary'),
+        { category: 'transient', retryable: true, stopDomain: false },
+      ],
+    ];
+    for (const [error, expected] of failureCases) {
+      expect(classifyBrowserFailure(error)).toEqual(expected);
+    }
+
+    const typedScheduler = new DomainScheduler({ maxAttempts: 2 });
+    const emptyPage = Object.assign(new Error('empty page'), {
+      classification: PAGE_CLASSIFICATIONS.EMPTY,
+    });
+    expect(
+      (
+        await failureOf(() =>
+          typedScheduler.run('https://empty.test/search', async () => {
+            throw emptyPage;
+          })
+        )
+      ).classification
+    ).toBe(PAGE_CLASSIFICATIONS.EMPTY);
+
+    const writes = [];
+    const scheduler = new DomainScheduler({
+      delay: async () => {},
+      maxAttempts: 1,
+      now: () => 1_000,
+      store: {
+        loadRecords: async () => [
+          {
+            blockedUntil: 0,
+            consecutiveFailures: 1,
+            domain: 'fallback.test',
+            id: 'fallback.test',
+          },
+        ],
+        saveRecords: async (kind, records) => writes.push({ kind, records }),
+      },
+    });
+    const rateLimit = Object.assign(new Error('limited'), {
+      retryAfterMs: 4_000,
+      status: 429,
+    });
+    expect(
+      (
+        await failureOf(() =>
+          scheduler.run('https://fallback.test/search', async () => {
+            throw rateLimit;
+          })
+        )
+      ).message
+    ).toBe('limited');
+    expect(writes[0].kind).toBe('browser-domain-cooldown');
+    expect(writes[0].records.at(-1)).toEqual({
+      blockedUntil: 5_000,
+      category: 'rate-limit',
+      consecutiveFailures: 2,
+      domain: 'fallback.test',
+      id: 'fallback.test',
+      schemaVersion: 1,
+    });
   });
 
   it('cancels before and during scheduler delays and releases queued domains', async () => {
@@ -286,22 +433,109 @@ describe('issue 20 semantic, trace, session, and release edges', () => {
     ).toBe('v2');
     const passing = createReleaseAudit({
       credentials: true,
+      gates: passingReleaseEvidence(),
+      mode: 'live',
+      now: () => new Date('2026-09-22T00:00:00Z'),
+      release: immutableReleaseIdentity(),
+      runtime: { platform: 'linux' },
+    });
+    expect(passing.status).toBe('pass');
+    expect(passing.closureEligible).toBe(true);
+    expect(passing.release.commitSha).toBe(auditSha);
+    expect(passing.runtime.bun).toBe('1.2.23');
+    expect(passing.gates['release-identity'].status).toBe('pass');
+    expect(passing.observedAt).toBe('2026-09-22T00:00:00.000Z');
+    expect(passing.release.workflowRunUrl).toBe(
+      `https://github.com/konard/vietnam-accomodation-search/actions/runs/${auditRunId}`
+    );
+    expect(
+      passing.gates['offline-quality-and-clean-install'].evidence[0].url
+    ).toContain(`/actions/runs/${auditRunId}#`);
+
+    const fixtureOnly = createReleaseAudit({
+      gates: passingReleaseEvidence(),
+      release: immutableReleaseIdentity(),
+    });
+    expect(fixtureOnly.status).toBe('pending');
+    expect(fixtureOnly.closureEligible).toBe(false);
+    expect(fixtureOnly.gates['release-identity'].reason).toBe(
+      'post-release-live-audit-required'
+    );
+
+    const inconsistent = immutableReleaseIdentity();
+    inconsistent.package.installedVersion = '0.9.0';
+    const inconsistentAudit = createReleaseAudit({
+      credentials: true,
+      gates: passingReleaseEvidence(),
+      mode: 'live',
+      release: inconsistent,
+      runtime: { bun: '1', deno: '2', node: 'v24' },
+    });
+    expect(inconsistentAudit.status).toBe('failure');
+    expect(inconsistentAudit.gates['release-identity'].problems).toContain(
+      'installed-package-version-mismatch'
+    );
+
+    const contradictory = immutableReleaseIdentity();
+    contradictory.draft = true;
+    contradictory.prerelease = true;
+    contradictory.commitSha = 'short-sha';
+    contradictory.tagTargetSha = 'other-short-sha';
+    contradictory.publishedAt = 'not-a-date';
+    contradictory.releaseUrl = 'http://unsafe.example/release';
+    contradictory.workflowRunUrl = 'invalid';
+    contradictory.tag = 'v9.0.0';
+    contradictory.package = {
+      installedVersion: '8.0.0',
+      integrity: 'bad-digest',
+      name: 'wrong-package',
+      version: '7.0.0',
+    };
+    contradictory.docker = {
+      image: 'owner/image',
+      manifestDigest: 'bad-digest',
+      platforms: {
+        'linux/amd64': { digest: 'bad-digest' },
+        'linux/arm64': { digest: 'bad-digest' },
+      },
+      version: '6.0.0',
+    };
+    contradictory.schemas.releaseAudit = 1;
+    const contradictoryAudit = createReleaseAudit({
+      credentials: true,
+      gates: passingReleaseEvidence(),
+      mode: 'live',
+      release: contradictory,
+    });
+    expect(contradictoryAudit.status).toBe('failure');
+    expect(contradictoryAudit.gates['release-identity'].problems).toEqual([
+      'release-is-draft',
+      'release-is-prerelease',
+      'tested-commit-sha-not-full',
+      'tag-target-sha-not-full',
+      'tag-target-does-not-match-tested-commit',
+      'release-published-at-invalid',
+      'release-url-invalid',
+      'workflow-run-url-invalid',
+      'npm-package-name-mismatch',
+      'tag-package-version-mismatch',
+      'installed-package-version-mismatch',
+      'docker-package-version-mismatch',
+      'artifact-digest-invalid',
+      'release-audit-schema-mismatch',
+    ]);
+
+    const unprovenGates = createReleaseAudit({
+      credentials: true,
       gates: Object.fromEntries(
         RELEASE_AUDIT_GATES.map((gate) => [gate, 'pass'])
       ),
       mode: 'live',
-      now: () => new Date('2026-09-22T00:00:00Z'),
-      release: {
-        imageDigest: 'sha256:fixture',
-        packageVersion: '1.0.0',
-        publishedAt: '2026-09-22',
-        sha: 'abc',
-        tagName: 'v1',
-      },
-      runtime: { imageDigest: 'sha256:runtime', node: 'v24', platform: 'test' },
+      release: immutableReleaseIdentity(),
+      runtime: { bun: '1', deno: '2', node: 'v24' },
     });
-    expect(passing.status).toBe('pass');
-    expect(passing.release.commitSha).toBe('abc');
+    expect(unprovenGates.status).toBe('pending');
+    expect(unprovenGates.gates['evidence-integrity'].status).toBe('pending');
     const missingRelease = createReleaseAudit({
       credentials: true,
       gates: Object.fromEntries(
@@ -314,7 +548,8 @@ describe('issue 20 semantic, trace, session, and release edges', () => {
       'release-identity-incomplete'
     );
     expect(
-      createReleaseAudit({ gates: { 'bot-only': 'failure' } }).status
+      createReleaseAudit({ gates: { 'bot-only-authentication': 'failure' } })
+        .status
     ).toBe('failure');
   });
 });

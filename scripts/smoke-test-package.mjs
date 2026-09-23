@@ -23,7 +23,7 @@ const DEFAULT_SERVER_TIMEOUT_SECONDS = 15;
 const DEFAULT_SLEEP_SECONDS = 10;
 const BOOLEAN_OPTIONS = new Set(['skip-cli', 'skip-library']);
 const USAGE =
-  'Usage: node scripts/smoke-test-package.mjs --package-version <version> [--package-name <name>] [--js-root <path>] [--max-attempts <count>] [--sleep-seconds <count>] [--cli-args <args>] [--skip-cli] [--skip-library] [--server-bin <bin>] [--server-args <args>] [--server-health-url <url>]';
+  'Usage: node scripts/smoke-test-package.mjs --package-version <version> [--package-name <name>] [--js-root <path>] [--max-attempts <count>] [--sleep-seconds <count>] [--cli-args <args>] [--skip-cli] [--skip-library] [--server-bin <bin>] [--server-args <args>] [--server-health-url <url>] [--evidence-output <path>]';
 
 function parsePositiveInteger(value, optionName) {
   const parsed = Number(value);
@@ -128,6 +128,7 @@ export function parseArgs(argv, env = process.env) {
       cliValue('cli-args', ['SMOKE_TEST_CLI_ARGS']),
       DEFAULT_CLI_ARGS
     ),
+    evidenceOutput: cliValue('evidence-output', ['RELEASE_EVIDENCE_OUTPUT']),
     jsRoot: cliValue('js-root', ['JS_ROOT']),
     maxAttempts: positiveValue(
       'max-attempts',
@@ -418,8 +419,28 @@ export async function checkServerEntryPoint({
   }
 }
 
+function writePackageEvidence(path, packageJson) {
+  if (!path) {
+    return;
+  }
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      {
+        name: packageJson.name,
+        observedAt: new Date().toISOString(),
+        version: packageJson.version,
+      },
+      null,
+      2
+    )}\n`,
+    { mode: 0o600 }
+  );
+}
+
 export async function smokeTestPackage({
   cliArgs = DEFAULT_CLI_ARGS,
+  evidenceOutput,
   maxAttempts = DEFAULT_MAX_ATTEMPTS,
   packageName,
   packageVersion,
@@ -492,6 +513,7 @@ export async function smokeTestPackage({
       workspace,
     });
 
+    writePackageEvidence(evidenceOutput, installedPackageJson);
     stdout(`All configured entry points verified for ${packageSpec}`);
   } finally {
     rmSync(workspace, { force: true, recursive: true });

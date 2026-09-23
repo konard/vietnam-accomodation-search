@@ -599,6 +599,16 @@ jobs:
           node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+
       - name: Remove deprecated npm auth config
         run: node scripts/sanitize-npm-userconfig.mjs
 
@@ -641,6 +651,35 @@ jobs:
           RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
         run: node scripts/version-and-commit.mjs --mode changeset
 
+      - name: Verify exact release candidate
+        if: >-
+          steps.version.outputs.version_committed == 'true' ||
+          steps.version.outputs.already_released == 'true' ||
+          (steps.check_release.outputs.should_release == 'true' && steps.check_release.outputs.skip_bump == 'true')
+        run: |
+          npm ci
+          npm run check
+          npm run test:coverage
+          node -e "require('node:fs').rmSync('node_modules', { force: true, recursive: true })"
+          # Bun migrates the committed package-lock.json to install its exact
+          # graph. The generated migration lock is deliberately ephemeral:
+          # package-lock.json remains the repository's single JS lockfile.
+          bun install --no-save
+          bun test --timeout 30000
+          node -e "require('node:fs').rmSync('bun.lock', { force: true })"
+          node -e "require('node:fs').rmSync('node_modules', { force: true, recursive: true })"
+          deno ci
+          deno test --frozen --allow-read
+
+      - name: Record exact release candidate identity
+        if: >-
+          steps.version.outputs.version_committed == 'true' ||
+          steps.version.outputs.already_released == 'true' ||
+          (steps.check_release.outputs.should_release == 'true' && steps.check_release.outputs.skip_bump == 'true')
+        run: |
+          mkdir -p /tmp/release-evidence
+          node scripts/record-release-candidate.mjs --output /tmp/release-evidence/candidate.json
+
       - name: Publish to npm
         # Run if version was committed, if a previous attempt already committed (for re-runs),
         # or if check-release-needed detected an unpublished version (self-healing, issue #36)
@@ -664,7 +703,16 @@ jobs:
         if: steps.publish.outputs.published == 'true'
         env:
           PACKAGE_VERSION: ${{ steps.publish.outputs.published_version }}
-        run: bash scripts/run-with-budget-warning.sh 300 "npm package smoke test" node scripts/smoke-test-package.mjs --package-version "$PACKAGE_VERSION"
+        run: bash scripts/run-with-budget-warning.sh 300 "npm package smoke test" node scripts/smoke-test-package.mjs --package-version "$PACKAGE_VERSION" --evidence-output /tmp/release-evidence/published-package.json
+
+      - name: Upload exact candidate evidence
+        if: steps.publish.outputs.published == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: /tmp/release-evidence/*.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Create GitHub Release
         if: steps.publish.outputs.published == 'true'
@@ -727,6 +775,16 @@ jobs:
           node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+
       - name: Remove deprecated npm auth config
         run: node scripts/sanitize-npm-userconfig.mjs
 
@@ -745,6 +803,28 @@ jobs:
           RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
         run: node scripts/version-and-commit.mjs --mode instant --bump-type "$BUMP_TYPE" --description "$RELEASE_DESCRIPTION"
 
+      - name: Verify exact release candidate
+        if: steps.version.outputs.version_committed == 'true' || steps.version.outputs.already_released == 'true'
+        run: |
+          npm ci
+          npm run check
+          npm run test:coverage
+          node -e "require('node:fs').rmSync('node_modules', { force: true, recursive: true })"
+          # See the changeset release path above: consume package-lock.json
+          # and discard Bun's ephemeral migration lock.
+          bun install --no-save
+          bun test --timeout 30000
+          node -e "require('node:fs').rmSync('bun.lock', { force: true })"
+          node -e "require('node:fs').rmSync('node_modules', { force: true, recursive: true })"
+          deno ci
+          deno test --frozen --allow-read
+
+      - name: Record exact release candidate identity
+        if: steps.version.outputs.version_committed == 'true' || steps.version.outputs.already_released == 'true'
+        run: |
+          mkdir -p /tmp/release-evidence
+          node scripts/record-release-candidate.mjs --output /tmp/release-evidence/candidate.json
+
       - name: Publish to npm
         # Run if version was committed OR if a previous attempt already committed (for re-runs)
         if: steps.version.outputs.version_committed == 'true' || steps.version.outputs.already_released == 'true'
@@ -759,7 +839,16 @@ jobs:
         if: steps.publish.outputs.published == 'true'
         env:
           PACKAGE_VERSION: ${{ steps.publish.outputs.published_version }}
-        run: node scripts/smoke-test-package.mjs --package-version "$PACKAGE_VERSION"
+        run: node scripts/smoke-test-package.mjs --package-version "$PACKAGE_VERSION" --evidence-output /tmp/release-evidence/published-package.json
+
+      - name: Upload exact candidate evidence
+        if: steps.publish.outputs.published == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: /tmp/release-evidence/*.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Create GitHub Release
         if: steps.publish.outputs.published == 'true'
@@ -853,6 +942,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: v${{ needs.docker-publish-config.outputs.version }}
           persist-credentials: false
 
       - name: Build and push platform image by digest
@@ -954,6 +1044,80 @@ jobs:
               fi
             done
           done
+
+  # Assemble only after npm, the final GitHub Release, and both native image
+  # manifests exist. This is an identity artifact, not a claim that the manual
+  # Telegram/browser gates have passed.
+  release-identity:
+    name: Immutable Release Identity
+    needs: [release, instant-release, docker-publish-config, docker-publish]
+    if: |
+      !cancelled() &&
+      needs.docker-publish.result == 'success' &&
+      (
+        (needs.release.result == 'success' && needs.release.outputs.published == 'true') ||
+        (needs.instant-release.result == 'success' && needs.instant-release.outputs.published == 'true')
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: main-writer-${{ github.repository }}-main
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      IMAGE: ${{ needs.docker-publish-config.outputs.image }}
+      VERSION: ${{ needs.docker-publish-config.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+
+      - name: Set up Docker Buildx (resilient)
+        uses: ./.github/actions/setup-buildx-resilient
+
+      - name: Download exact candidate evidence
+        uses: actions/download-artifact@v8
+        env:
+          NODE_OPTIONS: --disable-warning=DEP0005
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: /tmp/release-evidence
+
+      - name: Read immutable image manifest
+        run: docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw > /tmp/release-evidence/manifest.json
+
+      - name: Cross-check and assemble release identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          node scripts/collect-release-identity.mjs
+          --candidate /tmp/release-evidence/candidate.json
+          --installed-package /tmp/release-evidence/published-package.json
+          --manifest /tmp/release-evidence/manifest.json
+          --image "${IMAGE}"
+          --version "${VERSION}"
+          --repository "${GITHUB_REPOSITORY}"
+          --output /tmp/release-evidence/release-identity.json
+
+      - name: Upload immutable release identity artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-identity-${{ needs.docker-publish-config.outputs.version }}
+          path: /tmp/release-evidence/release-identity.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Attach immutable identity to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: gh release upload "v${VERSION}" /tmp/release-evidence/release-identity.json --clobber --repo "${REPOSITORY}"
 
   # Manual Changeset PR - creates a pull request with the changeset for review
   changeset-pr:
@@ -1065,6 +1229,7 @@ jobs:
       - release
       - instant-release
       - docker-publish
+      - release-identity
       - changeset-pr
     steps:
       - uses: actions/checkout@v6

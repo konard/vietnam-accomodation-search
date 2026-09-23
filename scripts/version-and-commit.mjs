@@ -235,6 +235,9 @@ async function main() {
         console.log(
           'Assuming version bump was already completed in a previous attempt.'
         );
+        // Verification and evidence collection run immediately after this
+        // script, so move the worktree to the exact candidate they inspect.
+        await $`git merge --ff-only origin/main`;
         setOutput('version_committed', 'false');
         setOutput('already_released', 'true');
         setOutput('new_version', remoteVersion);
