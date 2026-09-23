@@ -176,11 +176,26 @@ The bot environment needs `TELEGRAM_BOT_TOKEN` and should pin
 `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and a legacy
 `TELEGRAM_USER_SESSION`; set `TELEGRAM_E2E_EXPECTED_USER_ID` to pin the test
 account. The harness derives the private numeric allowlist from the authorized
-driver account, never logs message text or identities, writes only redacted
+driver account, never prints message text or identities, writes only redacted
 `0600` process logs, and deletes its temporary data directory by default.
 Explicit `--data-directory` paths must be empty real directories whose final
 name contains `e2e`; they are preserved for inspection. `--keep-data` preserves
 an automatically created temporary directory only when requested.
+
+The runner records a pre-test conversation boundary and deletes every command
+and bot reply created after it, including replies that did not match an
+expected assertion. A bot error/usage reply fails the run even if a later reply
+would otherwise satisfy the command assertion. On failure, the complete test
+conversation is token/session-redacted into a mode-`0600` ignored file under
+`experiments/logs/` before Telegram cleanup and temporary-state removal. At
+startup, narrowly recognized leftovers from an interrupted earlier E2E are
+logged the same way and deleted; ordinary bot conversations are never selected
+by this cleanup rule. Failure transcripts are local QA evidence and must not be
+committed.
+
+Use `--cleanup-leftovers-only` with the same bot/user environment arguments to
+verify or remove narrowly recognized remnants without starting the bot or
+running the scenario.
 
 To verify the combined production runtime as well, add `--mode both` and
 `--runtime-user-env PATH`. That second file must contain a native

@@ -45,6 +45,7 @@ const BOT_ENTRY = join(ROOT, 'bin', 'vietnam-accomodation-search.js');
 const CONFIRMATION = '1';
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DRIVER_OPERATION_TIMEOUT_MS = 30_000;
+const FAILURE_LOG_DIRECTORY = join(ROOT, 'experiments', 'logs');
 
 function progress(stage) {
   process.stderr.write(`telegram-e2e stage=${stage}\n`);
@@ -85,6 +86,7 @@ function usage() {
     '  --data-directory PATH    Empty isolated E2E state directory',
     '  --timeout-ms NUMBER      Per-operation timeout (default: 60000)',
     '  --keep-data              Preserve redacted logs and synthetic state',
+    '  --cleanup-leftovers-only Log/delete recognized prior E2E leftovers',
     '  --help                   Show this help',
   ].join('\n');
 }
@@ -92,6 +94,7 @@ function usage() {
 // eslint-disable-next-line complexity -- CLI validation keeps every destructive/live boundary in one parser.
 export function parseConversationArguments(values) {
   const options = {
+    cleanupOnly: false,
     keepData: false,
     mode: 'bot-only',
     timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -112,6 +115,10 @@ export function parseConversationArguments(values) {
     }
     if (value === '--keep-data') {
       options.keepData = true;
+      continue;
+    }
+    if (value === '--cleanup-leftovers-only') {
+      options.cleanupOnly = true;
       continue;
     }
     const property = valued.get(value);
@@ -404,6 +411,60 @@ function messageId(message) {
   return Number(message?.id || 0);
 }
 
+export function isFailureReply(text) {
+  const value = String(text || '');
+  return (
+    /(?:^|\n)Usage: \/(?:check_availability|preset|search|subscribe)\b/iu.test(
+      value
+    ) ||
+    /(?:failed|not authorized|not configured|permission denied)/iu.test(value)
+  );
+}
+
+export function isE2ELeftoverMessage(text) {
+  const value = String(text || '');
+  return (
+    /\be2e-[a-f\d]{10}\b/iu.test(value) ||
+    value.includes('E2E synthetic offer ') ||
+    (value.includes('clink export verification failed') &&
+      value.includes('Usage: /search'))
+  );
+}
+
+export function formatFailureTranscript(messages, reason) {
+  const lines = [
+    `recorded-at: ${new Date().toISOString()}`,
+    `reason: ${redactTelegramValue(String(reason || 'unexpected bot reply'))}`,
+  ];
+  for (const message of [...messages].sort(
+    (left, right) => messageId(left) - messageId(right)
+  )) {
+    lines.push(
+      `${message.out ? 'test-user' : 'bot'}: ${redactTelegramValue(messageText(message))}`
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+async function persistFailureTranscript(messages, reason) {
+  if (!messages.length) {
+    return undefined;
+  }
+  await mkdir(FAILURE_LOG_DIRECTORY, { mode: 0o700, recursive: true });
+  await chmod(FAILURE_LOG_DIRECTORY, 0o700);
+  const timestamp = new Date().toISOString().replaceAll(/[:.]/gu, '-');
+  const path = join(
+    FAILURE_LOG_DIRECTORY,
+    `telegram-conversation-${timestamp}-${randomBytes(3).toString('hex')}.failure.log`
+  );
+  await writeFile(path, formatFailureTranscript(messages, reason), {
+    flag: 'wx',
+    mode: 0o600,
+  });
+  process.stderr.write(`telegram-e2e failure-log=${path}\n`);
+  return path;
+}
+
 async function recentMessages(client, target, timeoutMs) {
   return [
     ...(await withDeadline(
@@ -429,10 +490,15 @@ async function waitForMessage(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now();
-    const match = (await recentMessages(client, target, Math.max(1, remaining)))
+    const replies = (
+      await recentMessages(client, target, Math.max(1, remaining))
+    )
       .filter((message) => !message.out && messageId(message) > afterId)
-      .sort((left, right) => messageId(left) - messageId(right))
-      .find((message) => predicate(messageText(message)));
+      .sort((left, right) => messageId(left) - messageId(right));
+    if (replies.some((message) => isFailureReply(messageText(message)))) {
+      throw new Error('The bot returned an error reply during E2E.');
+    }
+    const match = replies.find((message) => predicate(messageText(message)));
     if (match) {
       return match;
     }
@@ -618,8 +684,10 @@ async function runScenario(state, marker, offerTitle, start) {
   return { duplicateAfterRestart: false, preset };
 }
 
-async function deleteAuditMessages(state) {
-  const identifiers = [...state.messageIds].filter((value) => value > 0);
+async function deleteMessages(state, messages = []) {
+  const identifiers = [
+    ...new Set([...state.messageIds, ...messages.map(messageId)]),
+  ].filter((value) => value > 0);
   if (!identifiers.length) {
     return true;
   }
@@ -636,6 +704,26 @@ async function deleteAuditMessages(state) {
   } catch {
     return false;
   }
+}
+
+async function messagesAfterBoundary(state) {
+  return (await recentMessages(state.client, state.target, state.timeoutMs))
+    .filter((message) => messageId(message) > state.baselineMessageId)
+    .sort((left, right) => messageId(left) - messageId(right));
+}
+
+async function removeKnownLeftovers(state) {
+  const leftovers = (
+    await recentMessages(state.client, state.target, state.timeoutMs)
+  ).filter((message) => isE2ELeftoverMessage(messageText(message)));
+  if (!leftovers.length) {
+    return 0;
+  }
+  await persistFailureTranscript(leftovers, 'stale unmatched E2E messages');
+  if (!(await deleteMessages(state, leftovers))) {
+    throw new Error('Failed to delete stale E2E conversation messages.');
+  }
+  return leftovers.length;
 }
 
 function safeDataDirectory(path) {
@@ -667,6 +755,7 @@ async function prepareDataDirectory(path) {
   return selected;
 }
 
+// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- One boundary owns live setup, transcript capture, Telegram cleanup, and resource teardown.
 export async function runConversationE2E(options, environment = process.env) {
   assertConversationBoundary(environment);
   const botEnvironment = await environmentFile(options.botEnv);
@@ -686,7 +775,35 @@ export async function runConversationE2E(options, environment = process.env) {
   let state;
   let scenario;
   let messagesDeleted = false;
+  let staleMessagesDeleted = 0;
+  let runError;
   try {
+    if (options.cleanupOnly) {
+      const target = await withDeadline(
+        () => driver.client.getEntity(`@${botIdentity.username}`),
+        driverDeadline(options.timeoutMs),
+        'bot entity resolution'
+      );
+      state = {
+        baselineMessageId: await latestMessageId(
+          driver.client,
+          target,
+          options.timeoutMs
+        ),
+        bot: undefined,
+        client: driver.client,
+        messageIds: new Set(),
+        target,
+        timeoutMs: options.timeoutMs,
+      };
+      staleMessagesDeleted = await removeKnownLeftovers(state);
+      messagesDeleted = true;
+      return {
+        cleanupOnly: true,
+        messagesDeleted,
+        staleMessagesDeleted,
+      };
+    }
     const runtimeUser = options.runtimeUserEnv
       ? await nativeRuntimeCredentials(
           await environmentFile(options.runtimeUserEnv)
@@ -709,12 +826,19 @@ export async function runConversationE2E(options, environment = process.env) {
     );
     progress('bot-entity-resolved');
     state = {
+      baselineMessageId: 0,
       bot: undefined,
       client: driver.client,
       messageIds: new Set(),
       target,
       timeoutMs: options.timeoutMs,
     };
+    state.baselineMessageId = await latestMessageId(
+      state.client,
+      state.target,
+      state.timeoutMs
+    );
+    staleMessagesDeleted = await removeKnownLeftovers(state);
     const port = await availablePort();
     const childEnvironment = runtimeEnvironment({
       bot: { identity: botIdentity, token: botSecret.token },
@@ -732,10 +856,40 @@ export async function runConversationE2E(options, environment = process.env) {
         timeoutMs: options.timeoutMs,
       });
     scenario = await runScenario(state, marker, offerTitle, start);
+    const unexpected = (await messagesAfterBoundary(state)).filter(
+      (message) => !message.out && isFailureReply(messageText(message))
+    );
+    if (unexpected.length) {
+      throw new Error('The bot returned an error reply during E2E.');
+    }
+  } catch (error) {
+    runError = error;
   } finally {
     await stopBot(state?.bot, options.timeoutMs).catch(() => {});
     if (state) {
-      messagesDeleted = await deleteAuditMessages(state);
+      let createdMessages = [];
+      try {
+        createdMessages = await messagesAfterBoundary(state);
+      } catch (error) {
+        runError ||= error;
+      }
+      const failures = createdMessages.filter(
+        (message) => !message.out && isFailureReply(messageText(message))
+      );
+      if ((runError || failures.length) && createdMessages.length) {
+        await persistFailureTranscript(
+          createdMessages,
+          runError?.message || 'unexpected bot reply'
+        ).catch((error) => {
+          runError ||= error;
+        });
+      }
+      messagesDeleted = await deleteMessages(state, createdMessages);
+      if (!messagesDeleted) {
+        runError ||= new Error(
+          'Failed to delete every message created by the Telegram E2E.'
+        );
+      }
     }
     await withDeadline(
       () => driver.client.disconnect(),
@@ -751,6 +905,9 @@ export async function runConversationE2E(options, environment = process.env) {
       await rm(dataDirectory, { force: true, recursive: true });
     }
   }
+  if (runError) {
+    throw runError;
+  }
   return {
     botIdentityVerified: true,
     botRestarted: true,
@@ -760,6 +917,7 @@ export async function runConversationE2E(options, environment = process.env) {
     persistedPreset: true,
     persistedSubscription: true,
     realTelegramConversation: true,
+    staleMessagesDeleted,
     syntheticCacheUsed: true,
     testUserAuthorized: true,
     testUserIdentityPinned: Boolean(
