@@ -136,3 +136,49 @@ On shutdown, readiness drops first, subscription timers stop, `bot.stop()` and
 polling settle, active middleware drains to a deadline, resources close with
 aggregated diagnostics, and the health server closes. Per-update malformed
 data is isolated by `bot.catch` and does not kill polling.
+
+## Manual real-user conversation E2E
+
+The local-only conversation harness uses an already-authorized Teleproto/
+GramJS user session as the external test driver. It starts the production bot,
+sends real private commands through Telegram, verifies preset and subscription
+state, restarts the bot against the same isolated data directory, proves that a
+fresh offer is not delivered twice, exercises a one-time search override, and
+then removes its test messages and preset. A synthetic offer is seeded in the
+real LiNo/`clink` cache so this test is deterministic; source discovery and
+real-message parsing remain covered by the separate live audit harnesses.
+
+Stop every other poller for the same bot token, use Node.js 22 or newer, and
+run explicitly from a local terminal (never CI):
+
+```bash
+cargo install --root .deploy/e2e-tools link-cli --version 0.2.10 --locked
+PATH="$PWD/.deploy/e2e-tools/bin:$PATH" \
+TELEGRAM_CONVERSATION_E2E=1 node \
+  experiments/telegram-bot-conversation-e2e.mjs \
+  --bot-env .env \
+  --user-env ../follow/.env
+```
+
+The `PATH` prefix is intentional: another unrelated executable also uses the
+name `clink`. `clink --version` for this test must report `clink 0.2.10`, the
+same Rust `link-cli` version pinned in the production image.
+
+The bot environment needs `TELEGRAM_BOT_TOKEN` and should pin
+`TELEGRAM_EXPECTED_BOT_ID`. The driver environment needs
+`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and a legacy
+`TELEGRAM_USER_SESSION`; set `TELEGRAM_E2E_EXPECTED_USER_ID` to pin the test
+account. The harness derives the private numeric allowlist from the authorized
+driver account, never logs message text or identities, writes only redacted
+`0600` process logs, and deletes its temporary data directory by default.
+Explicit `--data-directory` paths must be empty real directories whose final
+name contains `e2e`; they are preserved for inspection. `--keep-data` preserves
+an automatically created temporary directory only when requested.
+
+To verify the combined production runtime as well, add `--mode both` and
+`--runtime-user-env PATH`. That second file must contain a native
+`mtcute/session-string-v1` session and `TELEGRAM_EXPECTED_USER_ID`; the harness
+does not reinterpret the legacy driver session. Use `--help` for the complete
+option list. The runner refuses common CI environments and an explicit
+`TELEGRAM_BOT_POLLER_ACTIVE=1` safety marker, and it is deliberately excluded
+from normal test scripts.
