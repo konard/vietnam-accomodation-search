@@ -7,6 +7,7 @@ import {
   DomainScheduler,
   classifyListingPage,
 } from '../src/browser-adapters.js';
+import { BrowserPageError } from '../src/browser-collector.js';
 import {
   createDomainRecords,
   createSemanticValue,
@@ -563,6 +564,61 @@ describe('issue 20 browser, release, and Pages gates', () => {
       run('https://b.test/1'),
     ]);
     expect(overlap).toBe(true);
+  });
+
+  it('persists challenge cooldowns, stops that domain, and continues unrelated domains', async () => {
+    let records = [];
+    const store = {
+      loadRecords: async () => records,
+      updateRecords: async (_kind, update) => {
+        records = update(records);
+      },
+    };
+    let attempts = 0;
+    const scheduler = new DomainScheduler({
+      delay: async () => {},
+      maxAttempts: 3,
+      now: () => 1_000,
+      store,
+    });
+    let challenge;
+    try {
+      await scheduler.run('https://blocked.example/search', async () => {
+        attempts += 1;
+        throw new BrowserPageError(
+          PAGE_CLASSIFICATIONS.CHALLENGE,
+          'https://blocked.example/search'
+        );
+      });
+    } catch (error) {
+      challenge = error;
+    }
+    expect(challenge.classification).toBe(PAGE_CLASSIFICATIONS.CHALLENGE);
+    expect(attempts).toBe(1);
+    expect(records[0].domain).toBe('blocked.example');
+    expect(records[0].blockedUntil > 1_000).toBe(true);
+
+    let stopped;
+    try {
+      await scheduler.run('https://blocked.example/again', async () => 'no');
+    } catch (error) {
+      stopped = error;
+    }
+    expect(stopped.code).toBe('BROWSER_DOMAIN_CHALLENGED');
+    expect(
+      await scheduler.run('https://healthy.example', async () => 'ok')
+    ).toBe('ok');
+
+    const delays = [];
+    const restarted = new DomainScheduler({
+      delay: async (milliseconds) => delays.push(milliseconds),
+      now: () => 1_000,
+      store,
+    });
+    expect(
+      await restarted.run('https://blocked.example/later', async () => 'ok')
+    ).toBe('ok');
+    expect(delays.some((milliseconds) => milliseconds >= 30_000)).toBe(true);
   });
 
   it('keeps release baselines immutable and marks missing live credentials pending', () => {

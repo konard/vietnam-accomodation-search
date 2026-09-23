@@ -12,6 +12,7 @@ export {
   DomainScheduler,
   PAGE_CLASSIFICATIONS,
   browserAdapterFor,
+  classifyBrowserFailure,
   classifyListingPage,
 } from './browser-adapters.js';
 export { parseSearchCommand, parseSearchOverrides } from './commands.js';

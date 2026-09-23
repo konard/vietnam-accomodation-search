@@ -89,9 +89,13 @@ export function createApplication(options = {}) {
       scheduler:
         options.browserScheduler ||
         new DomainScheduler({
+          maxCooldownMs: Number(
+            environment.BROWSER_MAX_COOLDOWN_MS || 60 * 60 * 1000
+          ),
           maxConcurrentDomains: 3,
-          maxDelayMs: 750,
-          minDelayMs: 250,
+          maxDelayMs: Number(environment.BROWSER_MAX_INTERVAL_MS || 8_000),
+          minDelayMs: Number(environment.BROWSER_MIN_INTERVAL_MS || 3_000),
+          store,
         }),
     });
   const discoverer =
@@ -103,9 +107,13 @@ export function createApplication(options = {}) {
       scheduler:
         options.discoveryBrowserScheduler ||
         new DomainScheduler({
+          maxCooldownMs: Number(
+            environment.BROWSER_MAX_COOLDOWN_MS || 60 * 60 * 1000
+          ),
           maxConcurrentDomains: 3,
-          maxDelayMs: 750,
-          minDelayMs: 250,
+          maxDelayMs: Number(environment.BROWSER_MAX_INTERVAL_MS || 8_000),
+          minDelayMs: Number(environment.BROWSER_MIN_INTERVAL_MS || 3_000),
+          store,
         }),
     });
   const configuredUserDiscoveryProvider =

@@ -18,7 +18,7 @@ export function loadDefaultBrowserRuntime() {
   return import('browser-commander');
 }
 
-function extractPageListings(sourceType) {
+function extractPageListings(sourceType, selectors = {}) {
   const documentRef = globalThis.document;
   if (sourceType === 'telegram') {
     return [...documentRef.querySelectorAll('.tgme_widget_message')]
@@ -47,7 +47,8 @@ function extractPageListings(sourceType) {
 
   const cards = [
     ...documentRef.querySelectorAll(
-      '[data-testid="property-card"], [data-testid="card-container"], article, .property-card, [itemtype*="Hotel"]'
+      selectors.cards ||
+        '[data-testid="property-card"], [data-testid="card-container"], article, .property-card, [itemtype*="Hotel"]'
     ),
   ].slice(0, 100);
   return cards.map((element) => {
@@ -221,6 +222,32 @@ export class BrowserCollector {
     );
   }
 
+  collectListingRows(
+    commander,
+    url,
+    sourceType,
+    adapter,
+    { expectedLocation, signal } = {}
+  ) {
+    return this.scheduler.run(
+      url,
+      async () => {
+        await commander.goto({ url, waitForNetworkIdle: false });
+        const rows =
+          (await commander.evaluate(
+            extractPageListings,
+            sourceType,
+            adapter.selectors
+          )) || [];
+        await this.assertListingPage(commander, url, rows.length, {
+          expectedLocation,
+        });
+        return rows;
+      },
+      { signal }
+    );
+  }
+
   async assertListingPage(commander, url, cards, { expectedLocation } = {}) {
     const extracted = await commander.evaluate(extractPageState);
     const state = Array.isArray(extracted) ? {} : extracted || {};
@@ -307,13 +334,18 @@ export class BrowserCollector {
       });
     } else {
       const url = requestedUrl;
-      await this.navigate(commander, url, { signal });
-      rows = await commander.evaluate(extractPageListings, source.type);
-      await this.assertListingPage(commander, url, rows?.length || 0, {
-        expectedLocation: /nha\s*trang|nhatrang|нячанг/iu.test(query)
-          ? 'nha-trang'
-          : undefined,
-      });
+      rows = await this.collectListingRows(
+        commander,
+        url,
+        source.type,
+        adapter,
+        {
+          expectedLocation: /nha\s*trang|nhatrang|нячанг/iu.test(query)
+            ? 'nha-trang'
+            : undefined,
+          signal,
+        }
+      );
     }
     const offers = [];
 
@@ -379,13 +411,21 @@ export class BrowserCollector {
     const officialOffers = [];
     for (const [url, parent] of [...targets].slice(0, 100)) {
       try {
-        await this.navigate(commander, url, { signal });
-        const row = (await commander.evaluate(extractOfficialListing)) || {};
-        await this.assertListingPage(commander, url, 1, {
-          expectedLocation: /nha\s*trang|nhatrang|нячанг/iu.test(query)
-            ? 'nha-trang'
-            : undefined,
-        });
+        const row = await this.scheduler.run(
+          url,
+          async () => {
+            await commander.goto({ url, waitForNetworkIdle: false });
+            const extracted =
+              (await commander.evaluate(extractOfficialListing)) || {};
+            await this.assertListingPage(commander, url, 1, {
+              expectedLocation: /nha\s*trang|nhatrang|нячанг/iu.test(query)
+                ? 'nha-trang'
+                : undefined,
+            });
+            return extracted;
+          },
+          { signal }
+        );
         const hostname = new globalThis.URL(url).hostname.replace(
           /^www\./u,
           ''

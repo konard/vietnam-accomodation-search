@@ -325,6 +325,11 @@ export declare function classifyListingPage(options?: {
   title?: string;
   url?: string;
 }): (typeof PAGE_CLASSIFICATIONS)[keyof typeof PAGE_CLASSIFICATIONS];
+export declare function classifyBrowserFailure(error: unknown): {
+  category: string;
+  retryable: boolean;
+  stopDomain: boolean;
+};
 export declare class BrowserPageError extends Error {
   classification: string;
   code: string;
@@ -338,11 +343,15 @@ export declare class DomainScheduler {
     ) => Promise<void>;
     maxAttempts?: number;
     maxBackoffMs?: number;
+    maxCooldownMs?: number;
     maxConcurrentDomains?: number;
     maxDelayMs?: number;
     maxRequestsPerDomain?: number;
     minDelayMs?: number;
+    now?: () => number;
     random?: () => number;
+    retryCooldownMs?: number;
+    store?: Record<string, unknown>;
   });
   run<T>(
     url: string,

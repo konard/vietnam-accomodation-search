@@ -87,29 +87,137 @@ function cancellableDelay(milliseconds, { signal } = {}) {
   });
 }
 
+// eslint-disable-next-line complexity -- Browser transport and page outcomes have distinct cooldown policies.
+export function classifyBrowserFailure(error) {
+  const status = Number(error?.status ?? error?.statusCode);
+  const context = `${error?.code || ''} ${error?.message || ''}`;
+  if (
+    error?.classification === PAGE_CLASSIFICATIONS.CHALLENGE ||
+    status === 403 ||
+    /captcha|challenge|access[\s_-]*denied|cloudflare/iu.test(context)
+  ) {
+    return { category: 'challenge', retryable: false, stopDomain: true };
+  }
+  if (error?.classification) {
+    return {
+      category: error.classification,
+      retryable: false,
+      stopDomain: false,
+    };
+  }
+  if (status === 429 || /\b429\b|rate[\s_-]*limit/iu.test(context)) {
+    return { category: 'rate-limit', retryable: true, stopDomain: false };
+  }
+  if (
+    /ETIMEDOUT|ESOCKETTIMEDOUT|ERR_TIMED_OUT|timeout|timed out/iu.test(context)
+  ) {
+    return { category: 'timeout', retryable: true, stopDomain: false };
+  }
+  if (
+    /ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENETUNREACH/iu.test(context) ||
+    status >= 500
+  ) {
+    return { category: 'transport', retryable: true, stopDomain: false };
+  }
+  return { category: 'transient', retryable: true, stopDomain: false };
+}
+
 export class DomainScheduler {
   constructor({
     delay = cancellableDelay,
     maxAttempts = 2,
     maxBackoffMs,
+    maxCooldownMs = 60 * 60 * 1000,
     maxConcurrentDomains = 3,
     maxDelayMs = 0,
     maxRequestsPerDomain = 500,
     minDelayMs = 0,
+    now = Date.now,
     random = Math.random,
+    retryCooldownMs = 30_000,
+    store,
   } = {}) {
     this.activeDomains = 0;
     this.delay = delay;
     this.domainTails = new Map();
     this.domainRequests = new Map();
+    this.domainStates = new Map();
     this.maxAttempts = maxAttempts;
     this.maxBackoffMs = maxBackoffMs ?? Math.max(maxDelayMs, minDelayMs) * 4;
+    this.maxCooldownMs = maxCooldownMs;
     this.maxConcurrentDomains = maxConcurrentDomains;
     this.maxDelayMs = maxDelayMs;
     this.maxRequestsPerDomain = maxRequestsPerDomain;
     this.minDelayMs = minDelayMs;
+    this.now = now;
     this.random = random;
+    this.retryCooldownMs = retryCooldownMs;
+    this.stoppedDomains = new Set();
+    this.store = store;
     this.waiters = [];
+  }
+
+  async #loadDomainState(domain) {
+    if (this.domainStates.has(domain)) {
+      return this.domainStates.get(domain);
+    }
+    const records =
+      (await this.store?.loadRecords?.('browser-domain-cooldown')) || [];
+    const state = records.find(
+      (record) => record.id === domain || record.domain === domain
+    ) || { blockedUntil: 0, consecutiveFailures: 0, domain, id: domain };
+    this.domainStates.set(domain, state);
+    return state;
+  }
+
+  async #saveDomainState(state) {
+    this.domainStates.set(state.domain, state);
+    if (this.store?.updateRecords) {
+      await this.store.updateRecords('browser-domain-cooldown', (records) => [
+        ...records.filter(
+          (record) => record.id !== state.id && record.domain !== state.domain
+        ),
+        state,
+      ]);
+      return;
+    }
+    if (this.store?.saveRecords) {
+      const records =
+        (await this.store.loadRecords?.('browser-domain-cooldown')) || [];
+      await this.store.saveRecords('browser-domain-cooldown', [
+        ...records.filter(
+          (record) => record.id !== state.id && record.domain !== state.domain
+        ),
+        state,
+      ]);
+    }
+  }
+
+  async #recordFailure(domain, error) {
+    const policy = classifyBrowserFailure(error);
+    if (!policy.retryable && !policy.stopDomain) {
+      return policy;
+    }
+    const previous = await this.#loadDomainState(domain);
+    const consecutiveFailures = previous.consecutiveFailures + 1;
+    const requested = Number(error?.retryAfterMs);
+    const exponential = this.retryCooldownMs * 2 ** (consecutiveFailures - 1);
+    const cooldownMs = Math.min(
+      this.maxCooldownMs,
+      Number.isFinite(requested) && requested > 0 ? requested : exponential
+    );
+    await this.#saveDomainState({
+      blockedUntil: this.now() + cooldownMs,
+      category: policy.category,
+      consecutiveFailures,
+      domain,
+      id: domain,
+      schemaVersion: 1,
+    });
+    if (policy.stopDomain) {
+      this.stoppedDomains.add(domain);
+    }
+    return policy;
   }
 
   async #acquireDomainSlot() {
@@ -131,12 +239,25 @@ export class DomainScheduler {
     const previous = this.domainTails.get(domain) || Promise.resolve();
     const current = previous
       .catch(() => {})
+      // eslint-disable-next-line complexity -- The serialized run owns cancellation, cooldown, budget, retry, and cleanup boundaries.
       .then(async () => {
         if (signal?.aborted) {
           throw signal.reason || new Error('Browser collection cancelled.');
         }
         await this.#acquireDomainSlot();
         try {
+          if (this.stoppedDomains.has(domain)) {
+            const error = new Error(
+              `Browser domain stopped after a challenge: ${domain}.`
+            );
+            error.code = 'BROWSER_DOMAIN_CHALLENGED';
+            throw error;
+          }
+          const state = await this.#loadDomainState(domain);
+          const cooldown = Math.max(0, state.blockedUntil - this.now());
+          if (cooldown > 0) {
+            await this.delay(cooldown, { signal });
+          }
           let lastError;
           for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
             const requests = (this.domainRequests.get(domain) || 0) + 1;
@@ -161,9 +282,25 @@ export class DomainScheduler {
               throw signal.reason || new Error('Browser collection cancelled.');
             }
             try {
-              return await operation({ attempt });
+              const result = await operation({ attempt });
+              if (
+                (this.domainStates.get(domain)?.consecutiveFailures || 0) > 0
+              ) {
+                await this.#saveDomainState({
+                  blockedUntil: 0,
+                  consecutiveFailures: 0,
+                  domain,
+                  id: domain,
+                  schemaVersion: 1,
+                });
+              }
+              return result;
             } catch (error) {
               lastError = error;
+              const policy = await this.#recordFailure(domain, error);
+              if (!policy.retryable) {
+                throw error;
+              }
             }
           }
           throw lastError;

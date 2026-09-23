@@ -212,6 +212,16 @@ message markup. Sites can change their DOM or present consent/CAPTCHA pages;
 those sources are skipped for that pass. Deployments are responsible for
 respecting each source's terms, robots policy, and rate limits.
 
+Production navigation uses versioned per-route adapters and a configurable
+3–8 second per-domain interval (`BROWSER_MIN_INTERVAL_MS` and
+`BROWSER_MAX_INTERVAL_MS`). Requests to one domain are serialized while the
+scheduler permits unrelated domains to overlap. Timeout, access, 403, and 429
+outcomes create an exponential cooldown persisted in the same durable store.
+A challenge stops that domain for the current run and never triggers CAPTCHA
+solving; unrelated sources continue. `BROWSER_MAX_COOLDOWN_MS` bounds the
+persisted wait. Navigation, DOM extraction, redirect/intent validation, and
+page classification all execute inside the scheduler boundary.
+
 ## Library usage
 
 ```js
