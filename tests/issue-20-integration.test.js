@@ -30,7 +30,7 @@ async function failureOf(operation) {
 describe('issue 20 production integrations', () => {
   it('has a versioned adapter for every web seed and excludes the unsafe sale route', async () => {
     for (const source of DEFAULT_WEB_SOURCES) {
-      expect(browserAdapterFor(source.searchUrl).schemaVersion).toBe(1);
+      expect(browserAdapterFor(source.searchUrl).schemaVersion).toBe(2);
     }
     expect(BROWSER_SOURCE_ADAPTERS.chotot.enabled).toBe(false);
     const registry = new SourceRegistry({
@@ -39,7 +39,46 @@ describe('issue 20 production integrations', () => {
     const web = await registry.list('web');
     expect(web.length).toBe(20);
     expect(web.some(({ id }) => id === 'chotot')).toBe(false);
-    expect(web.some(({ id }) => id === 'hotel-mix')).toBe(true);
+    expect(web.some(({ id }) => id === 'alonhadat-nha-trang')).toBe(true);
+    expect(web.some(({ id }) => id === 'be-jib-nha-trang')).toBe(true);
+    expect(web.some(({ id }) => id === 'nha-trang-renting')).toBe(true);
+  });
+
+  it('ships reviewed semantic adapters for each live rental language cohort', () => {
+    const cases = [
+      {
+        domain: 'https://alonhadat.com.vn/cho-thue-nha/khanh-hoa/nha-trang',
+        card: '.property-item',
+        contact: '.contact-info',
+      },
+      {
+        domain: 'https://nhatrangrenting.com/estate-contract/for-rent/',
+        card: '.property-container.property-container-grid',
+        contact: '.contact-card-container',
+      },
+      {
+        domain: 'https://be-jib.com/ru/nha-trang/rentals',
+        card: '.bj-listing-card[data-listing-id]',
+        contact: '[href^="tel:"], [href*="t.me/"]',
+      },
+    ];
+
+    for (const expected of cases) {
+      const selected = browserAdapterFor(expected.domain);
+      expect(selected.schemaVersion).toBe(2);
+      expect(selected.selectors.cards).toBe(expected.card);
+      expect(selected.selectors.fields.contact).toBe(expected.contact);
+      expect(selected.capabilities).toContain('semantic-segment-accounting');
+    }
+    expect(
+      DEFAULT_WEB_SOURCES.filter(({ id }) =>
+        [
+          'alonhadat-nha-trang',
+          'be-jib-nha-trang',
+          'nha-trang-renting',
+        ].includes(id)
+      ).map(({ languages }) => languages)
+    ).toEqual([['vi'], ['ru'], ['en']]);
   });
 
   it('detects the three reviewed listing languages with explicit provenance', () => {

@@ -18,7 +18,8 @@ export function loadDefaultBrowserRuntime() {
   return import('browser-commander');
 }
 
-function extractPageListings(sourceType, selectors = {}) {
+// eslint-disable-next-line max-lines-per-function -- This self-contained function executes in the isolated browser page realm.
+export function extractPageListings(sourceType, selectors = {}) {
   const documentRef = globalThis.document;
   if (sourceType === 'telegram') {
     return [...documentRef.querySelectorAll('.tgme_widget_message')]
@@ -45,6 +46,99 @@ function extractPageListings(sourceType, selectors = {}) {
       });
   }
 
+  // Keep these helpers inside the evaluated function. Browser Commander sends
+  // the function into the page realm, where module-scope closures do not exist.
+  const selectedText = (element, selector) => {
+    if (!selector) {
+      return undefined;
+    }
+    const selected = [...element.querySelectorAll(selector)];
+    if (!selected.length) {
+      const fallback = element.querySelector(selector);
+      if (fallback) {
+        selected.push(fallback);
+      }
+    }
+    const values = selected
+      .map(
+        (entry) =>
+          entry?.innerText ||
+          entry?.textContent ||
+          entry?.content ||
+          entry?.getAttribute?.('content') ||
+          entry?.getAttribute?.('href') ||
+          entry?.getAttribute?.('aria-label')
+      )
+      .filter((value) => typeof value === 'string' && value.trim())
+      .map((value) => value.trim());
+    return values.length ? [...new Set(values)].join('\n') : undefined;
+  };
+  const numericSemantic = (value) => {
+    const match = String(value || '').match(/\d+(?:[.,]\d+)?/u)?.[0];
+    const result = Number(match?.replace(',', '.'));
+    return Number.isFinite(result) ? result : undefined;
+  };
+  const backgroundImage = (element) =>
+    element?.style?.backgroundImage?.match(/url\(["']?(.*?)["']?\)/u)?.[1] ||
+    element
+      ?.getAttribute?.('style')
+      ?.match(/background-image\s*:\s*url\(["']?(.*?)["']?\)/iu)?.[1];
+  const availabilityState = (value) => {
+    if (/\bsold\b|rented\s*out|сдано|недоступ|đã\s*thuê/iu.test(value || '')) {
+      return false;
+    }
+    if (
+      /for\s*rent|available|in\s*stock|свобод|доступ|cho\s*thuê|còn\s*trống/iu.test(
+        value || ''
+      )
+    ) {
+      return true;
+    }
+    return undefined;
+  };
+  const pageIdentity = (element, anchor) => {
+    for (const attribute of selectors.identityAttributes || []) {
+      const value = element.getAttribute(attribute);
+      if (value) {
+        return value;
+      }
+    }
+    const context = `${anchor?.href || ''}\n${element.innerText || ''}`;
+    return (
+      anchor?.href.match(
+        /(?:\/rooms\/|[?&](?:hotel|property|listing)_id=)([\p{L}\d_-]{1,64})/iu
+      )?.[1] ||
+      context.match(
+        /(?:\bID|\bpr-|\btg-|\bproperty[-_/]|\blisting[-_/]|\.html\D{0,8})([\p{L}\d_-]{2,64})/iu
+      )?.[1]
+    );
+  };
+  const accountedSegments = (element, semantic, title) => {
+    const normalized = (value) =>
+      String(value || '')
+        .replace(/\s+/gu, ' ')
+        .trim();
+    const recognized = Object.entries({ title, ...semantic }).flatMap(
+      ([category, value]) =>
+        String(value || '')
+          .split(/\r?\n/u)
+          .map((line) => [category, normalized(line)])
+          .filter(([, line]) => line.length >= 1)
+    );
+    return String(element.innerText || '')
+      .split(/\r?\n/u)
+      .map(normalized)
+      .filter((line) => line.length >= 1)
+      .map((text) => ({
+        category:
+          recognized.find(
+            ([, value]) =>
+              value === text || value.includes(text) || text.includes(value)
+          )?.[0] || 'unknown',
+        text,
+      }));
+  };
+
   const cards = [
     ...documentRef.querySelectorAll(
       selectors.cards ||
@@ -52,29 +146,48 @@ function extractPageListings(sourceType, selectors = {}) {
     ),
   ].slice(0, 100);
   return cards.map((element) => {
-    const anchor = element.querySelector('a[href]');
+    const anchor = element.querySelector(selectors.link || 'a[href]');
     const officialAnchor = element.querySelector(
       '[data-official-site][href], a[rel~="external"][href]'
     );
     const titleElement = element.querySelector(
-      'h1, h2, h3, [data-testid="title"], [itemprop="name"]'
+      selectors.title || 'h1, h2, h3, [data-testid="title"], [itemprop="name"]'
     );
-    const propertyId =
-      element.getAttribute('data-hotelid') ||
-      element.getAttribute('data-property-id') ||
-      element.getAttribute('data-listing-id') ||
-      anchor?.href.match(
-        /(?:\/rooms\/|[?&](?:hotel|property|listing)_id=)([\p{L}\d_-]{1,64})/iu
-      )?.[1];
+    const semantic = Object.fromEntries(
+      Object.entries(selectors.fields || {})
+        .map(([field, selector]) => [field, selectedText(element, selector)])
+        .filter(([, value]) => value !== undefined)
+    );
+    const title = titleElement?.textContent?.trim();
+    const propertyId = pageIdentity(element, anchor);
+    const bedrooms = numericSemantic(semantic.bedrooms);
+    const bathrooms = numericSemantic(semantic.bathrooms);
+    const areaM2 = numericSemantic(semantic.area);
+    const availableNow = availabilityState(semantic.availability);
+    const attributes = Object.fromEntries(
+      Object.entries({
+        areaM2,
+        availableNow,
+        bathrooms,
+        bedrooms,
+        propertyId,
+      }).filter(([, value]) => value !== undefined)
+    );
+    const semanticText = Object.entries(semantic)
+      .map(([field, value]) => `${field}: ${value}`)
+      .join('\n');
     return {
-      attributes: propertyId ? { propertyId } : undefined,
-      photos: [...element.querySelectorAll('img[src]')]
-        .map((image) => image.currentSrc || image.src)
+      attributes: Object.keys(attributes).length ? attributes : undefined,
+      photos: [...element.querySelectorAll(selectors.media || 'img[src]')]
+        .map((image) => image.currentSrc || image.src || backgroundImage(image))
         .filter(Boolean),
-      text: element.innerText,
-      title: titleElement?.textContent?.trim(),
+      semantic,
+      segments: accountedSegments(element, semantic, title),
+      text: [element.innerText, semanticText].filter(Boolean).join('\n'),
+      title,
       url: anchor?.href,
       officialUrl: officialAnchor?.href,
+      ...(semantic.location ? { location: semantic.location } : {}),
     };
   });
 }
@@ -350,6 +463,9 @@ export class BrowserCollector {
     const offers = [];
 
     for (const row of rows || []) {
+      if (row.attributes?.availableNow === false) {
+        continue;
+      }
       const raw = { ...row };
       if (source.type === 'telegram') {
         const relevance = classifyTelegramPost(row.text, {

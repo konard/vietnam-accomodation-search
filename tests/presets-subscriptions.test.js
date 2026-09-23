@@ -319,6 +319,69 @@ describe('persisted presets and subscriptions', () => {
     expect(deliveries.at(-1)).toEqual(['2', ['room-1']]);
   });
 
+  it('upserts a delivery cursor when the same offer is delivered again', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'delivery-cursor-'));
+    let now = new Date('2026-09-23T00:00:00.000Z');
+    const store = new LinksStore({ binaryMirror: false, directory });
+    const presets = new PresetService({ now: () => now, store });
+    const offer = {
+      id: 'same-offer',
+      identityKeys: ['url:https://example.test/same-offer'],
+      url: 'https://example.test/same-offer',
+      variants: [{ id: 'same-offer', url: 'https://example.test/same-offer' }],
+    };
+    try {
+      await presets.markDelivered('123', [offer]);
+      now = new Date('2026-09-23T00:01:00.000Z');
+      await presets.markDelivered('123', [offer]);
+
+      expect(await store.loadRecords('shown-offers')).toEqual([
+        {
+          aliases: [
+            'https://example.test/same-offer',
+            'same-offer',
+            'url:https://example.test/same-offer',
+          ],
+          deliveredAt: '2026-09-23T00:01:00.000Z',
+          id: '123:https://example.test/same-offer',
+          userId: '123',
+        },
+      ]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('suppresses restart duplicates from a prepared delivery cursor', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'prepared-delivery-'));
+    const offer = { id: 'prepared-offer', url: 'https://example.test/room' };
+    try {
+      const first = new PresetService({
+        store: new LinksStore({ binaryMirror: false, directory }),
+      });
+      await first.prepareDelivery('123', [offer]);
+
+      const restarted = new PresetService({
+        store: new LinksStore({ binaryMirror: false, directory }),
+      });
+      expect(await restarted.unseen('123', [offer])).toEqual([]);
+      const [cursor] = await new LinksStore({
+        binaryMirror: false,
+        directory,
+      }).loadRecords('shown-offers');
+      expect(cursor.deliveryState).toBe('prepared');
+      expect(cursor.deliveredAt).toBe(undefined);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('delivers only offers with a verifiable fresh collection time', async () => {
     const delivered = [];
     const scheduler = new SubscriptionScheduler({

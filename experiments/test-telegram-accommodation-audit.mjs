@@ -3,6 +3,8 @@ import { URL } from 'node:url';
 
 import { describe, expect, it } from 'test-anywhere';
 
+import { verifyTesseractLanguages } from './audit-telegram-accommodations.mjs';
+
 import {
   anonymizeListing,
   assertManualLocalRun,
@@ -16,12 +18,43 @@ import {
   telegramCredentials,
 } from './telegram-accommodation-audit-lib.mjs';
 
+async function capturedFailure(operation) {
+  try {
+    await operation();
+  } catch (error) {
+    return error;
+  }
+  throw new Error('Expected operation to fail.');
+}
+
 describe('Telegram accommodation audit helpers', () => {
   it('refuses to start the real-data E2E audit in CI/CD', () => {
     expect(() => assertManualLocalRun({ CI: 'true' })).toThrow(
       /manual\/local/iu
     );
     expect(() => assertManualLocalRun({})).not.toThrow();
+  });
+
+  it('requires Tesseract with every audited OCR language before live access', async () => {
+    expect(
+      await verifyTesseractLanguages(
+        'tesseract',
+        () => 'List of available languages (3):\neng\nrus\nvie\n'
+      )
+    ).toEqual(['eng', 'rus', 'vie']);
+    expect(
+      (
+        await capturedFailure(() =>
+          verifyTesseractLanguages(
+            'tesseract',
+            () => 'List of available languages (2):\neng\nrus\n'
+          )
+        )
+      ).message
+    ).toMatch(/vie/iu);
+    expect(
+      (await capturedFailure(() => verifyTesseractLanguages())).message
+    ).toMatch(/tesseract-command/iu);
   });
 
   it('keeps a multilingual, anonymized parser conformance corpus', async () => {

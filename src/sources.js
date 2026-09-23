@@ -8,7 +8,12 @@ function webSource(
   searchUrl,
   value,
   evidenceUrl,
-  { enabled = true, reason } = {}
+  {
+    enabled = true,
+    geographicFocus = 'vietnam',
+    languages = ['en', 'vi'],
+    reason,
+  } = {}
 ) {
   return {
     id,
@@ -17,8 +22,8 @@ function webSource(
     url,
     searchUrl,
     access: 'public-web',
-    geographicFocus: 'vietnam',
-    languages: ['en', 'vi'],
+    geographicFocus,
+    languages,
     lastScannedAt: OBSERVED_AT,
     enabled,
     ...(reason ? { reason } : {}),
@@ -237,6 +242,33 @@ export const DEFAULT_WEB_SOURCES = [
     'https://hotelmix.vn/search?query={query}',
     60,
     'https://www.similarweb.com/website/hotelmix.com/'
+  ),
+  webSource(
+    'alonhadat-nha-trang',
+    'Alo Nhà Đất Nha Trang rentals',
+    'https://alonhadat.com.vn',
+    'https://alonhadat.com.vn/cho-thue-nha/khanh-hoa/nha-trang',
+    103,
+    'https://alonhadat.com.vn/cho-thue-nha/khanh-hoa/nha-trang',
+    { geographicFocus: 'nha-trang', languages: ['vi'] }
+  ),
+  webSource(
+    'be-jib-nha-trang',
+    'Be Jib Nha Trang rentals',
+    'https://be-jib.com',
+    'https://be-jib.com/ru/nha-trang/rentals',
+    102,
+    'https://be-jib.com/ru/nha-trang/rentals',
+    { geographicFocus: 'nha-trang', languages: ['ru'] }
+  ),
+  webSource(
+    'nha-trang-renting',
+    'Nha Trang Renting',
+    'https://nhatrangrenting.com',
+    'https://nhatrangrenting.com/estate-contract/for-rent/',
+    101,
+    'https://nhatrangrenting.com/estate-contract/for-rent/',
+    { geographicFocus: 'nha-trang', languages: ['en'] }
   ),
 ];
 

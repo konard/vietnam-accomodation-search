@@ -157,6 +157,59 @@ function tesseract(command, bytes) {
   });
 }
 
+function commandOutput(command, arguments_) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, arguments_, {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout = `${stdout}${chunk}`.slice(0, 64 * 1024);
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr = `${stderr}${chunk}`.slice(-4096);
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        const error = new Error(
+          `Tesseract language preflight exited with ${code}: ${stderr.trim()}`
+        );
+        error.code = 'OCR_PREFLIGHT_FAILED';
+        reject(error);
+      }
+    });
+  });
+}
+
+export async function verifyTesseractLanguages(
+  command,
+  execute = commandOutput
+) {
+  if (!command) {
+    throw new TypeError('--tesseract-command is required for the live audit.');
+  }
+  const output = await execute(command, ['--list-langs']);
+  const available = new Set(
+    String(output)
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter((line) => /^[a-z]{3}$/u.test(line))
+  );
+  const required = ['eng', 'rus', 'vie'];
+  const missing = required.filter((language) => !available.has(language));
+  if (missing.length) {
+    throw new Error(
+      `Tesseract is missing required language models: ${missing.join(', ')}.`
+    );
+  }
+  return required;
+}
+
 function mediaOcr(client, messages, command) {
   if (!command) {
     return undefined;
@@ -627,6 +680,7 @@ async function botStatus(token) {
 
 // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- The live runner assembles a single evidence report across discovery, ingestion, storage, and acceptance gates.
 export async function runAudit(options) {
+  const ocrLanguages = await verifyTesseractLanguages(options.tesseractCommand);
   const environment = await loadCredentialEnvironment([
     options.userEnv,
     options.botEnv,
@@ -670,6 +724,7 @@ export async function runAudit(options) {
       canonicalTypedAssociations: true,
       transactionalClinkMirror: true,
     },
+    ocr: { languages: ocrLanguages },
     parser: {},
     user: { active: false },
   };

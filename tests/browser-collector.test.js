@@ -110,6 +110,49 @@ describe('browser-driven collection', () => {
     expect(offers[0].sourceId).toBe('working');
   });
 
+  it('does not emit listings whose semantic availability is sold or rented', async () => {
+    const collector = new BrowserCollector({
+      browserRuntime: {
+        launchBrowser: async () => ({
+          browser: { close: async () => {} },
+          page: {},
+        }),
+        makeBrowserCommander: () => ({
+          destroy: async () => {},
+          goto: async () => {},
+          evaluate: async (operation) =>
+            operation.name === 'extractPageState'
+              ? { status: 200, url: 'https://rent.example/results' }
+              : [
+                  {
+                    attributes: { availableNow: false, propertyId: 'sold' },
+                    text: 'Sold apartment 10,000,000 VND/month',
+                    url: 'https://rent.example/sold',
+                  },
+                  {
+                    attributes: { availableNow: true, propertyId: 'open' },
+                    text: 'Available apartment 10,000,000 VND/month',
+                    url: 'https://rent.example/open',
+                  },
+                ],
+        }),
+      },
+      rates: { VND: 1 },
+    });
+
+    const offers = await collector.collect([
+      {
+        id: 'rent',
+        searchUrl: 'https://rent.example/results',
+        type: 'web',
+      },
+    ]);
+
+    expect(offers.map(({ attributes }) => attributes.propertyId)).toEqual([
+      'open',
+    ]);
+  });
+
   it('attempts every browser cleanup and aggregates cleanup failures', async () => {
     let browserCloseAttempted = false;
     const collector = new BrowserCollector({

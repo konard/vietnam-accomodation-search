@@ -1,0 +1,30 @@
+[
+  {
+    "id": "alonhadat-nha-trang-rent",
+    "name": "Alo Nhà Đất Nha Trang rentals",
+    "languages": ["vi"],
+    "url": "https://alonhadat.com.vn/cho-thue-nha/khanh-hoa/nha-trang",
+    "provenance": "issue-37-live-source-discovery"
+  },
+  {
+    "id": "homedy-nha-trang-rent",
+    "name": "Homedy Nha Trang rentals",
+    "languages": ["vi"],
+    "url": "https://homedy.com/cho-thue-nha-dat-thanh-pho-nha-trang-khanh-hoa",
+    "provenance": "issue-37-live-source-discovery"
+  },
+  {
+    "id": "mogi-nha-trang-apartments",
+    "name": "Mogi Nha Trang apartment rentals",
+    "languages": ["vi"],
+    "url": "https://mogi.vn/khanh-hoa/tp-nha-trang/thue-can-ho",
+    "provenance": "issue-37-live-source-discovery"
+  },
+  {
+    "id": "muaban-nha-trang-rent",
+    "name": "Mua Bán Nha Trang rentals",
+    "languages": ["vi"],
+    "url": "https://muaban.net/bat-dong-san/cho-thue-nha-dat-tp-nha-trang-khanh-hoa",
+    "provenance": "issue-37-live-source-discovery"
+  }
+]
