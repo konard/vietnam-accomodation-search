@@ -60,8 +60,8 @@ entries are removed. If durable state alone exceeds the budget, it is retained
 rather than corrupted, and operators must archive/compact it.
 
 For a consistent point-in-time backup, stop the writer and archive the entire
-data volume as described in [deployment](deployment.md). To restore, extract
-into an empty stopped volume. On first read, content hashes and verified
+host data root as described in [deployment](deployment.md). To restore, extract
+into an empty stopped `0700` directory. On first read, content hashes and verified
 `clink` export repair the binary projection. Corrupt canonical text is not
 guessed around: restore the last archive, retain the damaged file for
 forensics, and run the test/query preflight before restart.

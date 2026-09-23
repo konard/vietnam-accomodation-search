@@ -20,7 +20,11 @@ services:
     ports:
       - 127.0.0.1:${HEALTH_PORT:-8080}:8080
     volumes:
-      - accommodation-data:/data
+      - type: bind
+        source: ${DATA_DIRECTORY_HOST:-./.vietnam-accomodation-search}
+        target: /data
+        bind:
+          create_host_path: false
     read_only: true
     tmpfs:
       - /tmp:mode=1777
@@ -39,7 +43,3 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 3
-
-volumes:
-  accommodation-data:
-    name: ${DATA_VOLUME:-vietnam-accomodation-search-data}

@@ -6,7 +6,10 @@ The multi-stage image pins native multi-architecture Rust and Node 22 base
 manifests, installs the exact Playwright Chromium runtime dependencies and
 `link-cli` 0.2.10, and runs as the unprivileged `node` user under `tini`.
 Credentials enter only at runtime. `/data` is the sole persistent writable
-volume; the root filesystem is read-only in Compose.
+path; the root filesystem is read-only in Compose. Compose maps `/data` to one
+explicit host directory with long bind syntax and
+`bind.create_host_path: false`; it never silently creates or selects a named
+volume.
 
 Readiness is local-only by default. `/live` reports whether the process and
 health server are alive. `/ready` returns success only after Bot API `getMe`,
@@ -19,6 +22,8 @@ middleware, closing resources, and closing the health server.
 ```bash
 cp .env.example .env
 # Set TELEGRAM_BOT_TOKEN, expected numeric identities, and numeric allowlists.
+install -d -m 0700 "$PWD/.vietnam-accomodation-search"
+export DATA_DIRECTORY_HOST="$PWD/.vietnam-accomodation-search"
 docker compose build app
 docker compose up -d app
 docker compose ps
@@ -45,6 +50,17 @@ node scripts/deploy.mjs rollback
 node scripts/deploy.mjs stop
 ```
 
+Every action accepts `--data-directory PATH` (or
+`DATA_DIRECTORY_HOST=PATH`) and defaults to
+`.vietnam-accomodation-search`. Relative paths are resolved once to absolute
+paths. The deploy helper rejects empty, root, home, credential, file, and
+symlinked paths; enforces `0700`; checks free space and the state-schema marker;
+and proves write, fsync, and rename on the host. It then renders Compose and
+requires `/data` to be the exact validated bind. A second probe runs as the
+container's unprivileged service UID. Any failure happens before the old
+container stops. Use the same option for deploy, status, logs, stop, and
+rollback.
+
 Pass `--image OWNER/IMAGE:IMMUTABLE_TAG` to pull rather than build. A deploy
 creates a unique candidate tag, smoke-tests the CLI and `clink`, validates
 credentials without `getUpdates`, and checks the data mount while the old
@@ -57,35 +73,71 @@ the short interval between old-poller stop and candidate-poller readiness is
 unavoidable; the workflow never overlaps them. A candidate that cannot pass
 offline/preflight checks never reaches cutover.
 
-## Backup and restore
+## Backup, restore, and disaster recovery
 
-Stop the writer for a point-in-time backup, then archive the named volume:
+Stop the writer for a point-in-time backup, then archive the one host root.
+Keep credentials elsewhere (for example `/run/secrets`), never below this
+directory.
 
 ```bash
-node scripts/deploy.mjs stop
+DATA_DIRECTORY_HOST=/srv/vietnam-search/data node scripts/deploy.mjs stop
 mkdir -p backups
-docker run --rm \
-  -v vietnam-accomodation-search-data:/data:ro \
-  -v "$PWD/backups:/backup" \
-  alpine:3.22 tar -C /data -czf /backup/data.tgz .
-docker compose up -d app
+tar -C /srv/vietnam-search/data -czf backups/data-$(date -u +%Y%m%dT%H%M%SZ).tgz .
+sha256sum backups/data-*.tgz > backups/SHA256SUMS
+DATA_DIRECTORY_HOST=/srv/vietnam-search/data node scripts/deploy.mjs deploy
 ```
 
-Restore only into a stopped service and preferably a new empty volume. Restore
-overwrites application state, so preserve the old archive until `/ready` and a
-search have succeeded:
+Before installing a release that changes the schema, make and verify this
+archive. The `.state-schema.json` marker makes an older binary refuse a newer
+directory instead of attempting an unsafe downgrade. Restore only into a
+stopped, empty, newly created `0700` directory. Preserve both the failed
+directory and archive until `/ready`, a search, and `clink` verification pass:
 
 ```bash
-node scripts/deploy.mjs stop
-docker run --rm \
-  -v vietnam-accomodation-search-data:/data \
-  -v "$PWD/backups:/backup:ro" \
-  alpine:3.22 sh -c 'find /data -mindepth 1 -delete && tar -C /data -xzf /backup/data.tgz'
-docker compose up -d app
+DATA_DIRECTORY_HOST=/srv/vietnam-search/data node scripts/deploy.mjs stop
+install -d -m 0700 /srv/vietnam-search/restored
+sha256sum --check backups/SHA256SUMS
+tar -C /srv/vietnam-search/restored -xzf backups/data-YYYYMMDDTHHMMSSZ.tgz
+DATA_DIRECTORY_HOST=/srv/vietnam-search/restored node scripts/deploy.mjs deploy
 ```
 
 Mount session secret files outside `/data` (for example under `/run/secrets`)
 so the ordinary data-volume backup above excludes them.
+
+Monitor the filesystem containing the host root for capacity and inode
+exhaustion. Deployment refuses less than 16 MiB free; production alerting
+should retain substantially more than the configured 10 GiB storage budget.
+On corruption, stop writers, copy the entire directory for forensics, verify
+the latest archive checksum, restore into a new path, and switch the explicit
+path only after preflight. Never repair canonical LiNo by editing its binary
+projection.
+
+## One-time named-volume migration
+
+For installations created by older Compose files, stop the service and copy
+the named volume exactly once into an empty host directory. The marker file is
+the idempotency boundary: on a retry, compare manifests instead of merging two
+trees.
+
+```bash
+node scripts/deploy.mjs stop
+install -d -m 0700 /srv/vietnam-search/data
+docker run --rm \
+  --mount type=volume,src=vietnam-accomodation-search-data,dst=/source,readonly \
+  --mount type=bind,src=/srv/vietnam-search/data,dst=/destination \
+  alpine:3.22 sh -ceu 'test -z "$(find /destination -mindepth 1 -print -quit)"; cp -a /source/. /destination/'
+find /srv/vietnam-search/data -xdev -printf '%P\t%s\t%y\n' | sort > /tmp/host.manifest
+docker run --rm \
+  --mount type=volume,src=vietnam-accomodation-search-data,dst=/source,readonly \
+  alpine:3.22 sh -c "find /source -xdev -printf '%P\\t%s\\t%y\\n' | sort" > /tmp/volume.manifest
+diff -u /tmp/volume.manifest /tmp/host.manifest
+DATA_DIRECTORY_HOST=/srv/vietnam-search/data node scripts/deploy.mjs deploy
+```
+
+Do not delete the old volume until a redeploy, search, restart, and rollback
+drill all succeed against the bind. If the migration is interrupted, discard
+the incomplete destination, recreate it as `0700`, and repeat; never overlay a
+partial copy.
 
 ## Registry configuration
 

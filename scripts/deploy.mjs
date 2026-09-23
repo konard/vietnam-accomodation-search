@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { syncDirectory } from '../src/link-cli-mirror.js';
 import { bootstrapDependencies } from './bootstrap-dependencies.mjs';
+import { validateDataDirectory } from './data-directory.mjs';
 import { loadCommandStream, loadLinoArguments } from './use-module.mjs';
 
 let command;
@@ -29,6 +30,13 @@ function configuration(argv) {
     lenv: { enabled: true, path: '.lenv' },
     yargs: ({ getenv, yargs }) =>
       yargs
+        .option('data-directory', {
+          default: getenv(
+            'DATA_DIRECTORY_HOST',
+            '.vietnam-accomodation-search'
+          ),
+          type: 'string',
+        })
         .option('compose-file', {
           default: getenv('COMPOSE_FILE', 'compose.yaml'),
           type: 'string',
@@ -74,7 +82,10 @@ async function optionalJson(path) {
 }
 
 function runner(config, image, { capture = false } = {}) {
-  const env = { ...process.env };
+  const env = {
+    ...process.env,
+    DATA_DIRECTORY_HOST: config.dataDirectory,
+  };
   if (image) {
     env.APP_IMAGE = image;
   }
@@ -94,6 +105,21 @@ async function currentContainer(config, image) {
   return text(
     await run`docker compose -f ${config.composeFile} -p ${config.projectName} ps -q app`
   );
+}
+
+export function assertComposeDataMount(model, dataDirectory) {
+  const mount = model?.services?.app?.volumes?.find(
+    (volume) => volume.target === '/data'
+  );
+  if (
+    mount?.type !== 'bind' ||
+    resolve(String(mount.source || '')) !== resolve(dataDirectory)
+  ) {
+    throw new Error(
+      `Compose app /data must be the exact bind mount ${resolve(dataDirectory)}.`
+    );
+  }
+  return resolve(mount.source);
 }
 
 async function waitHealthy(config, image, attempts = 40) {
@@ -126,6 +152,13 @@ async function prepareCandidate(config) {
     config.image ||
     `${config.projectName}:candidate-${Date.now()}-${revision || 'unknown'}`;
   const run = runner(config, image);
+  const renderedRun = runner(config, image, { capture: true });
+  const renderedCompose = JSON.parse(
+    await text(
+      await renderedRun`docker compose -f ${config.composeFile} -p ${config.projectName} config --format json`
+    )
+  );
+  assertComposeDataMount(renderedCompose, config.dataDirectory);
   if (config.image) {
     await run`docker pull ${image}`;
   } else {
@@ -136,6 +169,9 @@ async function prepareCandidate(config) {
   const browserSmoke =
     "import { chromium } from 'playwright'; const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] }); await browser.close();";
   await run`docker run --rm --entrypoint node ${image} --input-type=module -e ${browserSmoke}`;
+  const storagePreflight =
+    "import { open, rename, rm } from 'node:fs/promises'; const a='/data/.container-write-probe'; const b=a+'.renamed'; const f=await open(a,'wx',0o600); await f.writeFile('probe'); await f.sync(); await f.close(); await rename(a,b); await rm(b);";
+  await run`docker compose -f ${config.composeFile} -p ${config.projectName} run --rm --no-deps --entrypoint node app --input-type=module -e ${storagePreflight}`;
   await run`docker compose -f ${config.composeFile} -p ${config.projectName} run --rm --no-deps --entrypoint node app bin/vietnam-accomodation-search.js telegram preflight`;
   return image;
 }
@@ -219,6 +255,7 @@ export async function runDeployCli(argv = process.argv.slice(2)) {
   await loadDependencies();
   const [action = 'status'] = argv;
   const config = configuration(argv.slice(1));
+  config.dataDirectory = await validateDataDirectory(config.dataDirectory);
   const stateDirectory = '.deploy';
   const statePath = `${stateDirectory}/state.json`;
   const lockPath = `${stateDirectory}/operation.lock`;
