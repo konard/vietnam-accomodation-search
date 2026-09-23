@@ -551,5 +551,12 @@ describe('issue 20 discovery and reconciliation edges', () => {
       { extract: async () => null }
     );
     expect(filtered.accepted).toEqual([]);
+    expect(filtered.reviewQueue).toEqual([
+      {
+        id: 'telegram-message:s:1',
+        reason: 'offer-extraction-empty',
+        state: 'error',
+      },
+    ]);
   });
 });

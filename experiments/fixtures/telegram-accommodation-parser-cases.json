@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "reviewedAt": "2026-09-22",
+  "schemaVersion": 2,
+  "reviewedAt": "2026-09-23",
   "dataPolicy": "synthetic-and-anonymized-only",
   "cases": [
     {
@@ -131,6 +131,20 @@
       }
     },
     {
+      "id": "telegram-photo-only-ocr-offer",
+      "language": "vi",
+      "input": {
+        "messages": [{ "media": "[PHOTO_OCR]", "text": "" }],
+        "ocrText": "Cho thuê căn hộ Nha Trang, giá 11 triệu VND/tháng"
+      },
+      "expected": {
+        "relevant": true,
+        "offerCount": 1,
+        "ocrState": "completed",
+        "price": { "amount": 11000000, "currency": "VND", "period": "month" }
+      }
+    },
+    {
       "id": "exclude-accommodation-request",
       "language": "ru",
       "input": {
@@ -177,6 +191,36 @@
         "relevant": false,
         "reason": "listing-location-outside-query"
       }
+    },
+    {
+      "id": "exclude-en-cleaning-service",
+      "language": "en",
+      "observedFailureCategory": "service-mentions-apartment-and-price",
+      "input": {
+        "postedAt": "2026-09-22T00:00:00.000Z",
+        "text": "Apartment cleaning service in Nha Trang, packages from 500,000 VND."
+      },
+      "expected": { "relevant": false, "reason": "unrelated-service" }
+    },
+    {
+      "id": "exclude-vi-property-sale",
+      "language": "vi",
+      "observedFailureCategory": "sale-cross-posted-to-rental-source",
+      "input": {
+        "postedAt": "2026-09-22T00:00:00.000Z",
+        "text": "Bán căn hộ tại Nha Trang, giá 2 tỷ VND, có nội thất."
+      },
+      "expected": { "relevant": false, "reason": "sale-not-rental" }
+    },
+    {
+      "id": "exclude-vi-travel-service",
+      "language": "vi",
+      "observedFailureCategory": "service-mentions-hotel-and-price",
+      "input": {
+        "postedAt": "2026-09-22T00:00:00.000Z",
+        "text": "Dịch vụ đưa đón khách sạn tại Nha Trang, giá 300.000 VND."
+      },
+      "expected": { "relevant": false, "reason": "unrelated-service" }
     }
   ]
 }
