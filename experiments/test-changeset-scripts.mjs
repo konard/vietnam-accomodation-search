@@ -135,6 +135,12 @@ function setupTestEnvironment() {
   }
   mkdirSync(testChangesetDir, { recursive: true });
 
+  // Provide the package identity that the changeset merge contract requires.
+  writeFileSync(
+    join(testDir, 'package.json'),
+    `${JSON.stringify({ name: 'my-package', version: '1.0.0' }, null, 2)}\n`
+  );
+
   // Create README.md (should be ignored)
   writeFileSync(join(testChangesetDir, 'README.md'), '# Changesets\n');
 
