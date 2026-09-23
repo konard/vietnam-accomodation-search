@@ -145,6 +145,114 @@ describe('Telegram bot commands', () => {
     expect(persisted).toBe(1);
   });
 
+  it('contains search, preparation, result, and media boundary failures', async () => {
+    const offer = {
+      id: 'offer-1',
+      photos: ['https://img.example/room.jpg'],
+      priceVnd: 1_000_000,
+      title: 'Prepared room',
+    };
+
+    const searchBot = fakeBot();
+    const searchReplies = [];
+    registerTelegramHandlers(searchBot, {
+      registry: { update: async () => ({ web: [], telegram: [] }) },
+      service: {
+        search: async () => {
+          throw new Error('private search detail');
+        },
+      },
+    });
+    await searchBot.commands.get('search')({
+      match: 'Nha Trang',
+      reply: async (text) => searchReplies.push(text),
+    });
+    expect(searchReplies).toEqual([
+      'Search could not be completed. Please try again later.',
+    ]);
+
+    const prepareBot = fakeBot();
+    const prepareReplies = [];
+    const logged = [];
+    registerTelegramHandlers(prepareBot, {
+      logger: { error: (message) => logged.push(message) },
+      presetService: {
+        prepareDelivery: async () => {
+          throw new Error('private mirror detail');
+        },
+        resolveSearch: async (_userId, options) => options,
+      },
+      registry: { update: async () => ({ web: [], telegram: [] }) },
+      service: { search: async () => [offer] },
+      traceRecorder: {
+        persist: async () => {
+          throw new Error('private trace detail');
+        },
+        record: () => {},
+      },
+    });
+    await prepareBot.commands.get('search')({
+      from: { id: 123 },
+      match: 'Nha Trang',
+      reply: async (text) => prepareReplies.push(text),
+    });
+    expect(prepareReplies).toEqual([
+      'Search could not be completed. Please try again later.',
+    ]);
+    expect(logged).toEqual(['telegram search trace persistence failed']);
+
+    const resultBot = fakeBot();
+    const resultReplies = [];
+    registerTelegramHandlers(resultBot, {
+      presetService: {
+        prepareDelivery: async () => {},
+        resolveSearch: async (_userId, options) => options,
+      },
+      registry: { update: async () => ({ web: [], telegram: [] }) },
+      service: { search: async () => [offer] },
+    });
+    await resultBot.commands.get('search')({
+      from: { id: 123 },
+      match: 'Nha Trang',
+      reply: async (text) => {
+        if (!resultReplies.length) {
+          resultReplies.push('transport failed');
+          throw new Error('private transport detail');
+        }
+        resultReplies.push(text);
+      },
+    });
+    expect(resultReplies.at(-1)).toBe(
+      'Search could not be completed. Please try again later.'
+    );
+
+    const mediaBot = fakeBot();
+    const mediaEvents = [];
+    registerTelegramHandlers(mediaBot, {
+      presetService: {
+        markDelivered: async () => {},
+        prepareDelivery: async () => {},
+        resolveSearch: async (_userId, options) => options,
+      },
+      registry: { update: async () => ({ web: [], telegram: [] }) },
+      service: { search: async () => [offer] },
+      traceRecorder: {
+        persist: async () => {},
+        record: (event) => mediaEvents.push(event),
+      },
+    });
+    await mediaBot.commands.get('search')({
+      from: { id: 123 },
+      match: 'Nha Trang',
+      reply: async () => {},
+      replyWithMediaGroup: async () => {
+        throw new Error('private media detail');
+      },
+    });
+    expect(mediaEvents.at(-1).stage).toBe('delivery-media');
+    expect(mediaEvents.at(-1).status).toBe('degraded');
+  });
+
   it('formats an empty result without claiming a price', () => {
     expect(formatSearchResults([])).toContain('No current offers');
   });

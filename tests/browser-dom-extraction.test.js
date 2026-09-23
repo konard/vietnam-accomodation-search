@@ -83,6 +83,50 @@ describe('in-page listing extraction', () => {
     }
   });
 
+  it('accounts for DOM fallbacks and text-derived unavailable identities', () => {
+    const previous = globalThis.document;
+    const elements = new Map([
+      ['a.details', { href: 'https://rent.example/listing' }],
+      ['h5', { textContent: 'Unavailable apartment' }],
+      ['.availability', { textContent: 'Sold' }],
+    ]);
+    const ariaElement = {
+      getAttribute: (name) => (name === 'aria-label' ? 'Rooftop pool' : null),
+    };
+    const card = {
+      getAttribute: () => null,
+      innerText: 'property-A902\nSold\nRooftop pool',
+      querySelector: (selector) => elements.get(selector) || null,
+      querySelectorAll: (selector) =>
+        selector === '.amenity' ? [ariaElement] : [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+
+    try {
+      const [row] = extractPageListings('web', {
+        cards: '.card',
+        fields: {
+          amenity: '.amenity',
+          availability: '.availability',
+          omitted: '',
+        },
+        link: 'a.details',
+        title: 'h5',
+      });
+
+      expect(row.attributes).toEqual({
+        availableNow: false,
+        propertyId: 'A902',
+      });
+      expect(row.semantic).toEqual({
+        amenity: 'Rooftop pool',
+        availability: 'Sold',
+      });
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('extracts property IDs, titles, and image fallbacks from website DOM cards', async () => {
     const previous = globalThis.document;
     const anchor = { href: 'https://stay.example/rooms/unit-42' };
