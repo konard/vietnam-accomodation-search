@@ -246,15 +246,19 @@ export class DomainScheduler {
         }
         await this.#acquireDomainSlot();
         try {
-          if (this.stoppedDomains.has(domain)) {
-            const error = new Error(
-              `Browser domain stopped after a challenge: ${domain}.`
-            );
-            error.code = 'BROWSER_DOMAIN_CHALLENGED';
-            throw error;
-          }
           const state = await this.#loadDomainState(domain);
           const cooldown = Math.max(0, state.blockedUntil - this.now());
+          if (this.stoppedDomains.has(domain)) {
+            if (cooldown > 0) {
+              const error = new Error(
+                `Browser domain stopped after a challenge: ${domain}.`
+              );
+              error.code = 'BROWSER_DOMAIN_CHALLENGED';
+              error.retryAfterMs = cooldown;
+              throw error;
+            }
+            this.stoppedDomains.delete(domain);
+          }
           if (cooldown > 0) {
             await this.delay(cooldown, { signal });
           }

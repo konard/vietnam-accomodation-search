@@ -575,10 +575,11 @@ describe('issue 20 browser, release, and Pages gates', () => {
       },
     };
     let attempts = 0;
+    let now = 1_000;
     const scheduler = new DomainScheduler({
       delay: async () => {},
       maxAttempts: 3,
-      now: () => 1_000,
+      now: () => now,
       store,
     });
     let challenge;
@@ -605,15 +606,27 @@ describe('issue 20 browser, release, and Pages gates', () => {
       stopped = error;
     }
     expect(stopped.code).toBe('BROWSER_DOMAIN_CHALLENGED');
+    expect(stopped.retryAfterMs).toBe(records[0].blockedUntil - now);
     expect(
       await scheduler.run('https://healthy.example', async () => 'ok')
+    ).toBe('ok');
+
+    const persistedRecords = records.map((record) => ({ ...record }));
+    now = records[0].blockedUntil;
+    expect(
+      await scheduler.run('https://blocked.example/future', async () => 'ok')
     ).toBe('ok');
 
     const delays = [];
     const restarted = new DomainScheduler({
       delay: async (milliseconds) => delays.push(milliseconds),
       now: () => 1_000,
-      store,
+      store: {
+        loadRecords: async () => persistedRecords,
+        updateRecords: async (_kind, update) => {
+          await update(persistedRecords);
+        },
+      },
     });
     expect(
       await restarted.run('https://blocked.example/later', async () => 'ok')
