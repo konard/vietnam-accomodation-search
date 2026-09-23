@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1
+
+### Patch Changes
+
+- d41637e: Recover search delivery cursors transactionally, enforce complete multilingual browser cards, and synchronize queued release checkouts before versioning.
+
 ## 0.12.0
 
 ### Minor Changes
