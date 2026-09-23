@@ -2,13 +2,14 @@ import {
   lstat,
   mkdtemp,
   mkdir,
+  realpath,
   readFile,
   rm,
   symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'test-anywhere';
 
@@ -86,11 +87,17 @@ describe('container runtime contract', () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;
     }
-    const root = await mkdtemp(join(tmpdir(), 'accommodation-data-'));
+    // macOS exposes /var as a system symlink. Resolve the temporary root so
+    // this success fixture does not accidentally exercise the rejection path.
+    const root = await realpath(
+      await mkdtemp(join(tmpdir(), 'accommodation-data-'))
+    );
     try {
       const directory = join(root, 'state');
       expect(await validateDataDirectory(directory)).toBe(directory);
-      expect((await lstat(directory)).mode & 0o777).toBe(0o700);
+      if (process.platform !== 'win32') {
+        expect((await lstat(directory)).mode & 0o777).toBe(0o700);
+      }
 
       await writeFile(
         join(directory, '.state-schema.json'),
@@ -117,7 +124,11 @@ describe('container runtime contract', () => {
       const target = join(root, 'target');
       const link = join(root, 'link');
       await mkdir(target);
-      await symlink(target, link);
+      await symlink(
+        target,
+        link,
+        process.platform === 'win32' ? 'junction' : undefined
+      );
       let linkFailure;
       try {
         await validateDataDirectory(join(link, 'escaped'));
@@ -148,30 +159,35 @@ describe('container runtime contract', () => {
   });
 
   it('requires the rendered Compose model to use the exact validated bind', () => {
+    const dataDirectory = resolve('accommodation-compose-state');
     expect(
       assertComposeDataMount(
         {
           services: {
             app: {
               volumes: [
-                { source: '/srv/accommodation', target: '/data', type: 'bind' },
+                { source: dataDirectory, target: '/data', type: 'bind' },
               ],
             },
           },
         },
-        '/srv/accommodation'
+        dataDirectory
       )
-    ).toBe('/srv/accommodation');
+    ).toBe(dataDirectory);
 
     for (const volume of [
       { source: 'legacy-volume', target: '/data', type: 'volume' },
-      { source: '/srv/wrong', target: '/data', type: 'bind' },
+      {
+        source: resolve('accommodation-wrong'),
+        target: '/data',
+        type: 'bind',
+      },
     ]) {
       let error;
       try {
         assertComposeDataMount(
           { services: { app: { volumes: [volume] } } },
-          '/srv/accommodation'
+          dataDirectory
         );
       } catch (caught) {
         error = caught;

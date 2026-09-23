@@ -52,7 +52,12 @@ describe('version-and-commit.mjs formats the release commit', () => {
     const root = mkdtempSync(join(tmpdir(), 'release-formatting-'));
     const run = (args) =>
       execFileSync('git', args, { cwd: root, encoding: 'buffer' });
-    const unusual = 'release notes\ncontinued.md';
+    // Windows forbids control characters in pathnames. POSIX runners retain
+    // the newline regression while Windows still covers spacing and quoting.
+    const unusual =
+      process.platform === 'win32'
+        ? 'release notes [continued].md'
+        : 'release notes\ncontinued.md';
     try {
       run(['init', '-b', 'main']);
       run(['config', 'user.email', 'ci@example.com']);
