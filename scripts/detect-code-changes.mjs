@@ -36,7 +36,8 @@
 
 import { execFileSync } from 'child_process';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
+import { pathToFileURL } from 'url';
 
 import { getJsRoot, parseJsRootConfig } from './js-paths.mjs';
 
@@ -346,6 +347,44 @@ function hasPendingChangeset(prefix) {
   );
 }
 
+/**
+ * Classify an already-resolved git path list without creating a repository or
+ * subprocess. Git-range selection remains covered by the smaller CLI fixture
+ * suite; path policy is intentionally a pure unit-test boundary.
+ */
+export function classifyChangedFiles(
+  changedFiles,
+  { packagePrefix = '', pendingChangeset = false } = {}
+) {
+  const packageChangedFiles = toPackagePaths(changedFiles, packagePrefix);
+  const relevantChangedFiles = packageChangedFiles.filter(
+    (file) => !ignoredPathPrefixes.some((prefix) => file.startsWith(prefix))
+  );
+  const codeChangedFiles = relevantChangedFiles.filter(
+    (file) => !isExcludedFromCodeChanges(file)
+  );
+  const jsChanged = relevantChangedFiles.some((file) =>
+    /\.(mjs|cjs|js)$/u.test(file)
+  );
+  const docsChanged = relevantChangedFiles.some((file) => file.endsWith('.md'));
+  const codeFileExtensionPattern = /\.(mjs|cjs|js|json|yml|yaml)$/u;
+  const anyCodeChanged =
+    pendingChangeset ||
+    codeChangedFiles.some(
+      (file) =>
+        codeFileExtensionPattern.test(file) ||
+        file.startsWith(workflowPathPrefix)
+    );
+
+  return {
+    anyCodeChanged,
+    codeChangedFiles,
+    docsChanged,
+    jsChanged,
+    relevantChangedFiles,
+  };
+}
+
 async function detectChanges() {
   console.log('Detecting file changes for CI/CD...\n');
 
@@ -360,23 +399,14 @@ async function detectChanges() {
   console.log('');
 
   const packagePrefix = getPackagePathPrefix();
-  const packageChangedFiles = toPackagePaths(changedFiles, packagePrefix);
-
-  const relevantChangedFiles = packageChangedFiles.filter(
-    (file) => !ignoredPathPrefixes.some((prefix) => file.startsWith(prefix))
-  );
-
-  const jsChanged = relevantChangedFiles.some((file) =>
-    /\.(mjs|cjs|js)$/.test(file)
-  );
+  const pendingChangeset = hasPendingChangeset(packagePrefix);
+  const { anyCodeChanged, codeChangedFiles, docsChanged, jsChanged } =
+    classifyChangedFiles(changedFiles, {
+      packagePrefix,
+      pendingChangeset,
+    });
   setOutput('js-changed', jsChanged ? 'true' : 'false');
-
-  const docsChanged = relevantChangedFiles.some((file) => file.endsWith('.md'));
   setOutput('docs-changed', docsChanged ? 'true' : 'false');
-
-  const codeChangedFiles = relevantChangedFiles.filter(
-    (file) => !isExcludedFromCodeChanges(file)
-  );
 
   console.log('\nFiles considered as code changes:');
   if (codeChangedFiles.length === 0) {
@@ -386,23 +416,16 @@ async function detectChanges() {
   }
   console.log('');
 
-  const codeFileExtensionPattern = /\.(mjs|cjs|js|json|yml|yaml)$/;
-  const pendingChangeset = hasPendingChangeset(packagePrefix);
   setOutput('pending-changeset', pendingChangeset ? 'true' : 'false');
-  const anyCodeChanged =
-    pendingChangeset ||
-    codeChangedFiles.some(
-      (file) =>
-        codeFileExtensionPattern.test(file) ||
-        file.startsWith(workflowPathPrefix)
-    );
   setOutput('any-code-changed', anyCodeChanged ? 'true' : 'false');
 
   console.log('\nChange detection completed.');
 }
 
-// Run the detection
-detectChanges().catch((error) => {
-  console.error(error?.message ?? error);
-  process.exit(1);
-});
+const entryPoint = globalThis.process?.argv?.[1];
+if (entryPoint && pathToFileURL(resolve(entryPoint)).href === import.meta.url) {
+  detectChanges().catch((error) => {
+    console.error(error?.message ?? error);
+    process.exit(1);
+  });
+}

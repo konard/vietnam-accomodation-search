@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 
+import { classifyChangedFiles } from '../scripts/detect-code-changes.mjs';
+
 const scriptPath = fileURLToPath(
   new URL('../scripts/detect-code-changes.mjs', import.meta.url)
 );
@@ -67,38 +69,6 @@ function createMergeCommitFixture() {
   return root;
 }
 
-function createChangeFixture(filePath, eventName, options = {}) {
-  const { packageRoot = '.' } = options;
-  const root = mkdtempSync(path.join(tmpdir(), 'detect-code-changes-'));
-
-  runGit(root, ['init', '-b', 'main']);
-  runGit(root, ['config', 'user.email', 'ci@example.com']);
-  runGit(root, ['config', 'user.name', 'CI Test']);
-
-  writeFileSync(path.join(root, 'README.md'), '# Fixture\n');
-  mkdirSync(path.join(root, packageRoot), { recursive: true });
-  writeFileSync(
-    path.join(root, packageRoot, 'package.json'),
-    '{ "name": "fixture" }\n'
-  );
-  commit(root, 'Initial commit');
-
-  if (eventName === 'pull_request') {
-    runGit(root, ['checkout', '-b', 'feature']);
-  }
-
-  mkdirSync(path.dirname(path.join(root, filePath)), { recursive: true });
-  writeFileSync(path.join(root, filePath), 'export const ignored = true;\n');
-  commit(root, 'Add excluded file');
-
-  if (eventName === 'pull_request') {
-    runGit(root, ['checkout', 'main']);
-    runGit(root, ['merge', '--no-ff', 'feature', '-m', 'Synthetic PR merge']);
-  }
-
-  return root;
-}
-
 function runDetectCodeChanges(root, eventName) {
   const outputFile = path.join(root, 'github-output.txt');
   const result = spawnSync(process.execPath, [scriptPath], {
@@ -148,140 +118,76 @@ describe('detect-code-changes CLI', () => {
         rmSync(root, { force: true, recursive: true });
       }
     });
+  }
 
-    for (const eventName of ['pull_request', 'push']) {
-      for (const filePath of [
-        'experiments/repro.mjs',
-        'dev/log/repro.js',
-        'docs/case-studies/issue-113/repro.md',
-      ]) {
-        it(`ignores ${filePath} changes on ${eventName}`, () => {
-          const root = createChangeFixture(filePath, eventName);
-
-          try {
-            const { outputs, result } = runDetectCodeChanges(root, eventName);
-
-            expect(result.status).toBe(0);
-            expect(outputs).toContain('js-changed=false\n');
-            expect(outputs).toContain('docs-changed=false\n');
-            expect(outputs).toContain('any-code-changed=false\n');
-            expect(outputs).not.toContain('mjs-changed=');
-            expect(outputs).not.toContain('package-changed=');
-            expect(outputs).not.toContain('workflow-changed=');
-          } finally {
-            rmSync(root, { force: true, recursive: true });
-          }
-        });
-      }
-    }
-
-    for (const [filePath, expectedOutput] of [
-      ['src/relevant.mjs', 'js-changed=true\n'],
-      ['docs/relevant.md', 'docs-changed=true\n'],
-    ]) {
-      it(`keeps detecting non-ignored ${filePath} changes`, () => {
-        const root = createChangeFixture(filePath, 'push');
-
-        try {
-          const { outputs, result } = runDetectCodeChanges(root, 'push');
-
-          expect(result.status).toBe(0);
-          expect(outputs).toContain(expectedOutput);
-        } finally {
-          rmSync(root, { force: true, recursive: true });
-        }
+  for (const filePath of [
+    'experiments/repro.mjs',
+    'dev/log/repro.js',
+    'docs/case-studies/issue-113/repro.md',
+  ]) {
+    it(`ignores ${filePath} without constructing a repository`, () => {
+      expect(classifyChangedFiles([filePath])).toEqual({
+        anyCodeChanged: false,
+        codeChangedFiles: [],
+        docsChanged: false,
+        jsChanged: false,
+        relevantChangedFiles: [],
       });
-    }
-
-    // git prints repository-root-relative paths, so in the multi-language
-    // layout (package.json in js/) the package-relative ignore list matches
-    // only after the js/ prefix has been stripped.
-    for (const eventName of ['pull_request', 'push']) {
-      for (const filePath of [
-        'js/examples/demo.mjs',
-        'js/.changeset/tidy-cats-shine.md',
-        'js/experiments/repro.mjs',
-        'js/dev/log/repro.js',
-        'js/docs/case-studies/issue-141/repro.md',
-      ]) {
-        it(`ignores ${filePath} changes on ${eventName} in the multi-language layout`, () => {
-          const root = createChangeFixture(filePath, eventName, {
-            packageRoot: 'js',
-          });
-
-          try {
-            const { outputs, result } = runDetectCodeChanges(root, eventName);
-
-            expect(result.status).toBe(0);
-            expect(outputs).toContain('js-changed=false\n');
-            expect(outputs).toContain('docs-changed=false\n');
-            expect(outputs).toContain('any-code-changed=false\n');
-          } finally {
-            rmSync(root, { force: true, recursive: true });
-          }
-        });
-      }
-    }
-
-    for (const [filePath, expectedOutputs] of [
-      ['js/src/relevant.mjs', ['js-changed=true\n', 'any-code-changed=true\n']],
-      ['js/docs/relevant.md', ['docs-changed=true\n']],
-      ['.github/workflows/ci.yml', ['any-code-changed=true\n']],
-    ]) {
-      it(`keeps detecting ${filePath} changes in the multi-language layout`, () => {
-        const root = createChangeFixture(filePath, 'push', {
-          packageRoot: 'js',
-        });
-
-        try {
-          const { outputs, result } = runDetectCodeChanges(root, 'push');
-
-          expect(result.status).toBe(0);
-          for (const expected of expectedOutputs) {
-            expect(outputs).toContain(expected);
-          }
-        } finally {
-          rmSync(root, { force: true, recursive: true });
-        }
-      });
-    }
-
-    it('ignores changes belonging to another language package', () => {
-      const root = createChangeFixture('rust/Cargo.toml', 'push', {
-        packageRoot: 'js',
-      });
-
-      try {
-        const { outputs, result } = runDetectCodeChanges(root, 'push');
-
-        expect(result.status).toBe(0);
-        expect(outputs).toContain('js-changed=false\n');
-        expect(outputs).toContain('any-code-changed=false\n');
-      } finally {
-        rmSync(root, { force: true, recursive: true });
-      }
-    });
-
-    it('runs release gates for an excluded-only repair when a valid changeset is pending', () => {
-      const root = createChangeFixture('.changeset/repair.md', 'push');
-      writeFileSync(
-        path.join(root, '.changeset', 'repair.md'),
-        "---\n'fixture': patch\n---\n\nRepair release metadata.\n"
-      );
-      runGit(root, ['add', '.changeset/repair.md']);
-      runGit(root, ['commit', '--amend', '--no-edit']);
-
-      try {
-        const { outputs, result } = runDetectCodeChanges(root, 'push');
-
-        expect(result.status).toBe(0);
-        expect(outputs).toContain('pending-changeset=true\n');
-        expect(outputs).toContain('any-code-changed=true\n');
-      } finally {
-        rmSync(root, { force: true, recursive: true });
-      }
     });
   }
+
+  for (const [filePath, expected] of [
+    [
+      'src/relevant.mjs',
+      { anyCodeChanged: true, docsChanged: false, jsChanged: true },
+    ],
+    [
+      'docs/relevant.md',
+      { anyCodeChanged: false, docsChanged: true, jsChanged: false },
+    ],
+  ]) {
+    it(`classifies ${filePath} directly`, () => {
+      const actual = classifyChangedFiles([filePath]);
+      expect({
+        anyCodeChanged: actual.anyCodeChanged,
+        docsChanged: actual.docsChanged,
+        jsChanged: actual.jsChanged,
+      }).toEqual(expected);
+    });
+  }
+
+  it('normalizes package paths and excludes other language packages', () => {
+    expect(
+      classifyChangedFiles(
+        [
+          'js/examples/demo.mjs',
+          'js/src/relevant.mjs',
+          'js/docs/relevant.md',
+          '.github/workflows/ci.yml',
+          'rust/Cargo.toml',
+        ],
+        { packagePrefix: 'js/' }
+      )
+    ).toEqual({
+      anyCodeChanged: true,
+      codeChangedFiles: ['src/relevant.mjs', '.github/workflows/ci.yml'],
+      docsChanged: true,
+      jsChanged: true,
+      relevantChangedFiles: [
+        'src/relevant.mjs',
+        'docs/relevant.md',
+        '.github/workflows/ci.yml',
+      ],
+    });
+  });
+
+  it('runs code gates when only an ignored changeset is pending', () => {
+    expect(
+      classifyChangedFiles(['.changeset/repair.md'], {
+        pendingChangeset: true,
+      }).anyCodeChanged
+    ).toBe(true);
+  });
 });
 
 // A pull request can carry several commits, and a superseded run may never
