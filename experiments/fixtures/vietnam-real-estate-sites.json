@@ -1,5 +1,12 @@
 [
   {
+    "id": "alonhadat-nha-trang-rent",
+    "name": "Alo Nhà Đất Nha Trang rentals",
+    "languages": ["vi"],
+    "url": "https://alonhadat.com.vn/cho-thue-nha/khanh-hoa/nha-trang",
+    "provenance": "issue-37-live-source-discovery"
+  },
+  {
     "id": "batdongsan-rent",
     "name": "Batdongsan.com.vn rentals",
     "languages": ["vi"],

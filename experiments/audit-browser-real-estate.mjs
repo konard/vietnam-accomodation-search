@@ -19,8 +19,11 @@ import { join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 
 import { launchBrowser, makeBrowserCommander } from 'browser-commander';
+import { browserAdapterFor } from '../src/browser-adapters.js';
+import { extractPageListings } from '../src/browser-collector.js';
 
 import {
+  assessSourceCoverage,
   assertManualLocalRun,
   classifyPage,
   createPrivateTraceWriter,
@@ -29,22 +32,12 @@ import {
   sanitizedUrl,
   segmentLedger,
   siteDomain,
-  summarizeCards,
+  summarizeStructuredCards,
 } from './browser-real-estate-audit-lib.mjs';
 
 const DEFAULT_MANIFEST = fileURLToPath(
   new URL('./fixtures/vietnam-real-estate-sites.json', import.meta.url)
 );
-const CARD_SELECTOR = [
-  '[data-testid="property-card"]',
-  '[data-testid="card-container"]',
-  '[data-listing-id]',
-  '.property-card',
-  '.listing-item',
-  'article',
-  '[itemtype*="Accommodation"]',
-  '[itemtype*="Hotel"]',
-].join(', ');
 const TRACE_PRIVACY = {
   redactPatterns: [
     /\+?\d[\d\s().-]{7,20}\d/gu,
@@ -78,6 +71,7 @@ function parseArguments(argv) {
     }
     const key = {
       '--concurrency': 'concurrency',
+      '--cooldown-state': 'cooldownState',
       '--manifest': 'manifest',
       '--max-delay-ms': 'maxDelayMs',
       '--max-sites': 'maxSites',
@@ -90,19 +84,34 @@ function parseArguments(argv) {
     }
     const value = argv[index + 1];
     values[key] =
-      key === 'manifest' || key === 'outputDir' ? value : Number(value);
+      key === 'cooldownState' || key === 'manifest' || key === 'outputDir'
+        ? value
+        : Number(value);
     index += 1;
   }
   return values;
 }
 
-function extractPageEvidence(selector) {
+function extractPageEvidence(fields = {}) {
   const documentRef = globalThis.document;
-  const cards = [...documentRef.querySelectorAll(selector)]
-    .slice(0, 100)
-    .map((element) => ({ text: (element.innerText || '').slice(0, 30_000) }));
+  const semantic = Object.fromEntries(
+    Object.entries(fields)
+      // eslint-disable-next-line complexity -- Browser evidence fields have explicit DOM fallbacks.
+      .map(([field, selector]) => {
+        const selected = documentRef.querySelector(selector);
+        const value =
+          selected?.innerText ||
+          selected?.textContent ||
+          selected?.content ||
+          selected?.getAttribute?.('content') ||
+          selected?.getAttribute?.('href') ||
+          selected?.getAttribute?.('aria-label');
+        return [field, typeof value === 'string' ? value.trim() : undefined];
+      })
+      .filter(([, value]) => value)
+  );
   return {
-    cards,
+    semantic,
     text: (documentRef.body?.innerText || '').slice(0, 200_000),
     title: documentRef.title || '',
     url: documentRef.location.href,
@@ -143,6 +152,7 @@ async function startSiteTrace(commander, outputDirectory, site) {
   return { linksPath, path, trace };
 }
 
+// eslint-disable-next-line complexity, max-lines-per-function -- One site owns its complete browser/trace cleanup boundary.
 async function auditSite({ options, pacer, site, writer }) {
   const domain = siteDomain(site);
   const delayMs = pacer.delayFor(domain);
@@ -203,21 +213,39 @@ async function auditSite({ options, pacer, site, writer }) {
       actor: 'local-e2e',
       reason: 'post-navigation-evidence',
     });
+    const adapter = browserAdapterFor(site.url);
+    const cards = await commander.evaluate(
+      extractPageListings,
+      'web',
+      adapter.selectors || {}
+    );
     const evidence = await commander.evaluate(
       extractPageEvidence,
-      CARD_SELECTOR
+      adapter.selectors?.fields || {}
     );
-    const summary = summarizeCards(evidence.cards);
+    const summary = summarizeStructuredCards(cards);
+    const coverage = assessSourceCoverage({
+      cards,
+      finalUrl: evidence.url,
+      pageSemantic: evidence.semantic,
+      pageText: evidence.text,
+      requestedUrl: site.url,
+    });
     const classification = classifyPage({
       cardCount: summary.cardCount,
       text: evidence.text,
       title: evidence.title,
       url: evidence.url,
     });
-    outcome =
-      classification === 'success' && summary.unconsumed > 0
-        ? 'parse_incomplete'
-        : classification;
+    outcome = classification;
+    if (
+      classification === 'success' &&
+      (summary.incompleteCards > 0 ||
+        summary.unconsumed > 0 ||
+        coverage.missing.length > 0)
+    ) {
+      outcome = 'parse_incomplete';
+    }
     await writer.write({
       classification,
       domain,
@@ -233,6 +261,8 @@ async function auditSite({ options, pacer, site, writer }) {
         total: summary.total,
         unconsumed: summary.unconsumed,
       },
+      requirements: coverage,
+      schemaVersion: adapter.schemaVersion,
       severity: outcome === 'success' ? 'info' : 'error',
       siteId: site.id,
       stage: 'site.classified',
@@ -259,7 +289,7 @@ async function auditSite({ options, pacer, site, writer }) {
       stage: 'site.failed',
     });
   } finally {
-    pacer.record(domain, outcome);
+    await pacer.record(domain, outcome);
     if (runningTrace) {
       try {
         await runningTrace.trace.stop({ error: runError });
@@ -304,9 +334,19 @@ async function main() {
     throw new Error('No sites matched the requested manual audit selection.');
   }
   const writer = await createPrivateTraceWriter(outputDirectory, runId);
-  const pacer = new DomainPacer(options);
+  const cooldownState =
+    options.cooldownState ||
+    join(
+      options.outputDir || join(tmpdir(), 'vietnam-accommodation-search'),
+      'browser-audit-cooldowns.json'
+    );
+  const pacer = await DomainPacer.open({
+    ...options,
+    statePath: cooldownState,
+  });
   await writer.write({
     concurrency: options.concurrency,
+    cooldownStatePersisted: true,
     manualLocalOnly: true,
     siteCount: sites.length,
     stage: 'run.started',

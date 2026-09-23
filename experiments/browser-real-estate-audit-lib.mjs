@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFile, mkdir, open } from 'node:fs/promises';
+import {
+  appendFile,
+  chmod,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { URL } from 'node:url';
 
@@ -160,6 +168,114 @@ export function summarizeCards(cards = []) {
   };
 }
 
+function structuredCardIssues(card) {
+  const semantic = card.semantic || {};
+  return [
+    !card.attributes?.propertyId && !card.url ? 'stable-identity' : undefined,
+    !card.title ? 'title' : undefined,
+    !semantic.price ? 'price' : undefined,
+    !semantic.location ? 'location' : undefined,
+    !semantic.availability ? 'availability' : undefined,
+    !card.photos?.length ? 'media' : undefined,
+  ].filter(Boolean);
+}
+
+export function summarizeStructuredCards(cards = []) {
+  const cardSummaries = cards.slice(0, 100).map((card, cardIndex) => {
+    const segmentEvidence = (card.segments || []).map((segment, index) => ({
+      cardIndex,
+      category: segment.category,
+      consumed: segment.category !== 'unknown',
+      hash: hashText(segment.text),
+      index,
+      length: String(segment.text || '').length,
+    }));
+    const issues = structuredCardIssues(card);
+    const unconsumed = segmentEvidence.filter(
+      ({ consumed }) => !consumed
+    ).length;
+    return { issues, segmentEvidence, unconsumed };
+  });
+  const segmentEvidence = cardSummaries.flatMap(
+    ({ segmentEvidence: evidence }) => evidence
+  );
+  const total = segmentEvidence.length;
+  const unconsumed = segmentEvidence.filter(({ consumed }) => !consumed).length;
+  const consumed = total - unconsumed;
+  return {
+    cardCount: cards.length,
+    completeness: total === 0 ? 0 : consumed / total,
+    consumed,
+    incompleteCards: cardSummaries.filter(
+      ({ issues, unconsumed: unknown }) => issues.length || unknown > 0
+    ).length,
+    issues: Object.fromEntries(
+      [...new Set(cardSummaries.flatMap(({ issues }) => issues))].map(
+        (issue) => [
+          issue,
+          cardSummaries.filter(({ issues }) => issues.includes(issue)).length,
+        ]
+      )
+    ),
+    segmentEvidence,
+    total,
+    unconsumed,
+  };
+}
+
+function hasPricePeriod(value) {
+  return /(?:\/\s*(?:mo|month)|per\s+month|monthly|tháng|месяц|мес\.?)/iu.test(
+    String(value || '')
+  );
+}
+
+function validWebUrl(value) {
+  try {
+    return /^https?:$/u.test(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+export function assessSourceCoverage({
+  cards = [],
+  finalUrl,
+  pageSemantic = {},
+  pageText = '',
+  requestedUrl,
+} = {}) {
+  const checks = {
+    availability: cards.every(({ semantic }) => semantic?.availability),
+    contacts:
+      Boolean(pageSemantic.contact) ||
+      cards.some(({ semantic }) => semantic?.contact),
+    intent: /for\s+rent|rental|cho\s+thuê|аренд|снять|сда[её]т/iu.test(
+      `${pageText}\n${requestedUrl || ''}\n${finalUrl || ''}`
+    ),
+    location: cards.every(({ semantic }) => semantic?.location),
+    media: cards.every(({ photos }) => photos?.length),
+    'price-period': cards.every(({ semantic }) =>
+      hasPricePeriod(semantic?.price)
+    ),
+    redirects: validWebUrl(requestedUrl) && validWebUrl(finalUrl),
+    'rooms-beds': cards.some(
+      ({ attributes, semantic }) =>
+        Number.isFinite(attributes?.bedrooms) ||
+        Number.isFinite(attributes?.bathrooms) ||
+        Boolean(semantic?.rooms || semantic?.bedrooms || semantic?.bathrooms)
+    ),
+    'stable-identities': cards.every(
+      ({ attributes, url }) => attributes?.propertyId || validWebUrl(url)
+    ),
+  };
+  return {
+    checks,
+    missing: Object.entries(checks)
+      .filter(([, passed]) => !passed)
+      .map(([name]) => name),
+  };
+}
+
 export function nextDelayMilliseconds(
   { failures = 0, minDelayMs = 3_000, maxDelayMs = 8_000 } = {},
   random = Math.random
@@ -173,12 +289,41 @@ export function nextDelayMilliseconds(
 export class DomainPacer {
   constructor(options = {}) {
     this.options = options;
-    this.states = new Map();
+    this.now = options.now || Date.now;
+    this.pending = Promise.resolve();
+    this.statePath = options.statePath;
+    this.states = new Map(
+      Object.entries(options.states || {}).map(([domain, state]) => [
+        domain,
+        state,
+      ])
+    );
+  }
+
+  static async open(options = {}) {
+    let states = {};
+    if (options.statePath) {
+      try {
+        const persisted = JSON.parse(await readFile(options.statePath, 'utf8'));
+        if (persisted.schemaVersion === 1 && persisted.domains) {
+          states = persisted.domains;
+        }
+      } catch (error) {
+        if (error?.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+    }
+    return new DomainPacer({ ...options, states });
   }
 
   delayFor(domain, random) {
     const state = this.states.get(domain) || { failures: 0 };
-    return nextDelayMilliseconds({ ...this.options, ...state }, random);
+    const jitter = nextDelayMilliseconds({ ...this.options, ...state }, random);
+    return Math.max(
+      jitter,
+      Math.max(0, (state.blockedUntil || 0) - this.now())
+    );
   }
 
   record(domain, outcome) {
@@ -186,9 +331,41 @@ export class DomainPacer {
     const limited = ['challenge', 'rate_limited', 'access_denied'].includes(
       outcome
     );
+    const failures = limited ? Math.min(previous.failures + 1, 3) : 0;
+    const cooldownMs = limited
+      ? Math.min(
+          Number(this.options.maxDelayMs || 8_000) * 8,
+          Number(this.options.minDelayMs || 3_000) * 2 ** failures
+        )
+      : 0;
     this.states.set(domain, {
-      failures: limited ? Math.min(previous.failures + 1, 3) : 0,
+      blockedUntil: limited ? this.now() + cooldownMs : 0,
+      failures,
+      outcome,
     });
+    if (!this.statePath) {
+      return undefined;
+    }
+    this.pending = this.pending.then(() => this.#persist());
+    return this.pending;
+  }
+
+  snapshot() {
+    return {
+      domains: Object.fromEntries(this.states),
+      schemaVersion: 1,
+    };
+  }
+
+  async #persist() {
+    await ensurePrivateParent(this.statePath);
+    const temporary = `${this.statePath}.${randomUUID()}.tmp`;
+    await writeFile(temporary, `${JSON.stringify(this.snapshot())}\n`, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    await rename(temporary, this.statePath);
+    await chmod(this.statePath, 0o600);
   }
 }
 
@@ -251,5 +428,8 @@ export async function createPrivateTraceWriter(
 }
 
 export async function ensurePrivateParent(path) {
-  await mkdir(dirname(path), { mode: 0o700, recursive: true });
+  const created = await mkdir(dirname(path), { mode: 0o700, recursive: true });
+  if (created) {
+    await chmod(dirname(path), 0o700);
+  }
 }

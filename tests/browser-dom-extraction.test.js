@@ -6,6 +6,7 @@ import {
   DEFAULT_TELEGRAM_SOURCES,
   DEFAULT_WEB_SOURCES,
 } from '../src/index.js';
+import { extractPageListings } from '../src/browser-collector.js';
 
 function browserRuntime(commander) {
   return {
@@ -18,6 +19,70 @@ function browserRuntime(commander) {
 }
 
 describe('in-page listing extraction', () => {
+  it('extracts source-labeled semantic fields from bare values', () => {
+    const previous = globalThis.document;
+    const elements = new Map([
+      ['a.details', { href: 'https://rent.example/listing/A902' }],
+      ['h5', { textContent: 'Two bedroom apartment. ID A902' }],
+      ['.price', { textContent: '$420/mo' }],
+      ['.bed', { textContent: '2' }],
+      ['.bath', { textContent: '1' }],
+      ['.location', { textContent: 'North Nha Trang' }],
+      ['.availability', { textContent: 'For Rent' }],
+      ['.contact', { textContent: 'Contact +84 123 456 789' }],
+    ]);
+    const card = {
+      getAttribute: (name) => (name === 'data-listing-id' ? 'A902' : null),
+      innerText: '$420/mo\n2\n1\nNorth Nha Trang\nFor Rent',
+      querySelector: (selector) => elements.get(selector) || null,
+      querySelectorAll: (selector) =>
+        selector === 'img[src]'
+          ? [{ currentSrc: 'https://rent.example/a902.jpg', src: '' }]
+          : [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+
+    try {
+      const rows = extractPageListings('web', {
+        cards: '.card',
+        fields: {
+          availability: '.availability',
+          bathrooms: '.bath',
+          bedrooms: '.bed',
+          contact: '.contact',
+          location: '.location',
+          price: '.price',
+        },
+        identityAttributes: ['data-listing-id'],
+        link: 'a.details',
+        media: 'img[src]',
+        title: 'h5',
+      });
+
+      expect(rows[0].attributes).toEqual({
+        availableNow: true,
+        bathrooms: 1,
+        bedrooms: 2,
+        propertyId: 'A902',
+      });
+      expect(rows[0].semantic).toEqual({
+        availability: 'For Rent',
+        bathrooms: '1',
+        bedrooms: '2',
+        contact: 'Contact +84 123 456 789',
+        location: 'North Nha Trang',
+        price: '$420/mo',
+      });
+      expect(rows[0].photos).toEqual(['https://rent.example/a902.jpg']);
+      expect(rows[0].url).toBe('https://rent.example/listing/A902');
+      expect(
+        rows[0].segments.every(({ category }) => category !== 'unknown')
+      ).toBe(true);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('extracts property IDs, titles, and image fallbacks from website DOM cards', async () => {
     const previous = globalThis.document;
     const anchor = { href: 'https://stay.example/rooms/unit-42' };

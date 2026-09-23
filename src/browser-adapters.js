@@ -1,4 +1,4 @@
-export const BROWSER_ADAPTER_SCHEMA_VERSION = 1;
+export const BROWSER_ADAPTER_SCHEMA_VERSION = 2;
 
 export const PAGE_CLASSIFICATIONS = Object.freeze({
   CHALLENGE: 'challenge',
@@ -323,16 +323,50 @@ export class DomainScheduler {
   }
 }
 
-function adapter(id, domains, searchPath) {
+const DEFAULT_CARD_SELECTORS = {
+  cards:
+    '[data-testid="property-card"], [data-testid="card-container"], article, .property-card, [itemtype*="Hotel"]',
+  details: 'main, article, [itemtype*="Accommodation"]',
+  fields: {
+    availability:
+      '[itemprop="availability"], [data-testid*="availability"], [class*="availability"], [class*="status"]',
+    bathrooms:
+      '[data-testid*="bath"], [class*="bath"], [itemprop="numberOfBathroomsTotal"]',
+    bedrooms:
+      '[data-testid*="bed"], [class*="bed"], [itemprop="numberOfBedrooms"]',
+    contact:
+      '[href^="tel:"], [href^="mailto:"], [href*="t.me/"], [class*="contact"]',
+    description:
+      '[itemprop="description"], [data-testid*="description"], [class*="description"]',
+    location:
+      '[itemprop="address"], [data-testid*="location"], [class*="location"], [class*="address"]',
+    price: '[itemprop="price"], [data-testid*="price"], [class*="price"]',
+  },
+  identityAttributes: [
+    'data-hotelid',
+    'data-property-id',
+    'data-listing-id',
+    'pr-id',
+    'id',
+  ],
+  link: 'a[href]',
+  media: 'img[src], [style*="background-image"]',
+  title: 'h1, h2, h3, h4, h5, [data-testid="title"], [itemprop="name"]',
+};
+
+function adapter(id, domains, searchPath, selectors = {}) {
   return {
     schemaVersion: BROWSER_ADAPTER_SCHEMA_VERSION,
     id: `${id}-rental-v1`,
     domains,
     searchPath,
     selectors: {
-      cards:
-        '[data-testid="property-card"], [data-testid="card-container"], article, .property-card, [itemtype*="Hotel"]',
-      details: 'main, article, [itemtype*="Accommodation"]',
+      ...DEFAULT_CARD_SELECTORS,
+      ...selectors,
+      fields: {
+        ...DEFAULT_CARD_SELECTORS.fields,
+        ...(selectors.fields || {}),
+      },
     },
     capabilities: [
       'search',
@@ -347,6 +381,7 @@ function adapter(id, domains, searchPath) {
       'media',
       'availability',
       'official-links',
+      'semantic-segment-accounting',
     ],
     enabled: true,
   };
@@ -355,8 +390,51 @@ function adapter(id, domains, searchPath) {
 export const BROWSER_SOURCE_ADAPTERS = Object.freeze({
   agoda: adapter('agoda', ['agoda.com'], '/search'),
   airbnb: adapter('airbnb', ['airbnb.com'], '/s/'),
+  alonhadat: adapter(
+    'alonhadat',
+    ['alonhadat.com.vn'],
+    '/cho-thue-nha/khanh-hoa/nha-trang',
+    {
+      cards: '.property-item',
+      details: '[itemtype="https://schema.org/RealEstateListing"], main',
+      fields: {
+        availability: '[itemprop="availability"]',
+        bathrooms: '.toilet, [itemprop="numberOfBathroomsTotal"]',
+        bedrooms: '.bedroom, [itemprop="numberOfBedrooms"]',
+        contact: '.contact-info',
+        description: '.brief, [itemprop="description"]',
+        location: '.property-address, [itemprop="address"]',
+        metadata: '.created-date, .property-details',
+        price: '.price, [itemprop="price"]',
+      },
+      link: 'a.link[href]',
+      media: '.thumbnail img[src], [itemprop="image"]',
+      title: '.property-title, [itemprop="name"]',
+    }
+  ),
   batdongsan: adapter('batdongsan', ['batdongsan.com.vn'], '/nha-dat-cho-thue'),
   booking: adapter('booking', ['booking.com'], '/searchresults'),
+  'be-jib': adapter('be-jib', ['be-jib.com'], '/ru/nha-trang/rentals', {
+    cards: '.bj-listing-card[data-listing-id]',
+    details: 'main, .bj-listing-detail, article',
+    fields: {
+      availability:
+        '.bj-listing-card__status, .bj-listing-card__sold-stamp, [class*="status"]',
+      bathrooms: '[class*="bath"], [data-field="bathrooms"]',
+      bedrooms: '.bj-listing-card__facts, [data-field="bedrooms"]',
+      contact: '[href^="tel:"], [href*="t.me/"]',
+      description: '.bj-listing-card__summary, [class*="description"]',
+      location: '.bj-listing-card__area, [class*="address"]',
+      metadata:
+        '.bj-listing-card__facts, .bj-listing-card__pill, .bj-listing-card__type',
+      price:
+        '.bj-listing-card__price-row, .bj-listing-card__price-aux, [class*="price"]',
+    },
+    identityAttributes: ['data-listing-id'],
+    link: 'a[href*="/listings/"]',
+    media: '.bj-listing-card__media img[src]',
+    title: '.bj-listing-card__title',
+  }),
   chotot: {
     schemaVersion: BROWSER_ADAPTER_SCHEMA_VERSION,
     id: 'chotot-rental-v1',
@@ -379,6 +457,29 @@ export const BROWSER_SOURCE_ADAPTERS = Object.freeze({
   kayak: adapter('kayak', ['kayak.com'], '/hotels/'),
   klook: adapter('klook', ['klook.com'], '/hotels/'),
   mytour: adapter('mytour', ['mytour.vn'], '/khach-san'),
+  'nha-trang-renting': adapter(
+    'nha-trang-renting',
+    ['nhatrangrenting.com'],
+    '/estate-contract/for-rent/',
+    {
+      cards: '.property-container.property-container-grid',
+      details: 'main, article, .properties-single',
+      fields: {
+        availability:
+          '.property-photo-tag-rental, .agenta_stamp_rubber, [class*="status"]',
+        bathrooms: '.label_bath',
+        bedrooms: '.label_bed',
+        contact: '.contact-card-container',
+        description: '.property-hover-txt, [class*="description"]',
+        location: '.property-hover-txt li:first-child, [class*="address"]',
+        metadata: '.property-hover-txt, .property-details',
+        price: '.property-details, [class*="price"]',
+      },
+      link: 'h5 a[href], a.property-photo[href]',
+      media: 'a.property-photo[style*="background-image"], img[src]',
+      title: 'h5',
+    }
+  ),
   skyscanner: adapter('skyscanner', ['skyscanner.com'], '/hotels/'),
   traveloka: adapter('traveloka', ['traveloka.com'], '/hotel/search'),
   trip: adapter('trip', ['trip.com'], '/hotels/list'),
