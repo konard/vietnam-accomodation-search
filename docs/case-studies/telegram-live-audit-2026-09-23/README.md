@@ -4,26 +4,31 @@
 
 The implementation and privacy-safe offline gates pass. The credentialed
 40-source result is **pending**, not inferred: this checkout has no Telegram
-bot/user credentials, `clink`, or Tesseract executable. No live source count,
-message count, identity, content, contact, or excerpt is committed here.
+bot/user credentials or Tesseract executable. Rust `clink` 0.2.10 is available
+and its network-free integration gates pass, but that does not substitute for
+the credentialed audit. No live source count, message count, identity, content,
+contact, or excerpt is committed here.
 
-| Gate                                                | Sanitized result                         |
-| --------------------------------------------------- | ---------------------------------------- |
-| User/UserEmpty excluded before retrieval            | pass (automated constructor tests)       |
-| Safety-cap verdict                                  | pass (cap is always incomplete/non-pass) |
-| Flood-wait retry and durable resume position        | pass (automated)                         |
-| Album/caption/photo-only terminal accounting        | pass (automated synthetic corpus)        |
-| Parser failure/empty extraction terminal accounting | pass (automated)                         |
-| Production reconciliation and domain graph          | pass (automated)                         |
-| Typed LiNo round-trip/query/edit/delete             | pass (automated text-store integration)  |
-| Transactional `clink` mirror                        | pending credentialed local audit         |
-| Two-month boundary reached for all selected sources | pending credentialed local audit         |
-| No unresolved live media-only candidates            | pending credentialed local audit         |
+| Gate                                                | Sanitized result                          |
+| --------------------------------------------------- | ----------------------------------------- |
+| User/UserEmpty excluded before retrieval            | pass (automated constructor tests)        |
+| Safety-cap verdict                                  | pass (cap is always incomplete/non-pass)  |
+| Flood-wait retry and durable resume position        | pass (automated)                          |
+| Album/caption/photo-only terminal accounting        | pass (automated synthetic corpus)         |
+| Parser failure/empty extraction terminal accounting | pass (automated)                          |
+| Production reconciliation and domain graph          | pass (automated)                          |
+| Typed LiNo round-trip/query/edit/delete             | pass (automated text-store integration)   |
+| Tesseract `eng+rus+vie` preflight                   | pass (automated); local executable absent |
+| Transactional `clink` mirror                        | pass offline; credentialed audit pending  |
+| Two-month boundary reached for all selected sources | pending credentialed local audit          |
+| No unresolved live media-only candidates            | pending credentialed local audit          |
 
 ## What changed
 
 The manual runner now:
 
+- refuses all credential and network access until Tesseract reports the exact
+  required `eng`, `rus`, and `vie` language models;
 - selects at most 40 community sources and rejects `User`/`UserEmpty` before
   retrieval;
 - requests one item past each message page so reaching the safety ceiling can
