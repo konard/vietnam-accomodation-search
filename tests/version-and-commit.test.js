@@ -1,7 +1,22 @@
 import { describe, it, expect } from 'test-anywhere';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { formattableStagedFiles } from '../scripts/release-formatting.mjs';
 
 const script = readFileSync('scripts/version-and-commit.mjs', 'utf8');
+const releaseFormatting = readFileSync(
+  'scripts/release-formatting.mjs',
+  'utf8'
+);
 const useModule = readFileSync('scripts/use-module.mjs', 'utf8');
 
 describe('version-and-commit.mjs formats the release commit', () => {
@@ -21,11 +36,47 @@ describe('version-and-commit.mjs formats the release commit', () => {
 
   it('checks only the formattable staged files, not the whole tree', () => {
     expect(script).toContain('prettier --check ${formattable}');
-    expect(script).toContain('/\\.(m?js|json|md|ts)$/');
+    expect(releaseFormatting).toContain('/\\.(m?js|json|md|ts)$/');
+    expect(script).toContain('--diff-filter=ACMR');
+    expect(script).toContain('--name-only -z');
   });
 
   it('skips the check when nothing formattable is staged', () => {
     expect(script).toContain('formattable.length > 0');
+  });
+
+  it('never passes deleted changesets to Prettier and preserves unusual pathnames', () => {
+    const root = mkdtempSync(join(tmpdir(), 'release-formatting-'));
+    const run = (args) =>
+      execFileSync('git', args, { cwd: root, encoding: 'buffer' });
+    const unusual = 'release notes\ncontinued.md';
+    try {
+      run(['init', '-b', 'main']);
+      run(['config', 'user.email', 'ci@example.com']);
+      run(['config', 'user.name', 'CI Test']);
+      mkdirSync(join(root, '.changeset'));
+      writeFileSync(join(root, '.changeset', 'released.md'), '# Released\n');
+      writeFileSync(join(root, 'package.json'), '{"version":"1.0.0"}\n');
+      writeFileSync(join(root, unusual), '# Before\n');
+      run(['add', '-A']);
+      run(['commit', '-m', 'fixture']);
+
+      rmSync(join(root, '.changeset', 'released.md'));
+      writeFileSync(join(root, 'package.json'), '{ "version": "1.0.1" }\n');
+      writeFileSync(join(root, unusual), '# After\n');
+      run(['add', '-A']);
+
+      const output = run([
+        'diff',
+        '--cached',
+        '--name-only',
+        '--diff-filter=ACMR',
+        '-z',
+      ]);
+      expect(formattableStagedFiles(output)).toEqual(['package.json', unusual]);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 });
 
