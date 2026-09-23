@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.12.0
+
+### Minor Changes
+
+- Add production Docker deployment, transactional associative `clink` storage,
+  advanced presets and unseen subscriptions, and resilient dual-transport
+  Telegram authentication, routing, and lifecycle management.
+
+  Add privacy-safe multilingual Telegram discovery and reconciliation, typed
+  LiNo domain and trace records, explicit mtcute session envelopes, polite
+  versioned browser adapters, release audit gates, and an optional GitHub Pages
+  deployment policy.
+
+  Scaffold advanced accommodation filters, persisted search presets, and unseen-offer subscription state while serializing concurrent Links Notation writes with fsync-backed atomic replacement.
+
+  Fix every open CI correctness and resilience issue in the pipeline: scope the
+  Docker buildx cache, retry transient fetch and download failures, make the
+  budget wrapper escalate to SIGKILL, add a terminal status gate to every
+  workflow with supersede detection, verify the husky install, make the jscpd
+  gate analyse real files, guard the package manager declaration, turn on
+  command-stream errexit, gate staged formatting before release commits, add
+  release-preflight credential checks, and sweep zizmor/actionlint/persisted
+  credentials/link-recheck fixes across the workflows.
+
+  Add a manual-only multilingual real-estate browser audit with private structured
+  traces, per-domain pacing, challenge detection, segment-completeness evidence,
+  and durable requirement ownership.
+
+  Add a privacy-safe Telegram community and parser audit experiment, an anonymized multilingual conformance corpus, and requirement-to-issue traceability for live release revalidation.
+
+  Make protected-branch release fallbacks wait for real pull-request checks with
+  a dedicated automation token, and pin every Linux CI job to Ubuntu 24.04.
+
+  Harden CI verdicts, Docker manifest publication, timeout cleanup, broken-link
+  rechecks, and contributor-authored workflow logs, and refresh vulnerable
+  transitive development dependencies.
+
+  Harden release formatting, Telegram capability preflight and resumable audits,
+  polite browser scheduling, operator-owned deployment persistence, immutable
+  release evidence, and change-detection test performance.
+
+  Add the initial browser-driven Vietnam accommodation search service, Telegram bot, ranked source discovery, VND price comparison, and bounded Links Notation cache. Include 20 additional Nha Trang Telegram sources, complete two-month public-preview pagination, advanced multilingual listing attributes, explicit user-session availability inquiries, cross-source offer reconciliation, direct official-website checks, and persistent price-change history.
+
 ## 0.11.30
 
 ### Patch Changes
