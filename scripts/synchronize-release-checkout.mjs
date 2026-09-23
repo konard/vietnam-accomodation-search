@@ -43,6 +43,7 @@ function localVersion(cwd, jsRoot) {
  * @param {string} [options.remote]
  * @param {string} [options.branch]
  * @param {string} [options.jsRoot]
+ * @param {'changeset'|'instant'} [options.mode]
  * @param {Function} [options.runner]
  * @param {Console} [options.logger]
  * @returns {Promise<{status: 'current'|'advanced'|'already-released', version: string, changesets: number}>}
@@ -52,6 +53,7 @@ export async function synchronizeReleaseCheckout({
   remote = 'origin',
   branch = 'main',
   jsRoot = '.',
+  mode = 'changeset',
   runner = runCommand,
   logger = console,
 } = {}) {
@@ -111,7 +113,10 @@ export async function synchronizeReleaseCheckout({
 
   const changesets = countPendingChangesets(cwd, jsRoot);
   return {
-    status: changesets === 0 ? 'already-released' : 'advanced',
+    status:
+      mode === 'changeset' && changesets === 0
+        ? 'already-released'
+        : 'advanced',
     version: localVersion(cwd, jsRoot),
     changesets,
   };

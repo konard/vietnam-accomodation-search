@@ -213,6 +213,7 @@ async function main() {
     const synchronization = await synchronizeReleaseCheckout({
       cwd: originalCwd,
       jsRoot,
+      mode,
     });
     if (synchronization.status === 'already-released') {
       console.log(

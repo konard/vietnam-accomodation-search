@@ -123,6 +123,7 @@ describe('version-and-commit.mjs partial-release recovery', () => {
     const firstRun = join(root, 'first-run');
     const staleLegacyRun = join(root, 'stale-legacy-run');
     const staleFixedRun = join(root, 'stale-fixed-run');
+    const staleInstantRun = join(root, 'stale-instant-run');
     const mergeScript = join(process.cwd(), 'scripts/merge-changesets.mjs');
     const run = (cwd, args) =>
       spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -157,6 +158,7 @@ describe('version-and-commit.mjs partial-release recovery', () => {
 
       runChecked(root, ['clone', remote, staleLegacyRun]);
       runChecked(root, ['clone', remote, staleFixedRun]);
+      runChecked(root, ['clone', remote, staleInstantRun]);
 
       rmSync(join(firstRun, '.changeset', 'first.md'));
       rmSync(join(firstRun, '.changeset', 'second.md'));
@@ -188,6 +190,15 @@ describe('version-and-commit.mjs partial-release recovery', () => {
       expect(runChecked(staleFixedRun, ['rev-parse', 'HEAD'])).toBe(
         runChecked(staleFixedRun, ['rev-parse', 'origin/main'])
       );
+
+      const instant = await synchronizeReleaseCheckout({
+        cwd: staleInstantRun,
+        logger: { log() {} },
+        mode: 'instant',
+      });
+      expect(instant.status).toBe('advanced');
+      expect(instant.version).toBe('1.0.1');
+      expect(runChecked(staleInstantRun, ['status', '--porcelain'])).toBe('');
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
