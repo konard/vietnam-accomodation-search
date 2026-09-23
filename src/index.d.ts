@@ -860,7 +860,7 @@ export declare function resolveTelegramSecrets(
   apiId?: string;
   botToken?: string;
   session?: string;
-  sessionFormat: string;
+  sessionFormat?: string;
 }>;
 
 export declare function preflightTelegram(
@@ -868,6 +868,11 @@ export declare function preflightTelegram(
 ): Promise<{
   identities: Record<string, { id: number; username?: string }>;
   mode: 'bot-only' | 'user-only' | 'both';
+  capabilities: {
+    effectiveMode: 'bot-only' | 'user-only' | 'both';
+    bot: { available: boolean; state: string; reason?: string };
+    user: { available: boolean; state: string; reason?: string };
+  };
 }>;
 
 export declare class TelegramAccessPolicy {

@@ -64,6 +64,13 @@ network connection is created. A GramJS/Teleproto `StringSession` must be
 declared as `gramjs/string-session-v1`; it is never tried against mtcute. The
 status command reports `relogin-required`, and the supported migration is:
 
+`telegram preflight` returns independent `bot` and `user` capability states
+plus the effective mode. Combined mode reports an unavailable, foreign,
+expired, or revoked user session as redacted bot-only degradation. User-only
+mode and every expected-ID mismatch fail closed. Raw session strings without
+`TELEGRAM_USER_SESSION_FORMAT` are rejected; versioned mtcute envelopes carry
+their own declaration.
+
 1. Keep the old GramJS session active and backed up outside application data.
 2. Log in explicitly with mtcute to a new session destination.
 3. Validate the expected numeric account ID with `telegram auth validate`.

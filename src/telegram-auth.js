@@ -11,12 +11,46 @@ import {
 } from './session-envelope.js';
 import { createMtcuteClient } from './telegram-user.js';
 
+function sessionConfiguration(session, sessionFormat) {
+  if (!session) {
+    return { state: 'absent' };
+  }
+  if (!sessionFormat) {
+    const inspection = inspectSessionEnvelope(session);
+    if (inspection.state === 'active-unverified') {
+      return { format: SESSION_FORMAT, state: 'supported' };
+    }
+    return {
+      reason: 'session-format-required',
+      state: 'format-required',
+      userUnavailable:
+        'Telegram raw session format must be declared explicitly. Re-login with mtcute if its origin cannot be proven.',
+    };
+  }
+  if (sessionFormat === SESSION_FORMAT) {
+    return { format: SESSION_FORMAT, state: 'supported' };
+  }
+  const format = inspectSessionFormat(sessionFormat);
+  return {
+    format: sessionFormat,
+    reason:
+      format.state === 'relogin-required'
+        ? 'foreign-session-format'
+        : 'unsupported-session-format',
+    state: format.state,
+    userUnavailable:
+      format.state === 'relogin-required'
+        ? `Telegram session format ${sessionFormat} cannot be converted losslessly. Re-login explicitly with mtcute, validate the pinned account, then revoke the old session.`
+        : `Unsupported Telegram session format: ${sessionFormat}. Re-authenticate with mtcute.`,
+  };
+}
+
 export function validateTelegramConfiguration({
   apiHash,
   apiId,
   botToken,
   session,
-  sessionFormat = SESSION_FORMAT,
+  sessionFormat,
 } = {}) {
   const userValues = {
     TELEGRAM_API_HASH: apiHash,
@@ -35,12 +69,9 @@ export function validateTelegramConfiguration({
     throw new Error(userUnavailable);
   }
   const user = hasUserValue && !missing.length;
-  if (user && sessionFormat !== SESSION_FORMAT) {
-    const format = inspectSessionFormat(sessionFormat);
-    const userUnavailable =
-      format.state === 'relogin-required'
-        ? `Telegram session format ${sessionFormat} cannot be converted losslessly. Re-login explicitly with mtcute, validate the pinned account, then revoke the old session.`
-        : `Unsupported Telegram session format: ${sessionFormat}. Re-authenticate with mtcute.`;
+  const sessionStatus = sessionConfiguration(session, sessionFormat);
+  if (user && sessionStatus.state !== 'supported') {
+    const { userUnavailable } = sessionStatus;
     if (botToken) {
       return { mode: 'bot-only', userUnavailable };
     }
@@ -58,15 +89,67 @@ async function secretValue(env, name) {
 }
 
 export async function resolveTelegramSecrets(env = process.env) {
+  const session = await secretValue(env, 'TELEGRAM_USER_SESSION');
+  const declaredSessionFormat = await secretValue(
+    env,
+    'TELEGRAM_USER_SESSION_FORMAT'
+  );
   return {
     apiHash: await secretValue(env, 'TELEGRAM_API_HASH'),
     apiId: await secretValue(env, 'TELEGRAM_API_ID'),
     botToken: await secretValue(env, 'TELEGRAM_BOT_TOKEN'),
-    session: await secretValue(env, 'TELEGRAM_USER_SESSION'),
+    session,
     sessionFormat:
-      (await secretValue(env, 'TELEGRAM_USER_SESSION_FORMAT')) ||
-      SESSION_FORMAT,
+      declaredSessionFormat || (session ? undefined : SESSION_FORMAT),
   };
+}
+
+function configuredUserCapability(credentials, configuration) {
+  if (!credentials.session) {
+    return { available: false, state: 'not-configured' };
+  }
+  if (configuration.mode !== 'bot-only' || !configuration.userUnavailable) {
+    return { available: true, state: 'configured' };
+  }
+  const status = sessionConfiguration(
+    credentials.session,
+    credentials.sessionFormat
+  );
+  return {
+    available: false,
+    reason: status.reason || 'incomplete-credentials',
+    state:
+      status.state === 'relogin-required' ? 'relogin-required' : status.state,
+  };
+}
+
+function unavailableUserCapability(error) {
+  const message = String(error?.message || '');
+  const code = String(error?.code || '');
+  if (/identity mismatch/iu.test(message)) {
+    throw new Error('Telegram user identity mismatch.');
+  }
+  const expired =
+    /AUTH_KEY_UNREGISTERED|SESSION_REVOKED|SESSION_EXPIRED|expired|revoked/iu.test(
+      `${code} ${message}`
+    );
+  return {
+    available: false,
+    reason: /^[A-Z][A-Z0-9_]+$/u.test(code)
+      ? code
+      : expired
+        ? 'SESSION_INVALID'
+        : 'session-validation-failed',
+    state: expired ? 'expired-or-revoked' : 'unavailable',
+  };
+}
+
+function userPreflightError(capability) {
+  const error = new Error(
+    `Telegram user preflight failed (${capability.reason}).`
+  );
+  error.code = capability.reason;
+  return error;
 }
 
 // eslint-disable-next-line complexity -- Preflight reports each independently configured credential boundary.
@@ -78,11 +161,18 @@ export async function preflightTelegram({
   mirror,
 } = {}) {
   const credentials = await resolveTelegramSecrets(env);
-  const { mode } = validateTelegramConfiguration(credentials);
+  const configuration = validateTelegramConfiguration(credentials);
+  let { mode } = configuration;
   if (!credentials.botToken && !credentials.session) {
     throw new Error('Configure a Telegram bot token, a user session, or both.');
   }
   const identities = {};
+  const capabilities = {
+    bot: credentials.botToken
+      ? { available: true, state: 'configured' }
+      : { available: false, state: 'not-configured' },
+    user: configuredUserCapability(credentials, configuration),
+  };
   if (credentials.botToken) {
     const response = await fetchImpl(
       `https://api.telegram.org/bot${credentials.botToken}/getMe`,
@@ -106,15 +196,26 @@ export async function preflightTelegram({
       id: result.result.id,
       username: result.result.username,
     };
+    capabilities.bot = { available: true, state: 'ready' };
   }
-  if (credentials.session) {
-    identities.user = await authFactory({
-      apiHash: credentials.apiHash,
-      apiId: credentials.apiId,
-      expectedUserId: env.TELEGRAM_EXPECTED_USER_ID,
-      session: credentials.session,
-      sessionFormat: credentials.sessionFormat,
-    }).validate();
+  if (credentials.session && capabilities.user.available) {
+    try {
+      identities.user = await authFactory({
+        apiHash: credentials.apiHash,
+        apiId: credentials.apiId,
+        expectedUserId: env.TELEGRAM_EXPECTED_USER_ID,
+        session: credentials.session,
+        sessionFormat: credentials.sessionFormat,
+      }).validate();
+      capabilities.user = { available: true, state: 'ready' };
+    } catch (error) {
+      const unavailable = unavailableUserCapability(error);
+      if (!credentials.botToken) {
+        throw userPreflightError(unavailable);
+      }
+      capabilities.user = unavailable;
+      mode = 'bot-only';
+    }
   }
   await mirror?.preflight?.();
   await mkdir(directory, { recursive: true });
@@ -122,7 +223,8 @@ export async function preflightTelegram({
   const probe = await open(probePath, 'wx', 0o600);
   await probe.close();
   await rm(probePath, { force: true });
-  return { identities, mode };
+  capabilities.effectiveMode = mode;
+  return { capabilities, identities, mode };
 }
 
 async function readOptional(path) {
