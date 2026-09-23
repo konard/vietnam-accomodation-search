@@ -16,19 +16,22 @@ function validName(value) {
 
 function identityAliases(offer) {
   return [
-    ...(offer.identityKeys || []),
-    offer.id,
-    offer.url,
-    offer.officialUrl,
-    ...(offer.variants || []).flatMap((variant) => [
-      variant.id,
-      variant.url,
-      variant.officialUrl,
-    ]),
-  ]
-    .filter(Boolean)
-    .map(String)
-    .sort();
+    ...new Set(
+      [
+        ...(offer.identityKeys || []),
+        offer.id,
+        offer.url,
+        offer.officialUrl,
+        ...(offer.variants || []).flatMap((variant) => [
+          variant.id,
+          variant.url,
+          variant.officialUrl,
+        ]),
+      ]
+        .filter(Boolean)
+        .map(String)
+    ),
+  ].sort();
 }
 
 function sortedObject(value) {
@@ -252,24 +255,61 @@ export class PresetService {
     );
   }
 
-  markDelivered(userId, offers) {
+  #updateDeliveryRecords(userId, offers, update) {
     return this.#change(async () => {
       const owner = String(userId);
       await this.#updateRecords('shown-offers', (shown) => {
         const others = shown.filter((record) => record.userId !== owner);
-        const owned = shown.filter((record) => record.userId === owner);
+        const owned = new Map(
+          shown
+            .filter((record) => record.userId === owner)
+            .map((record) => [record.id, record])
+        );
         for (const offer of offers) {
           const aliases = identityAliases(offer);
-          owned.push({
+          const id = `${owner}:${aliases[0] || offer.id}`;
+          const record = update({
             aliases,
-            deliveredAt: this.now().toISOString(),
-            id: `${owner}:${aliases[0] || offer.id}`,
-            userId: owner,
+            existing: owned.get(id),
+            id,
+            owner,
           });
+          owned.delete(id);
+          owned.set(id, record);
         }
-        return [...others, ...owned.slice(-this.maxShownPerUser)];
+        return [...others, ...[...owned.values()].slice(-this.maxShownPerUser)];
       });
     });
+  }
+
+  prepareDelivery(userId, offers) {
+    return this.#updateDeliveryRecords(
+      userId,
+      offers,
+      ({ aliases, existing, id, owner }) =>
+        existing?.deliveredAt
+          ? existing
+          : {
+              aliases,
+              deliveryState: 'prepared',
+              id,
+              preparedAt: this.now().toISOString(),
+              userId: owner,
+            }
+    );
+  }
+
+  markDelivered(userId, offers) {
+    return this.#updateDeliveryRecords(
+      userId,
+      offers,
+      ({ aliases, id, owner }) => ({
+        aliases,
+        deliveredAt: this.now().toISOString(),
+        id,
+        userId: owner,
+      })
+    );
   }
 
   markSuccessfulRun(userId, date = this.now()) {

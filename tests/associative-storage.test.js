@@ -17,6 +17,7 @@ import { describe, expect, it } from 'test-anywhere';
 import {
   LinkCliMirror,
   LinksStore,
+  PresetService,
   deserializeRecords,
   queryRecords,
   serializeRecords,
@@ -192,6 +193,63 @@ describe('canonical associative storage', () => {
           )
         ).sha256
       ).toBe(pointer.sha256);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('round-trips a repeated delivery cursor through real link-cli', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const mirror = new LinkCliMirror();
+    try {
+      await mirror.preflight();
+    } catch {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'clink-delivery-cursor-'));
+    let now = new Date('2026-09-23T00:00:00.000Z');
+    const store = new LinksStore({ directory, mirror });
+    const presets = new PresetService({ now: () => now, store });
+    const offer = {
+      id: 'e2e-offer-0123456789',
+      identityKeys: ['url:https://audit.invalid/0123456789'],
+      url: 'https://audit.invalid/0123456789',
+      variants: [
+        {
+          id: 'e2e-offer-0123456789',
+          url: 'https://audit.invalid/0123456789',
+        },
+      ],
+    };
+    try {
+      await presets.markDelivered('123456789', [offer]);
+      now = new Date('2026-09-23T00:01:00.000Z');
+      await presets.markDelivered('123456789', [offer]);
+
+      const restarted = new LinksStore({ directory, mirror });
+      const records = await restarted.loadRecords('shown-offers');
+      expect(records.length).toBe(1);
+      expect(records[0].deliveredAt).toBe('2026-09-23T00:01:00.000Z');
+      const pointer = JSON.parse(
+        await readFile(
+          join(directory, '.binary', 'shown-offers.current.json'),
+          'utf8'
+        )
+      );
+      const canonical = new Parser().parse(
+        await readFile(join(directory, 'shown-offers.lino'), 'utf8')
+      );
+      const verified = new Parser().parse(
+        await readFile(join(pointer.directory, 'verified.lino'), 'utf8')
+      );
+      const relationKey = (link) =>
+        JSON.stringify([link.id, link.values.map(({ id }) => id)]);
+      const exported = new Set(verified.map(relationKey));
+      expect(
+        canonical.filter((link) => !exported.has(relationKey(link)))
+      ).toEqual([]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

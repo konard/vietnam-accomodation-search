@@ -247,6 +247,7 @@ export function createApplication(options = {}) {
           });
           return new TelegramAvailabilityService({ router, store });
         },
+        logger: options.logger,
         rateProvider,
         registry,
         service,

@@ -95,6 +95,56 @@ describe('Telegram bot commands', () => {
     expect(replies[0]).toContain('https://example.com/studio');
   });
 
+  it('keeps a sent result successful when the final cursor checkpoint fails', async () => {
+    const bot = fakeBot();
+    const replies = [];
+    const events = [];
+    let persisted = 0;
+    registerTelegramHandlers(bot, {
+      presetService: {
+        markDelivered: async () => {
+          throw new Error(
+            'clink export verification failed (1 links missing, 0 unexpected links)'
+          );
+        },
+        prepareDelivery: async () => {},
+        resolveSearch: async (_userId, options) => options,
+      },
+      registry: { update: async () => ({ web: [], telegram: [] }) },
+      service: {
+        search: async () => [
+          {
+            id: 'offer-1',
+            photos: [],
+            price: { period: 'month' },
+            priceVnd: 1_000_000,
+            title: 'Prepared room',
+          },
+        ],
+      },
+      traceRecorder: {
+        persist: async () => {
+          persisted += 1;
+        },
+        record: (event) => events.push(event),
+      },
+    });
+
+    await bot.commands.get('search')({
+      from: { id: 123 },
+      match: 'Nha Trang',
+      reply: async (text) => replies.push(text),
+    });
+
+    expect(replies.length).toBe(1);
+    expect(replies[0]).toContain('Prepared room');
+    expect(replies[0]).not.toContain('clink export verification failed');
+    expect(replies[0]).not.toContain('Usage: /search');
+    expect(events.at(-1).stage).toBe('delivery-cursor');
+    expect(events.at(-1).status).toBe('degraded');
+    expect(persisted).toBe(1);
+  });
+
   it('formats an empty result without claiming a price', () => {
     expect(formatSearchResults([])).toContain('No current offers');
   });

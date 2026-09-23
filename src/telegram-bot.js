@@ -3,6 +3,10 @@ import { SubscriptionScheduler } from './presets.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { stableHash } from './utils.js';
 
+const SEARCH_USAGE =
+  'Usage: /search [--cheapest [1-50]] [--filter field=value] [location]';
+const SEARCH_FAILURE = 'Search could not be completed. Please try again later.';
+
 function formatPrice(offer) {
   const period = offer.price?.period ? `/${offer.price.period}` : '';
   return `${Math.round(offer.priceVnd).toLocaleString('en-US')} VND${period}`;
@@ -152,13 +156,32 @@ export function registerTelegramHandlers(bot, dependencies) {
   const {
     availabilityService,
     accessPolicy,
+    logger = console,
     presetService,
     rateProvider,
     registry,
     service,
     store,
     subscriptionScheduler,
+    traceRecorder,
   } = dependencies;
+
+  const recordSearchFailure = async ({ error, runId, stage, status }) => {
+    if (!traceRecorder) {
+      return;
+    }
+    try {
+      traceRecorder.record({
+        metadata: { error },
+        runId,
+        stage,
+        status,
+      });
+      await traceRecorder.persist();
+    } catch {
+      logger.error?.('telegram search trace persistence failed');
+    }
+  };
 
   const userId = (context) => {
     const value = context.from?.id ?? context.chat?.id;
@@ -170,28 +193,90 @@ export function registerTelegramHandlers(bot, dependencies) {
     return String(value);
   };
 
+  // eslint-disable-next-line complexity -- Search keeps preparation, transport, and recovery boundaries explicit.
   bot.command('search', async (context) => {
+    const runId = `telegram-search:${context.update?.update_id ?? Date.now()}`;
+    let owner;
     try {
       accessPolicy?.authorize(context, { action: 'search' });
-      const overrides = parseSearchCommand(`/search ${context.match || ''}`, {
+      owner = presetService ? userId(context) : undefined;
+    } catch (error) {
+      await context.reply(error.message);
+      return;
+    }
+    let overrides;
+    try {
+      overrides = parseSearchCommand(`/search ${context.match || ''}`, {
         defaults: false,
       });
+    } catch (error) {
+      await context.reply(`${error.message}\n${SEARCH_USAGE}`);
+      return;
+    }
+    let offers;
+    try {
       const options = presetService
-        ? await presetService.resolveSearch(userId(context), overrides)
+        ? await presetService.resolveSearch(owner, overrides)
         : overrides;
-      const offers = await service.search(options);
+      offers = await service.search(options);
       if (!offers.length) {
         await replyBounded(context, formatSearchResults(offers));
       }
-      for (const offer of offers) {
-        await replyBounded(context, formatSearchResults([offer]));
-        await sendOfferPhotos(context, [offer]);
-        await presetService?.markDelivered?.(userId(context), [offer]);
-      }
     } catch (error) {
-      await context.reply(
-        `${error.message}\nUsage: /search [--cheapest [1-50]] [--filter field=value] [location]`
-      );
+      await recordSearchFailure({
+        error,
+        runId,
+        stage: 'search-handler',
+        status: 'failure',
+      });
+      await context.reply(SEARCH_FAILURE);
+      return;
+    }
+    for (const offer of offers) {
+      try {
+        await presetService?.prepareDelivery?.(owner, [offer]);
+      } catch (error) {
+        await recordSearchFailure({
+          error,
+          runId,
+          stage: 'delivery-prepare',
+          status: 'failure',
+        });
+        await context.reply(SEARCH_FAILURE);
+        return;
+      }
+      try {
+        await replyBounded(context, formatSearchResults([offer]));
+      } catch (error) {
+        await recordSearchFailure({
+          error,
+          runId,
+          stage: 'delivery-result',
+          status: 'failure',
+        });
+        await context.reply(SEARCH_FAILURE);
+        return;
+      }
+      try {
+        await sendOfferPhotos(context, [offer]);
+      } catch (error) {
+        await recordSearchFailure({
+          error,
+          runId,
+          stage: 'delivery-media',
+          status: 'degraded',
+        });
+      }
+      try {
+        await presetService?.markDelivered?.(owner, [offer]);
+      } catch (error) {
+        await recordSearchFailure({
+          error,
+          runId,
+          stage: 'delivery-cursor',
+          status: 'degraded',
+        });
+      }
     }
   });
 

@@ -827,6 +827,8 @@ export declare class PresetService {
     userId: string,
     overrides: SearchOptions
   ): Promise<SearchOptions>;
+  prepareDelivery(userId: string, offers: AccommodationOffer[]): Promise<void>;
+  markDelivered(userId: string, offers: AccommodationOffer[]): Promise<void>;
   subscribe(userId: string, name?: string): Promise<unknown>;
   unsubscribe(userId: string): Promise<void>;
 }
