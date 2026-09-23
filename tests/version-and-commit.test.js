@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'test-anywhere';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { formattableStagedFiles } from '../scripts/release-formatting.mjs';
+import { synchronizeReleaseCheckout } from '../scripts/synchronize-release-checkout.mjs';
 
 const script = readFileSync('scripts/version-and-commit.mjs', 'utf8');
 const releaseFormatting = readFileSync(
@@ -100,13 +101,96 @@ describe('version-and-commit.mjs push failure reporting', () => {
 
 describe('version-and-commit.mjs partial-release recovery', () => {
   it('fast-forwards to the already-pushed version before candidate verification', () => {
-    const recovery = script.indexOf('git merge --ff-only origin/main');
+    const recovery = script.indexOf('await synchronizeReleaseCheckout');
     const releasedOutput = script.indexOf(
       "setOutput('already_released', 'true')"
     );
 
     expect(recovery).toBeGreaterThan(-1);
     expect(releasedOutput).toBeGreaterThan(recovery);
+  });
+
+  it('synchronizes a stale release run before merging changesets', async () => {
+    if (
+      typeof globalThis.Deno !== 'undefined' ||
+      (typeof process !== 'undefined' && process.platform === 'win32')
+    ) {
+      return;
+    }
+
+    const root = mkdtempSync(join(tmpdir(), 'release-race-'));
+    const remote = join(root, 'remote.git');
+    const firstRun = join(root, 'first-run');
+    const staleLegacyRun = join(root, 'stale-legacy-run');
+    const staleFixedRun = join(root, 'stale-fixed-run');
+    const mergeScript = join(process.cwd(), 'scripts/merge-changesets.mjs');
+    const run = (cwd, args) =>
+      spawnSync('git', args, { cwd, encoding: 'utf8' });
+    const runChecked = (cwd, args) => {
+      const result = run(cwd, args);
+      expect(result.status).toBe(0);
+      return result.stdout.trim();
+    };
+    const configure = (cwd) => {
+      runChecked(cwd, ['config', 'user.email', 'ci@example.com']);
+      runChecked(cwd, ['config', 'user.name', 'CI Test']);
+    };
+
+    try {
+      runChecked(root, ['init', '--bare', '--initial-branch=main', remote]);
+      runChecked(root, ['clone', remote, firstRun]);
+      configure(firstRun);
+      mkdirSync(join(firstRun, '.changeset'));
+      writeFileSync(
+        join(firstRun, 'package.json'),
+        '{"name":"fixture-package","version":"1.0.0"}\n'
+      );
+      for (const name of ['first', 'second']) {
+        writeFileSync(
+          join(firstRun, '.changeset', `${name}.md`),
+          `---\n'fixture-package': patch\n---\n\n${name}\n`
+        );
+      }
+      runChecked(firstRun, ['add', '.']);
+      runChecked(firstRun, ['commit', '-m', 'pending release']);
+      runChecked(firstRun, ['push', 'origin', 'HEAD:main']);
+
+      runChecked(root, ['clone', remote, staleLegacyRun]);
+      runChecked(root, ['clone', remote, staleFixedRun]);
+
+      rmSync(join(firstRun, '.changeset', 'first.md'));
+      rmSync(join(firstRun, '.changeset', 'second.md'));
+      writeFileSync(
+        join(firstRun, 'package.json'),
+        '{"name":"fixture-package","version":"1.0.1"}\n'
+      );
+      runChecked(firstRun, ['add', '-A']);
+      runChecked(firstRun, ['commit', '-m', '1.0.1']);
+      runChecked(firstRun, ['push', 'origin', 'HEAD:main']);
+
+      const merge = spawnSync(process.execPath, [mergeScript], {
+        cwd: staleLegacyRun,
+        encoding: 'utf8',
+      });
+      expect(merge.status).toBe(0);
+      runChecked(staleLegacyRun, ['fetch', 'origin', 'main']);
+      const legacyRebase = run(staleLegacyRun, ['rebase', 'origin/main']);
+      expect(legacyRebase.status).not.toBe(0);
+      expect(legacyRebase.stderr).toContain('unstaged changes');
+
+      const result = await synchronizeReleaseCheckout({
+        cwd: staleFixedRun,
+        logger: { log() {} },
+      });
+      expect(result.status).toBe('already-released');
+      expect(result.version).toBe('1.0.1');
+      expect(runChecked(staleFixedRun, ['status', '--porcelain'])).toBe('');
+      expect(runChecked(staleFixedRun, ['rev-parse', 'HEAD'])).toBe(
+        runChecked(staleFixedRun, ['rev-parse', 'origin/main'])
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 });
 

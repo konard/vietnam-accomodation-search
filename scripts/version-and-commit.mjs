@@ -29,6 +29,7 @@ import { bootstrapDependencies } from './bootstrap-dependencies.mjs';
 import { loadCommandStream, loadLinoArguments } from './use-module.mjs';
 import { printUntrusted } from './github-actions-log.mjs';
 import { formattableStagedFiles } from './release-formatting.mjs';
+import { synchronizeReleaseCheckout } from './synchronize-release-checkout.mjs';
 
 // Import link-foundation libraries
 // Loaded through bootstrapDependencies: when the use-m CDN is unreachable,
@@ -205,47 +206,33 @@ async function main() {
     await $`git config user.name "github-actions[bot]"`;
     await $`git config user.email "41898282+github-actions[bot]@users.noreply.github.com"`;
 
-    // Check if remote main has advanced (handles re-runs after partial success)
+    // Synchronize before merge-changesets mutates the worktree. A queued run
+    // can have checked out an older main commit before a previous serialized
+    // release pushed its version commit.
     console.log('Checking for remote changes...');
-    await $`git fetch origin main`;
-
-    const localHeadResult = await $`git rev-parse HEAD`.run({ capture: true });
-    const localHead = localHeadResult.stdout.trim();
-
-    const remoteHeadResult = await $`git rev-parse origin/main`.run({
-      capture: true,
+    const synchronization = await synchronizeReleaseCheckout({
+      cwd: originalCwd,
+      jsRoot,
     });
-    const remoteHead = remoteHeadResult.stdout.trim();
-
-    if (localHead !== remoteHead) {
+    if (synchronization.status === 'already-released') {
       console.log(
-        `Remote main has advanced (local: ${localHead}, remote: ${remoteHead})`
+        'The advanced release commit already consumed all changesets.'
       );
-      console.log('This may indicate a previous attempt partially succeeded.');
+      console.log('Continuing as an idempotent publish retry.');
+      setOutput('version_committed', 'false');
+      setOutput('already_released', 'true');
+      setOutput('new_version', synchronization.version);
+      return;
+    }
 
-      // Check if the remote version is already the expected bump
-      const remoteVersion = await getVersion('remote');
-      console.log(`Remote version: ${remoteVersion}`);
-
-      // Check if there are changesets to process
-      const changesetCount = countChangesets();
-
-      if (changesetCount === 0) {
-        console.log('No changesets to process and remote has advanced.');
-        console.log(
-          'Assuming version bump was already completed in a previous attempt.'
-        );
-        // Verification and evidence collection run immediately after this
-        // script, so move the worktree to the exact candidate they inspect.
-        await $`git merge --ff-only origin/main`;
-        setOutput('version_committed', 'false');
-        setOutput('already_released', 'true');
-        setOutput('new_version', remoteVersion);
-        return;
-      } else {
-        console.log('Rebasing on remote main to incorporate changes...');
-        await $`git rebase origin/main`;
-      }
+    // This used to run as a workflow step before synchronization. If another
+    // release won the race, its deletions collided with this dirty worktree and
+    // `git rebase` failed. Keep the mutation inside the synchronized boundary.
+    if (mode === 'changeset' && countChangesets() > 1) {
+      console.log(
+        'Multiple changesets detected, merging after synchronization...'
+      );
+      await $`node scripts/merge-changesets.mjs`;
     }
 
     // Get current version before bump
