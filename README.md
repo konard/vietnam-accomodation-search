@@ -53,6 +53,10 @@ cp .env.example .env
 For the production container path, fill the untracked `.env` and run:
 
 ```bash
+install -d -m 0700 "$PWD/.vietnam-accomodation-search"
+export NPM_PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+export VCS_REF="$(git rev-parse HEAD)"
+export BUILD_DATE="$(git show -s --format=%cI HEAD)"
 docker compose up --build -d
 docker compose ps
 ```
