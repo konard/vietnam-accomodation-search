@@ -34,6 +34,12 @@ describe('manual browser real-estate audit helpers', () => {
       'wrong_intent_sale'
     );
     expect(classifyPage({ text: 'Cho thuê căn hộ' })).toBe('zero_cards');
+    expect(classifyPage({ status: 403, text: 'Cho thuê căn hộ' })).toBe(
+      'challenge'
+    );
+    expect(classifyPage({ status: 429, text: 'For rent' })).toBe(
+      'rate_limited'
+    );
     expect(
       classifyPage({ cardCount: 2, text: 'For rent', url: 'https://site.test' })
     ).toBe('success');

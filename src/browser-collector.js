@@ -88,7 +88,7 @@ export function extractPageListings(sourceType, selectors = {}) {
       return false;
     }
     if (
-      /for\s*rent|available|in\s*stock|свобод|доступ|cho\s*thuê|còn\s*trống/iu.test(
+      /for\s*rent|available|in\s*stock|свобод|доступ|сда[её]т|cho\s*thuê|còn\s*trống/iu.test(
         value || ''
       )
     ) {
@@ -128,7 +128,7 @@ export function extractPageListings(sourceType, selectors = {}) {
     return String(element.innerText || '')
       .split(/\r?\n/u)
       .map(normalized)
-      .filter((line) => line.length >= 1)
+      .filter((line) => /[\p{L}\p{N}]/u.test(line))
       .map((text) => ({
         category:
           recognized.find(
@@ -144,7 +144,17 @@ export function extractPageListings(sourceType, selectors = {}) {
       selectors.cards ||
         '[data-testid="property-card"], [data-testid="card-container"], article, .property-card, [itemtype*="Hotel"]'
     ),
-  ].slice(0, 100);
+  ]
+    .filter(
+      (element) =>
+        !selectors.locationTerms?.length ||
+        selectors.locationTerms.some((term) =>
+          String(selectedText(element, selectors.fields?.location) || '')
+            .toLocaleLowerCase('en')
+            .includes(term.toLocaleLowerCase('en'))
+        )
+    )
+    .slice(0, 100);
   return cards.map((element) => {
     const anchor = element.querySelector(selectors.link || 'a[href]');
     const officialAnchor = element.querySelector(
@@ -158,6 +168,9 @@ export function extractPageListings(sourceType, selectors = {}) {
         .map(([field, selector]) => [field, selectedText(element, selector)])
         .filter(([, value]) => value !== undefined)
     );
+    if (!semantic.availability && selectors.availabilityFallback) {
+      semantic.availability = selectors.availabilityFallback;
+    }
     const title = titleElement?.textContent?.trim();
     const propertyId = pageIdentity(element, anchor);
     const bedrooms = numericSemantic(semantic.bedrooms);

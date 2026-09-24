@@ -225,14 +225,14 @@ export const DEFAULT_WEB_SOURCES = [
   ),
   webSource(
     'chotot',
-    'Chợ Tốt',
-    'https://www.chotot.com',
-    'https://www.chotot.com/mua-ban-bat-dong-san?q={query}',
+    'Nha Tot rentals',
+    'https://www.nhatot.com',
+    'https://www.nhatot.com/thue-bat-dong-san-thanh-pho-nha-trang-khanh-hoa',
     62,
     'https://www.similarweb.com/website/chotot.com/',
     {
       enabled: false,
-      reason: 'sale-route-disabled-until-a-validated-rental-route-is-reviewed',
+      reason: 'rental-route-disabled-after-access-challenge',
     }
   ),
   webSource(

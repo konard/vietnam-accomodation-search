@@ -14,12 +14,12 @@
     "provenance": "configured-production-source"
   },
   {
-    "id": "nhatot-configured-sale-route",
-    "name": "Nha Tot configured route",
+    "id": "nhatot-nha-trang-rent",
+    "name": "Nha Tot Nha Trang rentals",
     "languages": ["vi"],
-    "url": "https://www.chotot.com/mua-ban-bat-dong-san?q=Nha%20Trang",
+    "url": "https://www.nhatot.com/thue-bat-dong-san-thanh-pho-nha-trang-khanh-hoa",
     "provenance": "configured-production-source",
-    "knownRisk": "The configured Chotot URL redirects to a Nha Tot sale-results route."
+    "knownRisk": "The rental route can present an access challenge; never bypass it."
   },
   {
     "id": "nha-trang-renting",
@@ -39,7 +39,7 @@
     "id": "vietdom",
     "name": "Vietdom",
     "languages": ["ru"],
-    "url": "https://vietdom.com/",
+    "url": "https://vietdom.com/ar",
     "provenance": "multilingual-browser-discovery"
   },
   {
