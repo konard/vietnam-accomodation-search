@@ -15,6 +15,7 @@ import { describe, expect, it } from 'test-anywhere';
 
 import {
   assertComposeDataMount,
+  assertImageIdentity,
   deploymentStateMachine,
 } from '../scripts/deploy.mjs';
 import { validateDataDirectory } from '../scripts/data-directory.mjs';
@@ -55,6 +56,33 @@ describe('container runtime contract', () => {
     expect(compose).toContain('cap_drop:');
     expect(compose).toContain('required: true');
     expect(compose).toContain('${ENV_FILE:-.env}');
+    expect(compose).not.toContain('init: true');
+    expect(compose).toContain('NPM_PACKAGE_VERSION: ${NPM_PACKAGE_VERSION:?');
+    expect(compose).toContain('VCS_REF: ${VCS_REF:?');
+    expect(compose).toContain('BUILD_DATE: ${BUILD_DATE:?');
+  });
+
+  it('rejects stale image labels before starting a candidate', async () => {
+    const expected = {
+      buildDate: '2026-09-24T12:00:00+00:00',
+      revision: 'a'.repeat(40),
+      version: '0.12.1',
+    };
+    const labels = {
+      'org.opencontainers.image.created': expected.buildDate,
+      'org.opencontainers.image.revision': expected.revision,
+      'org.opencontainers.image.version': expected.version,
+    };
+    expect(assertImageIdentity(labels, expected)).toBe(true);
+    for (const name of Object.keys(labels)) {
+      let failure;
+      try {
+        assertImageIdentity({ ...labels, [name]: 'stale' }, expected);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure.message).toContain(name);
+    }
   });
 
   it('preflights a unique candidate and preserves an exact rollback image', async () => {

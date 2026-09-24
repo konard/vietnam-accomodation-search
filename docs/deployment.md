@@ -24,11 +24,20 @@ cp .env.example .env
 # Set TELEGRAM_BOT_TOKEN, expected numeric identities, and numeric allowlists.
 install -d -m 0700 "$PWD/.vietnam-accomodation-search"
 export DATA_DIRECTORY_HOST="$PWD/.vietnam-accomodation-search"
+export NPM_PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+export VCS_REF="$(git rev-parse HEAD)"
+export BUILD_DATE="$(git show -s --format=%cI HEAD)"
 docker compose build app
 docker compose up -d app
 docker compose ps
 curl --fail http://127.0.0.1:8080/ready
 ```
+
+Compose requires the checked-out package version, full commit SHA, and commit
+date for direct builds. The deploy helper derives those values automatically.
+The image build rejects a version that disagrees with `package.json`, and
+deployment checks the OCI labels and CLI version before cutover. The image's
+Tini is the single init process; Compose does not add another init wrapper.
 
 Use `TELEGRAM_*_FILE` variables for mounted secret files. Do not add a session
 to an image layer. For a published image:

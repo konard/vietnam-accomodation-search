@@ -84,7 +84,10 @@ async function optionalJson(path) {
 function runner(config, image, { capture = false } = {}) {
   const env = {
     ...process.env,
+    BUILD_DATE: config.buildIdentity?.buildDate,
     DATA_DIRECTORY_HOST: config.dataDirectory,
+    NPM_PACKAGE_VERSION: config.buildIdentity?.version,
+    VCS_REF: config.buildIdentity?.revision,
   };
   if (image) {
     env.APP_IMAGE = image;
@@ -94,6 +97,36 @@ function runner(config, image, { capture = false } = {}) {
     env,
     mirror: !capture,
   });
+}
+
+export function assertImageIdentity(labels, { buildDate, revision, version }) {
+  const expected = {
+    'org.opencontainers.image.created': buildDate,
+    'org.opencontainers.image.revision': revision,
+    'org.opencontainers.image.version': version,
+  };
+  for (const [name, value] of Object.entries(expected)) {
+    if (labels?.[name] !== value) {
+      throw new Error(
+        `Image label ${name} does not match the checked-out commit.`
+      );
+    }
+  }
+  return true;
+}
+
+async function checkedOutBuildIdentity() {
+  const run = command({ capture: true, mirror: false });
+  const [packageContents, revision, buildDate] = await Promise.all([
+    readFile('package.json', 'utf8'),
+    text(await run`git rev-parse HEAD`),
+    text(await run`git show -s --format=%cI HEAD`),
+  ]);
+  return {
+    buildDate,
+    revision,
+    version: JSON.parse(packageContents).version,
+  };
 }
 
 async function text(result) {
@@ -146,8 +179,7 @@ async function waitHealthy(config, image, attempts = 40) {
 }
 
 async function prepareCandidate(config) {
-  const revisionRun = command({ capture: true, mirror: false });
-  const revision = await text(await revisionRun`git rev-parse --short=12 HEAD`);
+  const revision = config.buildIdentity.revision.slice(0, 12);
   const image =
     config.image ||
     `${config.projectName}:candidate-${Date.now()}-${revision || 'unknown'}`;
@@ -163,6 +195,20 @@ async function prepareCandidate(config) {
     await run`docker pull ${image}`;
   } else {
     await run`docker compose -f ${config.composeFile} -p ${config.projectName} build app`;
+  }
+  const labels = JSON.parse(
+    await text(
+      await renderedRun`docker image inspect --format={{json .Config.Labels}} ${image}`
+    )
+  );
+  assertImageIdentity(labels, config.buildIdentity);
+  const cliVersion = await text(
+    await renderedRun`docker run --rm --entrypoint node ${image} bin/vietnam-accomodation-search.js --version`
+  );
+  if (cliVersion !== config.buildIdentity.version) {
+    throw new Error(
+      'Image CLI version does not match the checked-out package.'
+    );
   }
   await run`docker run --rm --entrypoint node ${image} bin/vietnam-accomodation-search.js --help`;
   await run`docker run --rm --entrypoint clink ${image} --help`;
@@ -255,6 +301,7 @@ export async function runDeployCli(argv = process.argv.slice(2)) {
   await loadDependencies();
   const [action = 'status'] = argv;
   const config = configuration(argv.slice(1));
+  config.buildIdentity = await checkedOutBuildIdentity();
   config.dataDirectory = await validateDataDirectory(config.dataDirectory);
   const stateDirectory = '.deploy';
   const statePath = `${stateDirectory}/state.json`;

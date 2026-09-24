@@ -148,7 +148,10 @@ describe('optional Docker Hub publishing workflow', () => {
     );
     expect(dockerHubAction).toContain('uses: docker/login-action@v4');
     expect(dockerHubAction).toContain('password: ${{ inputs.token }}');
-    expect(dockerHubAction).toContain('uses: docker/metadata-action@v6');
+    expect(dockerHubAction).toContain('Verify checked-out image identity');
+    expect(dockerHubAction).toContain(
+      'org.opencontainers.image.revision=${{ steps.identity.outputs.revision }}'
+    );
     expect(dockerHubAction).toContain('uses: docker/build-push-action@v7');
   });
 

@@ -4,9 +4,9 @@ services:
     build:
       context: .
       args:
-        BUILD_DATE: ${BUILD_DATE:-unknown}
-        VCS_REF: ${VCS_REF:-unknown}
-    init: true
+        BUILD_DATE: ${BUILD_DATE:?Set the checked-out commit date before building}
+        NPM_PACKAGE_VERSION: ${NPM_PACKAGE_VERSION:?Set the checked-out package version before building}
+        VCS_REF: ${VCS_REF:?Set the checked-out commit SHA before building}
     env_file:
       - path: ${ENV_FILE:-.env}
         required: true
