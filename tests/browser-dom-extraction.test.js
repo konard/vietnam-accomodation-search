@@ -7,6 +7,11 @@ import {
   DEFAULT_WEB_SOURCES,
 } from '../src/index.js';
 import { extractPageListings } from '../src/browser-collector.js';
+import { browserAdapterFor } from '../src/browser-adapters.js';
+import {
+  assessSourceCoverage,
+  summarizeStructuredCards,
+} from '../experiments/browser-real-estate-audit-lib.mjs';
 
 function browserRuntime(commander) {
   return {
@@ -19,6 +24,86 @@ function browserRuntime(commander) {
 }
 
 describe('in-page listing extraction', () => {
+  it('keeps only Nha Trang cards from a countrywide rental page', () => {
+    const previous = globalThis.document;
+    const adapter = browserAdapterFor('https://vietnam-real.estate/ru/rent/');
+    const card = (city) => ({
+      getAttribute: (name) => (name === 'data-object' ? city : null),
+      innerText: `Квартира в ${city}`,
+      querySelector: (selector) =>
+        selector === adapter.selectors.fields.location
+          ? { textContent: `Квартира в ${city}` }
+          : null,
+      querySelectorAll: (selector) =>
+        selector === adapter.selectors.fields.location
+          ? [{ textContent: `Квартира в ${city}` }]
+          : [],
+    });
+    globalThis.document = {
+      querySelectorAll: () => [card('Нячанг'), card('Hoi An')],
+    };
+    try {
+      const cards = extractPageListings('web', adapter.selectors);
+      expect(cards.length).toBe(1);
+      expect(cards[0].attributes.propertyId).toBe('Нячанг');
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('accounts for an ICEKEM rental card without a stated availability', () => {
+    const previous = globalThis.document;
+    const adapter = browserAdapterFor('https://icekem.com/ru/s/rent-nhatrang');
+    const nodes = new Map([
+      [adapter.selectors.link, [{ href: 'https://icekem.com/ru/pr/id123' }]],
+      [adapter.selectors.title, [{ textContent: '2 комн. квартира' }]],
+      [
+        adapter.selectors.fields.bedrooms,
+        [{ textContent: '2 комн. квартира' }],
+      ],
+      [adapter.selectors.fields.contact, [{ textContent: 'Написать' }]],
+      [adapter.selectors.fields.location, [{ textContent: 'Нячанг' }]],
+      [
+        adapter.selectors.fields.metadata,
+        [
+          { textContent: 'Квартира' },
+          { textContent: 'Новая квартира' },
+          { textContent: '2 комн. квартира | 72 м² | 3 месяца' },
+        ],
+      ],
+      [adapter.selectors.fields.price, [{ textContent: '$1,031/мес.' }]],
+      [
+        adapter.selectors.media,
+        [{ currentSrc: 'https://icekem.com/photo.jpg' }],
+      ],
+    ]);
+    const card = {
+      getAttribute: (name) => (name === 'pr-id' ? '123' : null),
+      innerText:
+        'Квартира\nНовая квартира\n$1,031/мес.\n2 комн. квартира | 72 м² | 3 месяца\nНячанг\nНаписать\n·',
+      querySelector: (selector) => nodes.get(selector)?.[0] || null,
+      querySelectorAll: (selector) => nodes.get(selector) || [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const cards = extractPageListings('web', adapter.selectors);
+      expect(cards[0].semantic.availability).toBe('not stated on source card');
+      expect(cards[0].attributes.availableNow).toBe(undefined);
+      expect(cards[0].attributes.propertyId).toBe('123');
+      expect(summarizeStructuredCards(cards).incompleteCards).toBe(0);
+      expect(
+        assessSourceCoverage({
+          cards,
+          finalUrl: 'https://icekem.com/ru/s/rent-nhatrang',
+          pageText: 'Аренда жилья в Нячанге',
+          requestedUrl: 'https://icekem.com/ru/s/rent-nhatrang',
+        }).missing
+      ).toEqual([]);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('extracts source-labeled semantic fields from bare values', () => {
     const previous = globalThis.document;
     const elements = new Map([

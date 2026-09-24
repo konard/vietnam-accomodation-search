@@ -43,13 +43,19 @@ runs:
         username: ${{ inputs.username }}
         password: ${{ inputs.token }}
 
-    - name: Extract Docker metadata
-      id: metadata
-      uses: docker/metadata-action@v6
-      with:
-        images: ${{ inputs.image }}
-        labels: |
-          org.opencontainers.image.version=${{ inputs.version }}
+    - name: Verify checked-out image identity
+      id: identity
+      shell: bash
+      env:
+        EXPECTED_VERSION: ${{ inputs.version }}
+      run: |
+        actual_version="$(node -p "require('./package.json').version")"
+        test "$actual_version" = "$EXPECTED_VERSION" || {
+          echo 'Docker tag version disagrees with checked-out package.json' >&2
+          exit 1
+        }
+        echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        echo "created=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
 
     - name: Publish Docker image by digest
       id: build
@@ -58,9 +64,14 @@ runs:
         context: ${{ inputs.context }}
         file: ${{ inputs.file }}
         platforms: ${{ inputs.platform }}
-        labels: ${{ steps.metadata.outputs.labels }}
+        labels: |
+          org.opencontainers.image.created=${{ steps.identity.outputs.created }}
+          org.opencontainers.image.revision=${{ steps.identity.outputs.revision }}
+          org.opencontainers.image.version=${{ inputs.version }}
         build-args: |
+          BUILD_DATE=${{ steps.identity.outputs.created }}
           NPM_PACKAGE_VERSION=${{ inputs.version }}
+          VCS_REF=${{ steps.identity.outputs.revision }}
         cache-from: type=gha,scope=docker-${{ inputs.platform }}
         cache-to: type=gha,mode=max,scope=docker-${{ inputs.platform }}
         outputs: type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=true

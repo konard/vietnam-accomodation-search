@@ -175,7 +175,7 @@ async function auditSite({ options, pacer, site, writer }) {
   let runningTrace;
   let runError;
   let outcome = 'unexpected_error';
-  const network = { failed: 0, statuses: {} };
+  const network = { failed: 0, mainStatus: undefined, statuses: {} };
   try {
     const launched = await launchBrowser({
       channel: 'chrome',
@@ -192,6 +192,12 @@ async function auditSite({ options, pacer, site, writer }) {
     launched.page.on('response', (response) => {
       const status = String(response.status());
       network.statuses[status] = (network.statuses[status] || 0) + 1;
+      if (
+        response.request().isNavigationRequest() &&
+        response.frame() === launched.page.mainFrame()
+      ) {
+        network.mainStatus = response.status();
+      }
     });
     runningTrace = await startSiteTrace(
       commander,
@@ -233,6 +239,7 @@ async function auditSite({ options, pacer, site, writer }) {
     });
     const classification = classifyPage({
       cardCount: summary.cardCount,
+      status: network.mainStatus,
       text: evidence.text,
       title: evidence.title,
       url: evidence.url,

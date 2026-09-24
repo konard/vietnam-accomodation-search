@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,6 +11,7 @@ import { StringSession } from 'teleproto/sessions/index.js';
 
 import {
   GRAMJS_SESSION_FORMAT,
+  LinkCliMirror,
   LinksStore,
   classifyTelegramPost,
 } from '../src/index.js';
@@ -22,6 +24,12 @@ import {
   sourceCompletion,
   verifyAuditStorage,
 } from './telegram-live-audit-runtime.mjs';
+import {
+  loadSourceJournal,
+  removeSourceJournal,
+  saveSourceJournal,
+  sourceJournalCommitted,
+} from './telegram-audit-journal.mjs';
 import {
   DEFAULT_DISCOVERY_QUERIES,
   anonymizeListing,
@@ -510,44 +518,91 @@ async function auditSource(
   const alias =
     source.public?.username || `private-folder-source-${privateIndex}`;
   const audit = emptySourceAudit(alias);
-  const cutoff = cutoffDate(report.generatedAt, options.months);
   const previous = await loadAuditCheckpoint(checkpointStore, alias);
   const resume = previous?.complete === false ? previous : undefined;
+  let journal = await loadSourceJournal(options.stateDirectory, alias);
+  if (sourceJournalCommitted(journal, previous)) {
+    await removeSourceJournal(options.stateDirectory, alias);
+    journal = undefined;
+  }
+  if (journal && journal.resumeId !== resume?.oldestMessageId) {
+    throw new Error('The private source journal checkpoint does not match.');
+  }
+  const cutoff = new Date(
+    journal?.cutoff ||
+      resume?.cutoff ||
+      cutoffDate(report.generatedAt, options.months)
+  );
+  const journalKey = {
+    alias,
+    batchId: journal?.batchId || randomUUID(),
+    cutoff: cutoff.toISOString(),
+    resumeId: resume?.oldestMessageId,
+  };
   let offsetId = resume?.oldestMessageId;
   let messages = [];
   let exhausted = false;
   let hitCap = false;
   let reachedCutoff = false;
   let sourceError;
-  try {
-    const collected = await collectTelegramWindow({
-      cutoff,
-      iterate: (iteratorOptions) =>
-        client.iterMessages(source.entity, iteratorOptions),
-      maxMessages: options.maxMessages,
-      offsetId,
+  let batch;
+  let oldestMessageDate;
+  if (journal) {
+    ({ batch, exhausted, hitCap, offsetId, reachedCutoff } = journal);
+    oldestMessageDate = journal.oldestMessageDate;
+    audit.currentRunMessages = journal.messagesCount;
+    audit.mediaOnlyCandidates = journal.mediaOnlyCandidates;
+    audit.accommodationRequests = journal.accommodationRequests;
+  } else {
+    try {
+      const collected = await collectTelegramWindow({
+        cutoff,
+        iterate: (iteratorOptions) =>
+          client.iterMessages(source.entity, iteratorOptions),
+        maxMessages: options.maxMessages,
+        offsetId,
+      });
+      ({ exhausted, hitCap, messages, offsetId, reachedCutoff } = collected);
+    } catch (error) {
+      sourceError = errorSummary(error);
+    }
+    const normalizedMessages = messages.map((message) =>
+      normalizedAuditMessage(message, alias)
+    );
+    batch = await auditTelegramBatch(normalizedMessages, {
+      now: new Date(report.generatedAt),
+      ocr: mediaOcr(client, messages, options.tesseractCommand),
+      sourceAlias: alias,
     });
-    ({ exhausted, hitCap, messages, offsetId, reachedCutoff } = collected);
-  } catch (error) {
-    sourceError = errorSummary(error);
-  }
-  const normalizedMessages = messages.map((message) =>
-    normalizedAuditMessage(message, alias)
-  );
-  const batch = await auditTelegramBatch(normalizedMessages, {
-    now: new Date(report.generatedAt),
-    ocr: mediaOcr(client, messages, options.tesseractCommand),
-    sourceAlias: alias,
-  });
-  for (const message of messages) {
-    const classification = classifyAccommodationPost(
-      message.message || message.text || '',
-      Boolean(message.media)
-    );
-    audit.mediaOnlyCandidates += Number(classification.mediaOnlyCandidate);
-    audit.accommodationRequests += Number(
-      classification.demand && classification.accommodation
-    );
+    for (const message of messages) {
+      const classification = classifyAccommodationPost(
+        message.message || message.text || '',
+        Boolean(message.media)
+      );
+      audit.mediaOnlyCandidates += Number(classification.mediaOnlyCandidate);
+      audit.accommodationRequests += Number(
+        classification.demand && classification.accommodation
+      );
+    }
+    audit.currentRunMessages = messages.length;
+    oldestMessageDate = messages.at(-1)
+      ? dateValue(messages.at(-1).date).toISOString()
+      : resume?.oldestMessageDate;
+    if (!sourceError) {
+      await saveSourceJournal(options.stateDirectory, {
+        ...journalKey,
+        accommodationRequests: audit.accommodationRequests,
+        batch,
+        exhausted,
+        hitCap,
+        mediaOnlyCandidates: audit.mediaOnlyCandidates,
+        messagesCount: messages.length,
+        offsetId,
+        oldestMessageDate,
+        reachedCutoff,
+        version: 1,
+      });
+    }
   }
   for (const offer of batch.offers) {
     const text = offer.text || offer.raw?.text || '';
@@ -563,9 +618,9 @@ async function auditSource(
     reachedCutoff,
   });
   audit.completion = completion;
-  audit.currentRunMessages = messages.length;
   audit.error = sourceError;
-  audit.messagesScanned = (resume?.messagesScanned || 0) + messages.length;
+  audit.messagesScanned =
+    (resume?.messagesScanned || 0) + audit.currentRunMessages;
   audit.parserOffers = batch.offers.length;
   audit.relevantOffers =
     batch.offers.length +
@@ -627,6 +682,7 @@ async function auditSource(
   });
   await auditStore.saveOffers(batch.offers);
   await saveAuditCheckpoint(checkpointStore, {
+    batchId: journalKey.batchId,
     complete: completion.pass,
     cutoff: cutoff.toISOString(),
     id: alias,
@@ -634,9 +690,7 @@ async function auditSource(
     ...(offsetId === undefined
       ? {}
       : {
-          oldestMessageDate: messages.at(-1)
-            ? dateValue(messages.at(-1).date).toISOString()
-            : resume?.oldestMessageDate,
+          oldestMessageDate,
           oldestMessageId: offsetId,
         }),
     metrics: {
@@ -655,6 +709,9 @@ async function auditSource(
     state: completion.state,
     updatedAt: new Date().toISOString(),
   });
+  if (journal || !sourceError) {
+    await removeSourceJournal(options.stateDirectory, alias);
+  }
   return { audit, domainRecords: batch.domainRecords, offers: batch.offers };
 }
 
@@ -707,6 +764,9 @@ export async function runAudit(options) {
   const auditStore = new LinksStore({
     binaryMirror: true,
     directory: join(options.stateDirectory, 'typed-results'),
+    mirror: new LinkCliMirror({
+      onProgress: (event) => process.stderr.write(`${JSON.stringify(event)}\n`),
+    }),
   });
   await auditStore.mirror.preflight();
   const report = {

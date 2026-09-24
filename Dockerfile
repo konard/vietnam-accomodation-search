@@ -7,7 +7,7 @@ RUN cargo install link-cli --version 0.2.10 --locked
 FROM node@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94 AS runtime
 
 ARG BUILD_DATE
-ARG NPM_PACKAGE_VERSION=0.11.30
+ARG NPM_PACKAGE_VERSION
 ARG VCS_REF
 LABEL org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.description="Browser and Telegram accommodation search for Vietnam" \
@@ -26,6 +26,7 @@ ENV DATA_DIRECTORY=/data \
 
 WORKDIR /app
 COPY package.json package-lock.json ./
+RUN node -e "const p=require('./package.json'); if (p.version!==process.argv[1] || !/^\\d+\\.\\d+\\.\\d+/.test(process.argv[1] || '') || !/^[a-f0-9]{40}$/.test(process.argv[2] || '') || !Number.isFinite(Date.parse(process.argv[3]))) process.exit(1)" "$NPM_PACKAGE_VERSION" "$VCS_REF" "$BUILD_DATE"
 RUN npm ci --omit=dev --ignore-scripts \
     && npx playwright install --with-deps chromium \
     && apt-get update \

@@ -29,6 +29,8 @@ function getJobBlock(workflow, jobName) {
 }
 
 const OIDC_URL = 'https://token.actions.githubusercontent.com';
+const PUBLISHING_VARIABLE =
+  /^(?:ACTIONS_ID_TOKEN_REQUEST_|NPM_|NODE_AUTH_TOKEN$|DOCKERHUB_|DOCKER_AUTH$|DOCKER_REGISTRY$|PREFLIGHT_|GITHUB_STEP_SUMMARY$)/u;
 
 function makeFixtures({ whoamiStatus = 200, postStatus = 202 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'preflight-fixtures-'));
@@ -39,14 +41,18 @@ function makeFixtures({ whoamiStatus = 200, postStatus = 202 } = {}) {
   return dir;
 }
 
-function runPreflight(env, fixtureDir) {
+function runPreflight(env, fixtureDir, parentEnvironment = process.env) {
   return new Promise((resolve, reject) => {
     const child = spawn('bash', [SCRIPT], {
       env: {
-        ...process.env,
+        ...Object.fromEntries(
+          Object.entries(parentEnvironment).filter(
+            ([name]) => !PUBLISHING_VARIABLE.test(name)
+          )
+        ),
         // The stub prepends itself ahead of the real curl; everything else
         // (notably node, which the script uses for JSON parsing) stays real.
-        PATH: `${STUB_DIR}:${process.env.PATH}`,
+        PATH: `${STUB_DIR}:${parentEnvironment.PATH}`,
         PREFLIGHT_FIXTURE_DIR: fixtureDir,
         ...env,
       },
@@ -141,6 +147,28 @@ describe('release-preflight probe behaviour (offline, curl stub)', () => {
   if (typeof Deno !== 'undefined') {
     return;
   }
+
+  it('isolates absent publishing credentials from an OIDC-enabled parent', async () => {
+    const fixtures = makeFixtures();
+    const parent = {
+      ...process.env,
+      ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL,
+      NPM_TOKEN: 'ambient-token',
+      DOCKERHUB_IMAGE: 'ambient/image',
+      DOCKERHUB_USERNAME: 'ambient',
+      DOCKERHUB_TOKEN: 'ambient-token',
+    };
+    const { code, stdout } = await runPreflight(
+      { PREFLIGHT_MODE: 'release' },
+      fixtures,
+      parent
+    );
+
+    expect(code).toBe(1);
+    expect(stdout).toContain('npm has no publish path');
+    expect(stdout).toContain('Docker publishing is disabled');
+    expect(stdout).not.toContain('npm OIDC trusted publishing is available');
+  });
 
   it('passes in release mode when OIDC publishing is available', async () => {
     const fixtures = makeFixtures();

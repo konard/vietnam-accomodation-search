@@ -90,15 +90,16 @@ export function siteDomain(site) {
 
 export function classifyPage({
   cardCount = 0,
+  status = 200,
   text = '',
   title = '',
   url = '',
 }) {
   const content = `${title}\n${text}`;
-  if (CHALLENGE_PATTERN.test(content)) {
+  if ([401, 403].includes(status) || CHALLENGE_PATTERN.test(content)) {
     return 'challenge';
   }
-  if (RATE_LIMIT_PATTERN.test(content)) {
+  if (status === 429 || RATE_LIMIT_PATTERN.test(content)) {
     return 'rate_limited';
   }
   if (ACCESS_DENIED_PATTERN.test(content)) {
