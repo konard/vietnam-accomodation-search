@@ -58,6 +58,21 @@ function expectOrdered(text, markers) {
 }
 
 describe('optional Docker Hub publishing workflow', () => {
+  it('passes the checked-out identity to the pull request Docker build', () => {
+    const buildJob = getWorkflowJob(releaseWorkflow, 'docker-build');
+    expect(buildJob).toContain('id: image_identity');
+    expect(buildJob).toContain('build-args: |');
+    expect(buildJob).toContain(
+      'NPM_PACKAGE_VERSION=${{ steps.image_identity.outputs.version }}'
+    );
+    expect(buildJob).toContain(
+      'VCS_REF=${{ steps.image_identity.outputs.revision }}'
+    );
+    expect(buildJob).toContain(
+      'BUILD_DATE=${{ steps.image_identity.outputs.created }}'
+    );
+  });
+
   it('retests and records the exact version commit before either npm publish path', () => {
     for (const jobName of ['release', 'instant-release']) {
       const job = getWorkflowJob(releaseWorkflow, jobName);
