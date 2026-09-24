@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.2
+
+### Patch Changes
+
+- 70a1ff1: Isolate release preflight fixtures, align Docker image identity, improve browser rental adapters, and bound and resume Telegram audit storage projection.
+
 ## 0.12.1
 
 ### Patch Changes
