@@ -53,6 +53,69 @@ describe('canonical associative storage', () => {
     );
     expect(JSON.stringify(progress)).not.toContain(process.execPath);
   });
+  it('keeps projection diagnostics from changing a successful transaction', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    await runClink(process.execPath, ['-e', 'process.exit(0)'], {
+      onProgress: () => {
+        throw new Error('diagnostic sink failed');
+      },
+    });
+  });
+
+  it('propagates unreadable snapshots and candidate inspection failures', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'mirror-io-errors-'));
+    const root = join(directory, '.binary');
+    const notation = 'offer: (a b)\n';
+    const kind = 'offers';
+    const candidate = join(root, `${kind}-${sha256(notation)}`);
+    const mirror = new LinkCliMirror();
+    try {
+      await mkdir(join(root, `${kind}.current.json`), { recursive: true });
+      const pointerError = await mirror
+        .stage({ directory, kind, notation })
+        .then(
+          () => undefined,
+          (error) => error
+        );
+      expect(pointerError?.code).toBe('EISDIR');
+
+      await rm(join(root, `${kind}.current.json`), {
+        force: true,
+        recursive: true,
+      });
+      await mkdir(join(candidate, 'manifest.json'), { recursive: true });
+      const manifestError = await mirror
+        .stage({ directory, kind, notation })
+        .then(
+          () => undefined,
+          (error) => error
+        );
+      expect(manifestError?.code).toBe('EISDIR');
+
+      await rm(candidate, { force: true, recursive: true });
+      const inspected = new LinkCliMirror({
+        statCandidate: async () => {
+          const error = new Error('candidate cannot be inspected');
+          error.code = 'EACCES';
+          throw error;
+        },
+      });
+      const inspectionError = await inspected
+        .stage({ directory, kind, notation })
+        .then(
+          () => undefined,
+          (error) => error
+        );
+      expect(inspectionError?.code).toBe('EACCES');
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
   it('round-trips typed nested and unknown fields as two-value links', () => {
     const records = [
       {

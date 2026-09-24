@@ -219,10 +219,12 @@ export class LinkCliMirror {
     heartbeatMs,
     onProgress,
     run = runClink,
+    statCandidate = stat,
     timeoutMs,
   } = {}) {
     this.command = command;
     this.run = run;
+    this.statCandidate = statCandidate;
     this.runOptions = { heartbeatMs, onProgress, timeoutMs };
   }
 
@@ -297,7 +299,7 @@ export class LinkCliMirror {
       }
     }
     try {
-      await stat(candidate);
+      await this.statCandidate(candidate);
       await rename(candidate, `${candidate}.failed-${Date.now()}`);
     } catch (error) {
       if (error.code !== 'ENOENT') {
