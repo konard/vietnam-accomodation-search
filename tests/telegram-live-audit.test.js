@@ -51,7 +51,11 @@ describe('Telegram live-audit runtime', () => {
     };
     await saveSourceJournal(directory, payload);
     const path = sourceJournalPath(directory, payload.alias);
-    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    const journalFile = await stat(path);
+    assert.equal(journalFile.isFile(), true);
+    if (process.platform !== 'win32') {
+      assert.equal(journalFile.mode & 0o777, 0o600);
+    }
     assert.deepEqual(
       await loadSourceJournal(directory, payload.alias),
       payload
