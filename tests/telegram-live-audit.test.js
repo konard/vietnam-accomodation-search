@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,6 +16,13 @@ import {
   sourceCompletion,
   verifyAuditStorage,
 } from '../experiments/telegram-live-audit-runtime.mjs';
+import {
+  loadSourceJournal,
+  removeSourceJournal,
+  saveSourceJournal,
+  sourceJournalCommitted,
+  sourceJournalPath,
+} from '../experiments/telegram-audit-journal.mjs';
 
 const temporaryDirectories = [];
 
@@ -28,6 +35,50 @@ afterEach(async () => {
 });
 
 describe('Telegram live-audit runtime', () => {
+  it('durably recovers a private parsed source batch before binary projection', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'source-journal-'));
+    temporaryDirectories.push(directory);
+    const payload = {
+      alias: 'public-source',
+      batchId: 'new-batch',
+      batch: { offers: [{ id: 'offer-1', text: 'Private contact' }] },
+      cutoff: '2026-07-24T00:00:00.000Z',
+      messagesCount: 1,
+      version: 1,
+    };
+    await saveSourceJournal(directory, payload);
+    const path = sourceJournalPath(directory, payload.alias);
+    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    assert.deepEqual(
+      await loadSourceJournal(directory, payload.alias),
+      payload
+    );
+    assert.equal(
+      sourceJournalCommitted(payload, {
+        batchId: 'prior-batch',
+        complete: true,
+      }),
+      false
+    );
+    assert.equal(
+      sourceJournalCommitted(payload, { batchId: 'new-batch', complete: true }),
+      true
+    );
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('offer-1', 'offer-2')
+    );
+    await assert.rejects(
+      loadSourceJournal(directory, payload.alias),
+      /checksum/u
+    );
+    await removeSourceJournal(directory, payload.alias);
+    assert.equal(await loadSourceJournal(directory, payload.alias), undefined);
+  });
+
   it('never reports a source that exhausted its hard cap as passing', () => {
     assert.deepEqual(
       sourceCompletion({ hitCap: true, messagesScanned: 3_000 }),

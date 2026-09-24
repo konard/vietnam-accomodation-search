@@ -22,10 +22,37 @@ import {
   queryRecords,
   serializeRecords,
 } from '../src/index.js';
-import { durableWrite, sha256, syncDirectory } from '../src/link-cli-mirror.js';
+import {
+  durableWrite,
+  runClink,
+  sha256,
+  syncDirectory,
+} from '../src/link-cli-mirror.js';
 import { staleLock } from '../src/links-store.js';
 
 describe('canonical associative storage', () => {
+  it('bounds a stalled binary projection and reports redacted progress', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const progress = [];
+    let failure;
+    try {
+      await runClink(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+        heartbeatMs: 20,
+        killGraceMs: 40,
+        onProgress: (event) => progress.push(event),
+        timeoutMs: 120,
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure.code).toBe('storage-timeout');
+    expect(progress.some(({ phase }) => phase === 'binary-projection')).toBe(
+      true
+    );
+    expect(JSON.stringify(progress)).not.toContain(process.execPath);
+  });
   it('round-trips typed nested and unknown fields as two-value links', () => {
     const records = [
       {
@@ -170,8 +197,7 @@ describe('canonical associative storage', () => {
       expect(calls.length).toBe(1);
       expect(calls[0][0]).toBe('clink');
       expect(calls[0][1]).toContain('--auto-create-missing-references');
-      expect(calls[0][1]).toContain('--transactions');
-      expect(calls[0][1]).toContain('sync');
+      expect(calls[0][1]).not.toContain('--transactions');
       expect(calls[0][1]).toContain('--import');
       expect(calls[0][1]).toContain('--export');
       const pointer = JSON.parse(
@@ -182,9 +208,12 @@ describe('canonical associative storage', () => {
       );
       expect(pointer.sha256).toMatch(/^[a-f\d]{64}$/u);
 
+      await store.saveSources([{ id: 'one', type: 'web' }]);
+      expect(calls.length).toBe(1);
+
       await rm(join(directory, '.binary', 'sources.current.json'));
       await store.loadSources();
-      expect(calls.length).toBe(2);
+      expect(calls.length).toBe(1);
       expect(
         JSON.parse(
           await readFile(

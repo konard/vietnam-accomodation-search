@@ -604,7 +604,28 @@ export declare class LinksStore {
 export declare class LinkCliMirror {
   constructor(options?: {
     command?: string;
-    run?: (command: string, arguments_: string[]) => Promise<void>;
+    heartbeatMs?: number;
+    onProgress?: (event: {
+      elapsedMs: number;
+      phase: string;
+      status: string;
+      stderrBytes: number;
+    }) => void;
+    run?: (
+      command: string,
+      arguments_: string[],
+      options?: {
+        heartbeatMs?: number;
+        onProgress?: (event: {
+          elapsedMs: number;
+          phase: string;
+          status: string;
+          stderrBytes: number;
+        }) => void;
+        timeoutMs?: number;
+      }
+    ) => Promise<void>;
+    timeoutMs?: number;
   });
   preflight(): Promise<void>;
   ensure(options: {

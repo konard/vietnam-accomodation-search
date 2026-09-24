@@ -63,22 +63,73 @@ export async function durableWrite(path, contents) {
   }
 }
 
-function defaultRun(command, arguments_) {
+export function runClink(
+  command,
+  arguments_,
+  {
+    heartbeatMs = 15_000,
+    killGraceMs = 5_000,
+    onProgress,
+    timeoutMs = 10 * 60_000,
+  } = {}
+) {
   return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
     const child = spawn(command, arguments_, {
       shell: false,
       stdio: ['ignore', 'ignore', 'pipe'],
     });
-    let stderr = '';
+    let stderrBytes = 0;
+    let timedOut = false;
+    let spawnError;
+    const report = (status) => {
+      try {
+        onProgress?.({
+          elapsedMs: Date.now() - startedAt,
+          phase: 'binary-projection',
+          status,
+          stderrBytes,
+        });
+      } catch {
+        // Diagnostics must not change the storage transaction outcome.
+      }
+    };
+    const heartbeat = globalThis.setInterval(
+      () => report('running'),
+      heartbeatMs
+    );
+    let killTimer;
+    const deadline = setTimeout(() => {
+      timedOut = true;
+      report('timed-out');
+      child.kill('SIGTERM');
+      killTimer = setTimeout(() => child.kill('SIGKILL'), killGraceMs);
+    }, timeoutMs);
     child.stderr.on('data', (chunk) => {
-      stderr = `${stderr}${chunk}`.slice(-4096);
+      stderrBytes += chunk.length;
     });
-    child.on('error', reject);
+    child.on('error', (error) => {
+      spawnError = error;
+    });
     child.on('close', (code) => {
-      if (code === 0) {
+      globalThis.clearInterval(heartbeat);
+      clearTimeout(deadline);
+      clearTimeout(killTimer);
+      report(timedOut ? 'timed-out' : 'finished');
+      if (spawnError) {
+        reject(spawnError);
+      } else if (timedOut) {
+        const error = new Error(
+          `clink storage-timeout after ${Date.now() - startedAt} ms`
+        );
+        error.code = 'storage-timeout';
+        reject(error);
+      } else if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`clink exited with ${code}: ${stderr.trim()}`));
+        const error = new Error(`clink exited with ${code}`);
+        error.code = 'storage-process-failed';
+        reject(error);
       }
     });
   });
@@ -115,6 +166,30 @@ function verifyExport(imported, exported) {
 
 class SnapshotCorruptionError extends Error {}
 
+async function verifyCandidate(candidate, kind, notation, digest) {
+  const manifest = JSON.parse(
+    await readFile(join(candidate, 'manifest.json'), 'utf8')
+  );
+  if (
+    manifest.kind !== kind ||
+    manifest.sha256 !== digest ||
+    manifest.version !== 2
+  ) {
+    throw new SnapshotCorruptionError('Invalid clink manifest.');
+  }
+  const databasePath = join(candidate, 'data.links');
+  await stat(databasePath);
+  if ((await sha256File(databasePath)) !== manifest.databaseSha256) {
+    throw new SnapshotCorruptionError(
+      'The clink database does not match its manifest.'
+    );
+  }
+  verifyExport(
+    notation,
+    await readFile(join(candidate, 'verified.lino'), 'utf8')
+  );
+}
+
 function recoverableSnapshotError(error) {
   return (
     error.code === 'ENOENT' ||
@@ -130,6 +205,7 @@ async function pruneCandidates(root, kind, current) {
     if (
       entry.isDirectory() &&
       entry.name.startsWith(`${kind}-`) &&
+      !entry.name.includes('.failed-') &&
       path !== current
     ) {
       await rm(path, { force: true, recursive: true });
@@ -138,13 +214,20 @@ async function pruneCandidates(root, kind, current) {
 }
 
 export class LinkCliMirror {
-  constructor({ command = 'clink', run = defaultRun } = {}) {
+  constructor({
+    command = 'clink',
+    heartbeatMs,
+    onProgress,
+    run = runClink,
+    timeoutMs,
+  } = {}) {
     this.command = command;
     this.run = run;
+    this.runOptions = { heartbeatMs, onProgress, timeoutMs };
   }
 
   async preflight() {
-    await this.run(this.command, ['--help']);
+    await this.run(this.command, ['--help'], this.runOptions);
   }
 
   async ensure({ directory, kind, notation }) {
@@ -159,27 +242,7 @@ export class LinkCliMirror {
         pointer.directory === expectedDirectory
       ) {
         try {
-          const manifest = JSON.parse(
-            await readFile(join(expectedDirectory, 'manifest.json'), 'utf8')
-          );
-          if (
-            manifest.kind !== kind ||
-            manifest.sha256 !== digest ||
-            manifest.version !== 2
-          ) {
-            throw new SnapshotCorruptionError('Invalid clink manifest.');
-          }
-          const databasePath = join(expectedDirectory, 'data.links');
-          await stat(databasePath);
-          if ((await sha256File(databasePath)) !== manifest.databaseSha256) {
-            throw new SnapshotCorruptionError(
-              'The clink database does not match its manifest.'
-            );
-          }
-          verifyExport(
-            notation,
-            await readFile(join(expectedDirectory, 'verified.lino'), 'utf8')
-          );
+          await verifyCandidate(expectedDirectory, kind, notation, digest);
           await pruneCandidates(root, kind, expectedDirectory);
           return pointer;
         } catch (error) {
@@ -205,22 +268,58 @@ export class LinkCliMirror {
     const importPath = join(candidate, 'canonical.lino');
     const exportPath = join(candidate, 'verified.lino');
     const databasePath = join(candidate, 'data.links');
-    await rm(candidate, { force: true, recursive: true });
+    const activate = async () => {
+      await durableWrite(
+        join(root, `${kind}.current.json`),
+        `${JSON.stringify({ directory: candidate, sha256: digest, version: 1 })}\n`
+      );
+      await pruneCandidates(root, kind, candidate);
+    };
+    try {
+      const pointer = JSON.parse(
+        await readFile(join(root, `${kind}.current.json`), 'utf8')
+      );
+      if (pointer.sha256 === digest && pointer.directory === candidate) {
+        await verifyCandidate(candidate, kind, notation, digest);
+        return { activate: async () => {}, sha256: digest };
+      }
+    } catch (error) {
+      if (!recoverableSnapshotError(error)) {
+        throw error;
+      }
+    }
+    try {
+      await verifyCandidate(candidate, kind, notation, digest);
+      return { activate, sha256: digest };
+    } catch (error) {
+      if (!recoverableSnapshotError(error)) {
+        throw error;
+      }
+    }
+    try {
+      await stat(candidate);
+      await rename(candidate, `${candidate}.failed-${Date.now()}`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
     await mkdir(candidate, { recursive: true });
     try {
       await durableWrite(importPath, notation);
-      await this.run(this.command, [
-        '--db',
-        databasePath,
-        '--transactions',
-        '--commit-mode',
-        'sync',
-        '--auto-create-missing-references',
-        '--import',
-        importPath,
-        '--export',
-        exportPath,
-      ]);
+      await this.run(
+        this.command,
+        [
+          '--db',
+          databasePath,
+          '--auto-create-missing-references',
+          '--import',
+          importPath,
+          '--export',
+          exportPath,
+        ],
+        this.runOptions
+      );
       await stat(databasePath);
       verifyExport(notation, await readFile(exportPath, 'utf8'));
       await durableWrite(
@@ -228,18 +327,12 @@ export class LinkCliMirror {
         `${JSON.stringify({ databaseSha256: await sha256File(databasePath), kind, sha256: digest, version: 2 })}\n`
       );
     } catch (error) {
-      await rm(candidate, { force: true, recursive: true });
+      await durableWrite(
+        join(candidate, 'failure.json'),
+        `${JSON.stringify({ code: error.code || 'storage-error', failedAt: new Date().toISOString() })}\n`
+      ).catch(() => {});
       throw error;
     }
-    return {
-      activate: async () => {
-        await durableWrite(
-          join(root, `${kind}.current.json`),
-          `${JSON.stringify({ directory: candidate, sha256: digest, version: 1 })}\n`
-        );
-        await pruneCandidates(root, kind, candidate);
-      },
-      sha256: digest,
-    };
+    return { activate, sha256: digest };
   }
 }
