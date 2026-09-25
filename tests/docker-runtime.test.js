@@ -7,6 +7,7 @@ import {
   rm,
   symlink,
   writeFile,
+  chmod,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -17,8 +18,10 @@ import {
   assertComposeDataMount,
   assertImageIdentity,
   deploymentStateMachine,
+  inspectImageLabels,
 } from '../scripts/deploy.mjs';
 import { validateDataDirectory } from '../scripts/data-directory.mjs';
+import { loadCommandStream } from '../scripts/use-module.mjs';
 
 async function source(path) {
   return readFile(new globalThis.URL(`../${path}`, import.meta.url), 'utf8');
@@ -82,6 +85,39 @@ describe('container runtime contract', () => {
         failure = error;
       }
       expect(failure.message).toContain(name);
+    }
+  });
+
+  it('passes the Docker label Go template as one real command argument', async () => {
+    if (
+      process.platform === 'win32' ||
+      typeof globalThis.Deno !== 'undefined'
+    ) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'docker-label-argv-'));
+    try {
+      const docker = join(directory, 'docker');
+      await writeFile(
+        docker,
+        '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }));\n'
+      );
+      await chmod(docker, 0o700);
+      const { $ } = await loadCommandStream();
+      const run = $({
+        capture: true,
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+        mirror: false,
+      });
+      const labels = await inspectImageLabels(run, 'candidate:image');
+      expect(labels.argv).toEqual([
+        'image',
+        'inspect',
+        '--format={{json .Config.Labels}}',
+        'candidate:image',
+      ]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
     }
   });
 
