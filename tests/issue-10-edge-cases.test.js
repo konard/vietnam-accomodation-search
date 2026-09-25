@@ -430,6 +430,8 @@ describe('issue 10 authentication edge cases', () => {
         })
       );
       expect(mismatch.message).toContain('identity mismatch');
+      expect(mismatch.message).not.toContain('2');
+      expect(mismatch.message).not.toContain('1');
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

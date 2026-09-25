@@ -114,24 +114,23 @@ export async function runCli(
         sessionFile: stdoutSession ? undefined : sessionFile,
       });
       if (action === 'login' || action === 'rotate') {
-        const identity = await auth[action]({
+        await auth[action]({
           code: env.TELEGRAM_LOGIN_CODE,
           password: env.TELEGRAM_2FA_PASSWORD,
           phone: option('--phone') || env.TELEGRAM_PHONE,
           qr,
         });
-        stdout(
-          `Authenticated Telegram user ${identity.id}${identity.username ? ` (@${identity.username})` : ''}.`
-        );
+        stdout('Authenticated Telegram user.');
         return 0;
       }
       if (action === 'status') {
-        stdout(JSON.stringify(await auth.status()));
+        const status = await auth.status();
+        stdout(JSON.stringify({ ...status, identity: undefined }));
         return 0;
       }
       if (action === 'validate') {
-        const identity = await auth.validate();
-        stdout(`Telegram session is valid for ${identity.id}.`);
+        await auth.validate();
+        stdout('Telegram session is valid.');
         return 0;
       }
       if (action === 'logout') {
@@ -150,7 +149,7 @@ export async function runCli(
         env,
         mirror: new LinkCliMirror(),
       });
-      stdout(JSON.stringify(result));
+      stdout(JSON.stringify({ ...result, identities: undefined }));
       return 0;
     }
     if (command === 'bot' || (command === 'telegram' && rest[0] === 'ingest')) {
@@ -217,9 +216,7 @@ export async function runCli(
             env.TELEGRAM_EXPECTED_BOT_ID &&
             String(me.id) !== String(env.TELEGRAM_EXPECTED_BOT_ID)
           ) {
-            throw new Error(
-              `Telegram bot identity mismatch: expected ${env.TELEGRAM_EXPECTED_BOT_ID}, received ${me.id}.`
-            );
+            throw new Error('Telegram bot identity mismatch.');
           }
           return me;
         };

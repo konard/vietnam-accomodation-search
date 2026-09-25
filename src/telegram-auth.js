@@ -188,9 +188,7 @@ export async function preflightTelegram({
       env.TELEGRAM_EXPECTED_BOT_ID &&
       String(result.result.id) !== String(env.TELEGRAM_EXPECTED_BOT_ID)
     ) {
-      throw new Error(
-        `Telegram bot identity mismatch: expected ${env.TELEGRAM_EXPECTED_BOT_ID}, received ${result.result.id}.`
-      );
+      throw new Error('Telegram bot identity mismatch.');
     }
     identities.bot = {
       id: result.result.id,
@@ -306,9 +304,7 @@ export class TelegramAuthService {
       this.expectedUserId !== undefined &&
       String(me.id) !== String(this.expectedUserId)
     ) {
-      throw new Error(
-        `Telegram identity mismatch: expected ${this.expectedUserId}, received ${me.id}.`
-      );
+      throw new Error('Telegram identity mismatch.');
     }
     return { id: me.id, username: me.username };
   }
