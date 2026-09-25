@@ -1,5 +1,32 @@
 import { readFile } from 'node:fs/promises';
 
+export function errorSummary(error) {
+  return {
+    code:
+      typeof error?.code === 'number' || typeof error?.code === 'string'
+        ? error.code
+        : undefined,
+    type: error?.constructor?.name || 'Error',
+  };
+}
+
+export async function botStatus(token, fetchImpl = globalThis.fetch) {
+  if (!token) {
+    return { configured: false };
+  }
+  try {
+    const response = await fetchImpl(
+      `https://api.telegram.org/bot${token}/getMe`
+    );
+    const payload = await response.json();
+    return response.ok && payload.ok
+      ? { active: true, configured: true }
+      : { active: false, configured: true, errorCode: payload.error_code };
+  } catch (error) {
+    return { active: false, configured: true, error: errorSummary(error) };
+  }
+}
+
 const ACCOMMODATION_PATTERN =
   /apartment|studio|condo|villa|house|room|hotel|hostel|homestay|accommodation|квартир|студи|апартамент|вилл|комнат|дом\b|жиль|отел|хостел|căn\s*hộ|chung\s*cư|biệt\s*thự|phòng|nhà\b|khách\s*sạn|nhà\s*nghỉ/iu;
 const OFFER_PATTERN =

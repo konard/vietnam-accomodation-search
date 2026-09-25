@@ -115,6 +115,13 @@ export function assertImageIdentity(labels, { buildDate, revision, version }) {
   return true;
 }
 
+export async function inspectImageLabels(run, image) {
+  const format = '{{json .Config.Labels}}';
+  return JSON.parse(
+    await text(await run`docker image inspect --format=${format} ${image}`)
+  );
+}
+
 async function checkedOutBuildIdentity() {
   const run = command({ capture: true, mirror: false });
   const [packageContents, revision, buildDate] = await Promise.all([
@@ -196,11 +203,7 @@ async function prepareCandidate(config) {
   } else {
     await run`docker compose -f ${config.composeFile} -p ${config.projectName} build app`;
   }
-  const labels = JSON.parse(
-    await text(
-      await renderedRun`docker image inspect --format={{json .Config.Labels}} ${image}`
-    )
-  );
+  const labels = await inspectImageLabels(renderedRun, image);
   assertImageIdentity(labels, config.buildIdentity);
   const cliVersion = await text(
     await renderedRun`docker run --rm --entrypoint node ${image} bin/vietnam-accomodation-search.js --version`

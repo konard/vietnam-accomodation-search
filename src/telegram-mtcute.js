@@ -208,9 +208,7 @@ export class MtcuteTelegramProvider {
         this.expectedUserId !== undefined &&
         String(me.id) !== String(this.expectedUserId)
       ) {
-        throw new Error(
-          `Telegram identity mismatch: expected ${this.expectedUserId}, received ${me.id}.`
-        );
+        throw new Error('Telegram identity mismatch.');
       }
       this.client = client;
       this.me = me;

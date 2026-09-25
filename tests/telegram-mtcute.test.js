@@ -253,9 +253,10 @@ describe('concrete mtcute Telegram provider', () => {
       expectedUserId: '1',
       session: 'session',
     });
-    expect(
-      (await capturedFailure(() => mismatched.identity())).message
-    ).toContain('identity mismatch');
+    const mismatch = await capturedFailure(() => mismatched.identity());
+    expect(mismatch.message).toContain('identity mismatch');
+    expect(mismatch.message).not.toContain('expected 1');
+    expect(mismatch.message).not.toContain('received 2');
     expect(destroyed).toBe(1);
 
     const failed = new MtcuteTelegramProvider({

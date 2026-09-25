@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 import { LinksStore } from '../src/links-store.js';
 import { reconcileTelegramMaterials } from '../src/telegram-pipeline.js';
+import { botStatus } from '../experiments/telegram-accommodation-audit-lib.mjs';
 import {
   auditTelegramBatch,
   collectTelegramWindow,
@@ -19,6 +20,7 @@ import {
 import {
   loadSourceJournal,
   removeSourceJournal,
+  saveCollectedSourceBatch,
   saveSourceJournal,
   sourceJournalCommitted,
   sourceJournalPath,
@@ -35,6 +37,17 @@ afterEach(async () => {
 });
 
 describe('Telegram live-audit runtime', () => {
+  it('reports bot readiness without serializing its private identity', async () => {
+    const status = await botStatus('private-token', async () => ({
+      json: async () => ({
+        ok: true,
+        result: { id: 123456789, username: 'private_bot' },
+      }),
+      ok: true,
+    }));
+    assert.deepEqual(status, { active: true, configured: true });
+  });
+
   it('durably recovers a private parsed source batch before binary projection', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;
@@ -71,6 +84,14 @@ describe('Telegram live-audit runtime', () => {
       sourceJournalCommitted(payload, { batchId: 'new-batch', complete: true }),
       true
     );
+    assert.equal(
+      sourceJournalCommitted(payload, {
+        batchId: 'new-batch',
+        complete: false,
+        phase: 'projection-pending',
+      }),
+      false
+    );
     await writeFile(
       path,
       (await readFile(path, 'utf8')).replace('offer-1', 'offer-2')
@@ -81,6 +102,51 @@ describe('Telegram live-audit runtime', () => {
     );
     await removeSourceJournal(directory, payload.alias);
     assert.equal(await loadSourceJournal(directory, payload.alias), undefined);
+  });
+
+  it('persists the collected offset without discarding the replay journal', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'source-pending-'));
+    temporaryDirectories.push(directory);
+    const checkpointStore = new LinksStore({
+      binaryMirror: false,
+      directory: join(directory, 'checkpoints'),
+    });
+    const payload = {
+      alias: 'public-source',
+      batchId: 'batch-2',
+      batch: { offers: [{ id: 'offer-2' }] },
+      cutoff: '2026-07-24T00:00:00.000Z',
+      messagesCount: 2,
+      offsetId: 40,
+      resumeId: 50,
+      version: 1,
+    };
+    await saveCollectedSourceBatch({
+      checkpointStore,
+      payload,
+      previous: {
+        complete: false,
+        messagesScanned: 10,
+        metrics: { parserOffers: 3 },
+        oldestMessageId: 50,
+      },
+      stateDirectory: directory,
+      updatedAt: '2026-09-25T00:00:00.000Z',
+    });
+    const journal = await loadSourceJournal(directory, payload.alias);
+    const checkpoint = await loadAuditCheckpoint(
+      checkpointStore,
+      payload.alias
+    );
+    assert.equal(checkpoint.phase, 'projection-pending');
+    assert.equal(checkpoint.collectedOldestMessageId, 40);
+    assert.equal(checkpoint.oldestMessageId, 50);
+    assert.equal(checkpoint.messagesScanned, 10);
+    assert.equal(sourceJournalCommitted(journal, checkpoint), false);
+    assert.equal(journal.resumeId, checkpoint.oldestMessageId);
   });
 
   it('never reports a source that exhausted its hard cap as passing', () => {

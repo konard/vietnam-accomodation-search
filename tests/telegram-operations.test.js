@@ -649,6 +649,8 @@ describe('Telegram user authentication', () => {
       error = caught;
     }
     expect(error.message).toContain('identity mismatch');
+    expect(error.message).not.toContain('10');
+    expect(error.message).not.toContain('9');
     expect(destroyed).toBe(true);
   });
 
@@ -679,6 +681,8 @@ describe('Telegram user authentication', () => {
     expect(calls[0].input.code).toBe('12345');
     expect(calls[0].input.password).toBe(undefined);
     expect(output[0]).toContain('TELEGRAM_USER_SESSION=explicit-secret');
+    expect(output.at(-1)).not.toContain('42');
+    expect(output.at(-1)).not.toContain('owner');
 
     const errors = [];
     expect(
@@ -713,21 +717,28 @@ describe('Telegram user authentication', () => {
     expect(errors.at(-1)).toContain('Choose --session-file');
 
     let statusOptions;
+    const statusOutput = [];
     expect(
       await runCli(['telegram', 'auth', 'status'], {
         authFactory: (options) => {
           statusOptions = options;
-          return { status: async () => ({ configured: true }) };
+          return {
+            status: async () => ({
+              configured: true,
+              identity: { id: 42, username: 'owner' },
+            }),
+          };
         },
         env: {
           TELEGRAM_API_HASH: 'hash',
           TELEGRAM_API_ID: '1',
           TELEGRAM_USER_SESSION_FILE: '/run/secrets/telegram-session',
         },
-        stdout: () => {},
+        stdout: (line) => statusOutput.push(line),
       })
     ).toBe(0);
     expect(statusOptions.sessionFile).toBe('/run/secrets/telegram-session');
+    expect(statusOutput[0]).toBe('{"configured":true}');
   });
 
   it('resolves mounted user secrets for auth and availability CLI paths', async () => {
