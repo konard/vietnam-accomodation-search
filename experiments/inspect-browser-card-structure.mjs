@@ -30,9 +30,15 @@ try {
           classes: card.className,
           links: [...card.querySelectorAll('a[href]')].map((link) => ({
             classes: link.className,
-            pathname: (() => {
+            pathShape: (() => {
               try {
-                return new globalThis.URL(link.href).pathname;
+                const parts = new globalThis.URL(link.href).pathname
+                  .split('/')
+                  .filter(Boolean);
+                return {
+                  depth: parts.length,
+                  prefix: parts[0],
+                };
               } catch {
                 return undefined;
               }
