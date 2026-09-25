@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 import { LinksStore } from '../src/links-store.js';
 import { reconcileTelegramMaterials } from '../src/telegram-pipeline.js';
+import { botStatus } from '../experiments/telegram-accommodation-audit-lib.mjs';
 import {
   auditTelegramBatch,
   collectTelegramWindow,
@@ -36,6 +37,17 @@ afterEach(async () => {
 });
 
 describe('Telegram live-audit runtime', () => {
+  it('reports bot readiness without serializing its private identity', async () => {
+    const status = await botStatus('private-token', async () => ({
+      json: async () => ({
+        ok: true,
+        result: { id: 123456789, username: 'private_bot' },
+      }),
+      ok: true,
+    }));
+    assert.deepEqual(status, { active: true, configured: true });
+  });
+
   it('durably recovers a private parsed source batch before binary projection', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;

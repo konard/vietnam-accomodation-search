@@ -34,8 +34,10 @@ import {
   DEFAULT_DISCOVERY_QUERIES,
   anonymizeListing,
   assertManualLocalRun,
+  botStatus,
   classifyAccommodationPost,
   countBy,
+  errorSummary,
   isNhaTrangSource,
   isTelegramCommunity,
   isTelegramPrivateDialog,
@@ -96,16 +98,6 @@ function parseArguments(values) {
     );
   }
   return result;
-}
-
-function errorSummary(error) {
-  return {
-    code:
-      typeof error?.code === 'number' || typeof error?.code === 'string'
-        ? error.code
-        : undefined,
-    type: error?.constructor?.name || 'Error',
-  };
 }
 
 function dateValue(value) {
@@ -719,26 +711,6 @@ async function auditSource(
     await removeSourceJournal(options.stateDirectory, alias);
   }
   return { audit, domainRecords: batch.domainRecords, offers: batch.offers };
-}
-
-async function botStatus(token) {
-  if (!token) {
-    return { configured: false };
-  }
-  try {
-    const response = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-    const payload = await response.json();
-    return response.ok && payload.ok
-      ? {
-          active: true,
-          configured: true,
-          id: String(payload.result.id),
-          username: payload.result.username,
-        }
-      : { active: false, configured: true, errorCode: payload.error_code };
-  } catch (error) {
-    return { active: false, configured: true, error: errorSummary(error) };
-  }
 }
 
 // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- The live runner assembles a single evidence report across discovery, ingestion, storage, and acceptance gates.
