@@ -2,13 +2,18 @@ import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { durableWrite, sha256 } from '../src/link-cli-mirror.js';
+import { saveAuditCheckpoint } from './telegram-live-audit-runtime.mjs';
 
 export function sourceJournalPath(stateDirectory, alias) {
   return join(stateDirectory, 'source-journals', `${sha256(alias)}.json`);
 }
 
 export function sourceJournalCommitted(journal, checkpoint) {
-  return Boolean(journal?.batchId && journal.batchId === checkpoint?.batchId);
+  return Boolean(
+    journal?.batchId &&
+    journal.batchId === checkpoint?.batchId &&
+    checkpoint?.phase !== 'projection-pending'
+  );
 }
 
 export async function loadSourceJournal(stateDirectory, alias) {
@@ -48,6 +53,31 @@ export async function saveSourceJournal(stateDirectory, payload) {
     payload,
   });
   await durableWrite(path, `${contents}\n`);
+}
+
+export async function saveCollectedSourceBatch({
+  checkpointStore,
+  payload,
+  previous,
+  stateDirectory,
+  updatedAt = new Date().toISOString(),
+}) {
+  await saveSourceJournal(stateDirectory, payload);
+  await saveAuditCheckpoint(checkpointStore, {
+    batchId: payload.batchId,
+    collectedOldestMessageId: payload.offsetId,
+    complete: false,
+    cutoff: payload.cutoff,
+    id: payload.alias,
+    messagesScanned: previous?.messagesScanned || 0,
+    ...(previous?.oldestMessageId === undefined
+      ? {}
+      : { oldestMessageId: previous.oldestMessageId }),
+    metrics: previous?.metrics || {},
+    phase: 'projection-pending',
+    state: 'pending',
+    updatedAt,
+  });
 }
 
 export async function removeSourceJournal(stateDirectory, alias) {

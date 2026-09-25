@@ -27,7 +27,7 @@ import {
 import {
   loadSourceJournal,
   removeSourceJournal,
-  saveSourceJournal,
+  saveCollectedSourceBatch,
   sourceJournalCommitted,
 } from './telegram-audit-journal.mjs';
 import {
@@ -589,18 +589,23 @@ async function auditSource(
       ? dateValue(messages.at(-1).date).toISOString()
       : resume?.oldestMessageDate;
     if (!sourceError) {
-      await saveSourceJournal(options.stateDirectory, {
-        ...journalKey,
-        accommodationRequests: audit.accommodationRequests,
-        batch,
-        exhausted,
-        hitCap,
-        mediaOnlyCandidates: audit.mediaOnlyCandidates,
-        messagesCount: messages.length,
-        offsetId,
-        oldestMessageDate,
-        reachedCutoff,
-        version: 1,
+      await saveCollectedSourceBatch({
+        checkpointStore,
+        payload: {
+          ...journalKey,
+          accommodationRequests: audit.accommodationRequests,
+          batch,
+          exhausted,
+          hitCap,
+          mediaOnlyCandidates: audit.mediaOnlyCandidates,
+          messagesCount: messages.length,
+          offsetId,
+          oldestMessageDate,
+          reachedCutoff,
+          version: 1,
+        },
+        previous: resume,
+        stateDirectory: options.stateDirectory,
       });
     }
   }
@@ -706,6 +711,7 @@ async function auditSource(
       unaccountedMaterials: audit.unaccountedMaterials,
       unresolvedMediaOnly: audit.unresolvedMediaOnly,
     },
+    phase: 'projection-complete',
     state: completion.state,
     updatedAt: new Date().toISOString(),
   });
