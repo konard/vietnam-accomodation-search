@@ -12,6 +12,7 @@ import { join } from 'node:path';
 
 import { formattableStagedFiles } from '../scripts/release-formatting.mjs';
 import { synchronizeReleaseCheckout } from '../scripts/synchronize-release-checkout.mjs';
+import { loadCommandStream } from '../scripts/use-module.mjs';
 
 const script = readFileSync('scripts/version-and-commit.mjs', 'utf8');
 const releaseFormatting = readFileSync(
@@ -37,6 +38,9 @@ describe('version-and-commit.mjs formats the release commit', () => {
 
   it('checks only the formattable staged files, not the whole tree', () => {
     expect(script).toContain('prettier --check ${formattable}');
+    expect(script).toContain(
+      'formattableStagedFiles(await stagedResult.text())'
+    );
     expect(releaseFormatting).toContain('/\\.(m?js|json|md|ts)$/');
     expect(script).toContain('--diff-filter=ACMR');
     expect(script).toContain('--name-only -z');
@@ -83,6 +87,34 @@ describe('version-and-commit.mjs formats the release commit', () => {
         '-z',
       ]);
       expect(formattableStagedFiles(output)).toEqual(['package.json', unusual]);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it('captures the real NUL-delimited staged list through the release command boundary', async () => {
+    if (
+      typeof globalThis.Deno !== 'undefined' ||
+      process.platform === 'win32'
+    ) {
+      return;
+    }
+    const root = mkdtempSync(join(tmpdir(), 'release-staged-command-'));
+    try {
+      execFileSync('git', ['init', '-b', 'main'], { cwd: root });
+      writeFileSync(join(root, 'release notes\ncontinued.md'), '# Release\n');
+      execFileSync('git', ['add', '-A'], { cwd: root });
+
+      const { $ } = await loadCommandStream();
+      const result =
+        await $`git -C ${root} diff --cached --name-only -z --diff-filter=ACMR`.run(
+          {
+            capture: true,
+          }
+        );
+      expect(formattableStagedFiles(await result.text())).toEqual([
+        'release notes\ncontinued.md',
+      ]);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

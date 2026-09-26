@@ -186,7 +186,9 @@ async function checkStagedFormatting() {
     await $`git diff --cached --name-only -z --diff-filter=ACMR`.run({
       capture: true,
     });
-  const formattable = formattableStagedFiles(stagedResult.stdout);
+  // command-stream exposes stdout as CapturedReadable, not a Buffer. Decode
+  // through its text() API so Git's NUL-delimited paths survive intact.
+  const formattable = formattableStagedFiles(await stagedResult.text());
 
   if (formattable.length > 0) {
     console.log(
