@@ -17,6 +17,8 @@ The [2026-09-26 post-PR #47 rerun](case-studies/revalidation-2026-09-26/README.m
 confirmed partial checkpoint and deployment progress, but also reproduced the
 unmet release, browser, native Telegram, and projection gates after PR #47
 automatically closed their issues.
+The [Issue #48 acceptance inventory](case-studies/issue-48/README.md) tracks the
+single-PR plan for all six reopened issues and the release staging repair.
 Historical audits remain evidence of what was observed at their recorded commit,
 including failures.
 
