@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.3
+
+### Patch Changes
+
+- Preserve the Docker label format argument during deployment, checkpoint collected Telegram batches before binary projection, and redact Telegram identities from CLI status and mismatch errors.
+
+  Decode Git's NUL-delimited staged file list through command-stream's text API so release versioning can reach the commit and publication gates on Node 24.
+
 ## 0.12.2
 
 ### Patch Changes
