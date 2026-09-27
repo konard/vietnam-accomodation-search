@@ -36,12 +36,29 @@ describe('publishable package metadata', () => {
     if (typeof Deno !== 'undefined' || typeof Bun !== 'undefined') {
       return;
     }
-    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    // Windows cannot launch npm.cmd directly without a shell. npm supplies
+    // its JavaScript entry point when it runs the test suite.
+    const npmCli = process.env.npm_execpath;
+    const npm = npmCli
+      ? process.execPath
+      : process.platform === 'win32'
+        ? 'npm.cmd'
+        : 'npm';
     const result = spawnSync(
       npm,
-      ['publish', '--dry-run', '--json', '--ignore-scripts'],
-      { encoding: 'utf8' }
+      [
+        ...(npmCli ? [npmCli] : []),
+        'publish',
+        '--dry-run',
+        '--json',
+        '--ignore-scripts',
+      ],
+      {
+        encoding: 'utf8',
+        shell: process.platform === 'win32' && !npmCli,
+      }
     );
+    expect(result.error).toBe(undefined);
     expect(result.status).toBe(0);
     expect(result.stderr).not.toContain('bin[vietnam-accomodation-search]');
     const metadata = JSON.parse(result.stdout);
