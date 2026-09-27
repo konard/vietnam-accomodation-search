@@ -85,7 +85,7 @@ export function extractPageListings(sourceType, selectors = {}) {
       ?.match(/background-image\s*:\s*url\(["']?(.*?)["']?\)/iu)?.[1];
   const availabilityState = (value) => {
     if (
-      /\bsold\b|rented\s*out|сдано|недоступ|đã\s*thuê|đã\s*hết|hết\s*(?:phòng|chỗ)/iu.test(
+      /\bsold\b|rented\s*out|сдано|недоступ|đã\s*thuê|đã\s*hết|hết\s*(?:phòng|chỗ)|không\s+còn\s+(?:phòng\s+)?trống/iu.test(
         value || ''
       )
     ) {
@@ -160,7 +160,7 @@ export function extractPageListings(sourceType, selectors = {}) {
     }
     if (!semantic.availability) {
       semantic.availability = String(element.innerText || '').match(
-        /rented\s*out|\bsold\b|đã\s*thuê|đã\s*hết|hết\s*(?:phòng|chỗ)|còn\s*trống|trống|\bavailable\b|in\s*stock|сдано|недоступ|свобод|доступ/iu
+        /rented\s*out|\bsold\b|đã\s*thuê|đã\s*hết|hết\s*(?:phòng|chỗ)|không\s+còn\s+(?:phòng\s+)?trống|còn\s*trống|trống|\bavailable\b|in\s*stock|сдано|недоступ|свобод|доступ/iu
       )?.[0];
     }
     if (!semantic.availability && selectors.availabilityFallback) {

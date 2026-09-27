@@ -337,6 +337,39 @@ describe('in-page listing extraction', () => {
     }
   });
 
+  it('does not treat a Vietnamese no-vacancy label as available', () => {
+    const previous = globalThis.document;
+    const card = {
+      getAttribute: () => null,
+      innerText: 'Căn hộ không còn trống',
+      querySelector: (selector) =>
+        selector === '.availability'
+          ? { textContent: 'Không còn trống' }
+          : selector === 'a[href]'
+            ? { href: 'https://rent.example/unit-42' }
+            : { textContent: 'Căn hộ' },
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [row] = extractPageListings('web', {
+        cards: '.card',
+        fields: { availability: '.availability' },
+        title: 'h5',
+      });
+      expect(row.semantic.availability).toBe('Không còn trống');
+      expect(row.attributes.availableNow).toBe(false);
+      const [textOnly] = extractPageListings('web', {
+        cards: '.card',
+        title: 'h5',
+      });
+      expect(textOnly.semantic.availability).toBe('không còn trống');
+      expect(textOnly.attributes.availableNow).toBe(false);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('extracts property IDs, titles, and image fallbacks from website DOM cards', async () => {
     const previous = globalThis.document;
     const anchor = { href: 'https://stay.example/rooms/unit-42' };
