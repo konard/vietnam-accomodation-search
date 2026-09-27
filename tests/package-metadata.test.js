@@ -25,9 +25,32 @@ describe('publishable package metadata', () => {
 
   it('defines a globally installable CLI command', () => {
     expect(packageJson.bin).toEqual({
-      'vietnam-accomodation-search': './bin/vietnam-accomodation-search.js',
+      'vietnam-accomodation-search': 'bin/vietnam-accomodation-search.js',
     });
     expect(existsSync('bin/vietnam-accomodation-search.js')).toBe(true);
+  });
+
+  it('keeps the CLI bin entry through npm publish normalization', () => {
+    if (typeof Deno !== 'undefined') {
+      return;
+    }
+    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const result = spawnSync(
+      npm,
+      ['publish', '--dry-run', '--json', '--ignore-scripts'],
+      { encoding: 'utf8' }
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('bin[vietnam-accomodation-search]');
+    const metadata = JSON.parse(result.stdout);
+    const packageFiles = Array.isArray(metadata)
+      ? metadata[0].files
+      : metadata[packageJson.name].files;
+    expect(
+      packageFiles.some(
+        ({ path }) => path === packageJson.bin[packageJson.name]
+      )
+    ).toBe(true);
   });
 
   it('prints the package version without constructing the application', async () => {
