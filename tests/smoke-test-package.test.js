@@ -14,6 +14,7 @@ import {
   parseCommandArgs,
   resolveBinShim,
   smokeTestPackage,
+  verifyNpmProvenance,
 } from '../scripts/smoke-test-package.mjs';
 
 describe('smoke-test-package.mjs', () => {
@@ -120,6 +121,51 @@ describe('smoke-test-package.mjs', () => {
 });
 
 describe('smoke-test-package entry point checks', () => {
+  it('requires npm to verify provenance for the exact installed version', () => {
+    const verified = {
+      name: 'example-package',
+      version: '1.2.3',
+      attestations: {
+        provenance: { predicateType: 'https://slsa.dev/provenance/v1' },
+      },
+      attestationBundles: [{}],
+    };
+    let auditOptions;
+    const verify = (report) =>
+      verifyNpmProvenance({
+        packageName: 'example-package',
+        packageVersion: '1.2.3',
+        workspace: '/tmp/work',
+        runCommandFn: (_command, _args, options) => {
+          auditOptions = options;
+          return JSON.stringify(report);
+        },
+      });
+
+    expect(() => verify({ verified: [verified] })).not.toThrow();
+    expect(auditOptions.maxBuffer).toBe(16 * 1024 * 1024);
+    expect(() =>
+      verify({ verified: [{ ...verified, version: '1.2.2' }] })
+    ).toThrow(/could not verify registry signatures and provenance/u);
+    expect(() =>
+      verify({ verified: [{ ...verified, attestations: {} }] })
+    ).toThrow(/could not verify registry signatures and provenance/u);
+    expect(() =>
+      verify({ verified: [{ ...verified, attestationBundles: [] }] })
+    ).toThrow(/could not verify registry signatures and provenance/u);
+    expect(() => verify({ verified: [verified], invalid: [{}] })).toThrow(
+      /could not verify registry signatures and provenance/u
+    );
+    expect(() =>
+      verifyNpmProvenance({
+        packageName: 'example-package',
+        packageVersion: '1.2.3',
+        workspace: '/tmp/work',
+        runCommandFn: () => 'not JSON',
+      })
+    ).toThrow(/did not return valid JSON/u);
+  });
+
   it('verifies registry signatures and provenance after a clean install', async () => {
     // The release smoke runner uses Node and a writable temporary npm project.
     // Deno's read-only test leg cannot create that project.
@@ -145,6 +191,24 @@ describe('smoke-test-package entry point checks', () => {
             JSON.stringify({ name: 'example-package', version: '1.2.3' })
           );
         }
+        if (args[0] === 'audit') {
+          return JSON.stringify({
+            invalid: [],
+            missing: [],
+            verified: [
+              {
+                name: 'example-package',
+                version: '1.2.3',
+                attestations: {
+                  provenance: {
+                    predicateType: 'https://slsa.dev/provenance/v1',
+                  },
+                },
+                attestationBundles: [{}],
+              },
+            ],
+          });
+        }
       },
       stdout() {},
       workspaceFactory: () => workspace,
@@ -152,7 +216,9 @@ describe('smoke-test-package entry point checks', () => {
     expect(calls[0]).toContain('--package-lock=true');
     expect(
       calls.some(
-        (args) => JSON.stringify(args) === '["npm","audit","signatures"]'
+        (args) =>
+          JSON.stringify(args) ===
+          '["npm","audit","signatures","--json","--include-attestations"]'
       )
     ).toBe(true);
   });

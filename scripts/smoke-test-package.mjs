@@ -271,6 +271,47 @@ export async function installFromNpm({
   }
 }
 
+export function verifyNpmProvenance({
+  packageName,
+  packageVersion,
+  runCommandFn = runCommand,
+  workspace,
+}) {
+  const output = runCommandFn(
+    'npm',
+    ['audit', 'signatures', '--json', '--include-attestations'],
+    {
+      cwd: workspace,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+  );
+  let report;
+  try {
+    report = JSON.parse(String(output));
+  } catch {
+    throw new Error('npm signature audit did not return valid JSON');
+  }
+
+  const publishedPackage = (
+    Array.isArray(report?.verified) ? report.verified : []
+  ).find(
+    (entry) => entry.name === packageName && entry.version === packageVersion
+  );
+  if (
+    !publishedPackage?.attestations?.provenance?.predicateType?.startsWith(
+      'https://slsa.dev/provenance/'
+    ) ||
+    !publishedPackage.attestationBundles?.length ||
+    report.invalid?.length
+  ) {
+    throw new Error(
+      `npm could not verify registry signatures and provenance for ${packageName}@${packageVersion}`
+    );
+  }
+}
+
 export function checkLibraryEntryPoint({
   packageName,
   runCommandFn = runCommand,
@@ -481,13 +522,14 @@ export async function smokeTestPackage({
       stdout,
     });
 
-    // npm audit signatures verifies registry signatures and provenance on
-    // the installed dependency tree. Keep the lockfile from the clean install
-    // because the audit command uses it to identify exact package versions.
+    // Keep the lockfile from the clean install: npm uses it to identify exact
+    // package versions when verifying registry signatures and provenance.
     stdout('Verifying npm registry signatures and provenance');
-    runCommandFn('npm', ['audit', 'signatures'], {
-      cwd: workspace,
-      stdio: 'inherit',
+    verifyNpmProvenance({
+      packageName,
+      packageVersion,
+      runCommandFn,
+      workspace,
     });
 
     const installedPackageJson = readJsonFile(
