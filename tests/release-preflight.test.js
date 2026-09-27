@@ -32,12 +32,17 @@ const OIDC_URL = 'https://token.actions.githubusercontent.com';
 const PUBLISHING_VARIABLE =
   /^(?:ACTIONS_ID_TOKEN_REQUEST_|NPM_|NODE_AUTH_TOKEN$|DOCKERHUB_|DOCKER_AUTH$|DOCKER_REGISTRY$|PREFLIGHT_|GITHUB_STEP_SUMMARY$)/u;
 
-function makeFixtures({ whoamiStatus = 200, postStatus = 202 } = {}) {
+function makeFixtures({
+  whoamiStatus = 200,
+  postStatus = 202,
+  packageStatus = 200,
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'preflight-fixtures-'));
   writeFileSync(join(dir, 'whoami_status'), String(whoamiStatus));
   writeFileSync(join(dir, 'whoami.json'), '{"username":"stub-user"}');
   writeFileSync(join(dir, 'token.json'), '{"token":"stub-registry-token"}');
   writeFileSync(join(dir, 'post_status'), String(postStatus));
+  writeFileSync(join(dir, 'package_status'), String(packageStatus));
   return dir;
 }
 
@@ -179,6 +184,29 @@ describe('release-preflight probe behaviour (offline, curl stub)', () => {
 
     expect(code).toBe(0);
     expect(stdout).toContain('npm OIDC trusted publishing is available');
+  });
+
+  it('requires a bootstrap token when OIDC cannot create the package', async () => {
+    const fixtures = makeFixtures({ packageStatus: 404 });
+    const { code, stdout } = await runPreflight(
+      { PREFLIGHT_MODE: 'release', ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL },
+      fixtures
+    );
+
+    expect(code).toBe(1);
+    expect(stdout).toContain('bootstrap NPM_TOKEN is required');
+  });
+
+  it('does not infer package existence from an inconclusive registry response', async () => {
+    const fixtures = makeFixtures({ packageStatus: 500 });
+    const { code, stdout } = await runPreflight(
+      { PREFLIGHT_MODE: 'release', ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL },
+      fixtures
+    );
+
+    expect(code).toBe(1);
+    expect(stdout).toContain('npm package existence could not be confirmed');
+    expect(stdout).toContain('verified nothing');
   });
 
   it('fails in release mode when there is nothing to publish with', async () => {
