@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'test-anywhere';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -11,6 +13,7 @@ import {
   parseArgs,
   parseCommandArgs,
   resolveBinShim,
+  smokeTestPackage,
 } from '../scripts/smoke-test-package.mjs';
 
 describe('smoke-test-package.mjs', () => {
@@ -117,6 +120,43 @@ describe('smoke-test-package.mjs', () => {
 });
 
 describe('smoke-test-package entry point checks', () => {
+  it('verifies registry signatures and provenance after a clean install', async () => {
+    // The release smoke runner uses Node and a writable temporary npm project.
+    // Deno's read-only test leg cannot create that project.
+    if (typeof Deno !== 'undefined') {
+      return;
+    }
+    const calls = [];
+    const workspace = mkdtempSync(join(tmpdir(), 'npm-signatures-test-'));
+    await smokeTestPackage({
+      packageName: 'example-package',
+      packageVersion: '1.2.3',
+      runCommandFn(command, args) {
+        calls.push([command, ...args]);
+        if (args[0] === 'install') {
+          const packageDirectory = join(
+            workspace,
+            'node_modules',
+            'example-package'
+          );
+          mkdirSync(packageDirectory, { recursive: true });
+          writeFileSync(
+            join(packageDirectory, 'package.json'),
+            JSON.stringify({ name: 'example-package', version: '1.2.3' })
+          );
+        }
+      },
+      stdout() {},
+      workspaceFactory: () => workspace,
+    });
+    expect(calls[0]).toContain('--package-lock=true');
+    expect(
+      calls.some(
+        (args) => JSON.stringify(args) === '["npm","audit","signatures"]'
+      )
+    ).toBe(true);
+  });
+
   it('resolves npm-installed bin shims for each platform', () => {
     expect(resolveBinShim('/tmp/work', 'pkg', 'linux')).toBe(
       join('/tmp/work', 'node_modules', '.bin', 'pkg')
@@ -142,7 +182,7 @@ describe('smoke-test-package entry point checks', () => {
           '@scope/pkg@1.2.3',
           '--no-audit',
           '--no-fund',
-          '--package-lock=false',
+          '--package-lock=true',
         ]);
         expect(options.cwd).toBe('/tmp/work');
 

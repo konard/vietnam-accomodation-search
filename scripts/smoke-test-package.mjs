@@ -251,7 +251,7 @@ export async function installFromNpm({
           packageSpec,
           '--no-audit',
           '--no-fund',
-          '--package-lock=false',
+          '--package-lock=true',
         ],
         { cwd, stdio: 'inherit' }
       );
@@ -479,6 +479,15 @@ export async function smokeTestPackage({
       sleepFn,
       sleepSeconds,
       stdout,
+    });
+
+    // npm audit signatures verifies registry signatures and provenance on
+    // the installed dependency tree. Keep the lockfile from the clean install
+    // because the audit command uses it to identify exact package versions.
+    stdout('Verifying npm registry signatures and provenance');
+    runCommandFn('npm', ['audit', 'signatures'], {
+      cwd: workspace,
+      stdio: 'inherit',
     });
 
     const installedPackageJson = readJsonFile(
