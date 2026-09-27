@@ -79,19 +79,36 @@ check_npm() {
 
   printf 'npm:\n'
 
-  if [ -n "$oidc_url" ]; then
-    ok 'npm OIDC trusted publishing is available (ACTIONS_ID_TOKEN_REQUEST_URL is set)'
-  else
+  if [ -z "$oidc_url" ]; then
     unknown 'npm OIDC trusted publishing is not available (ACTIONS_ID_TOKEN_REQUEST_URL is not set; the job needs id-token: write)'
   fi
 
   if [ -z "$token" ]; then
     if [ -n "$oidc_url" ]; then
-      printf '  SKIP: NPM_TOKEN is not set; OIDC trusted publishing is the publish path (NPM_TOKEN is the documented bootstrap fallback, issue #77)\n'
+      local package_name package_response package_status
+      package_name=$(node_read 'const p=require("./package.json");process.stdout.write(encodeURIComponent(p.name))')
+      package_response=$(http "$NPM_REGISTRY/$package_name")
+      package_status="${package_response##*"$NEWLINE"}"
+      case "$package_status" in
+        200)
+          ok 'npm OIDC trusted publishing is available (ACTIONS_ID_TOKEN_REQUEST_URL is set)'
+          printf '  SKIP: NPM_TOKEN is not set; the npm package already exists for trusted publishing\n'
+          ;;
+        404)
+          bad 'npm package does not exist; a bootstrap NPM_TOKEN is required for its first publication'
+          ;;
+        *)
+          unknown "npm package existence could not be confirmed (HTTP ${package_status:-no status}); OIDC alone cannot prove the first publish path"
+          ;;
+      esac
     else
       bad 'npm has no publish path: ACTIONS_ID_TOKEN_REQUEST_URL is not set and NPM_TOKEN is not set'
     fi
     return 0
+  fi
+
+  if [ -n "$oidc_url" ]; then
+    ok 'npm OIDC trusted publishing is available (ACTIONS_ID_TOKEN_REQUEST_URL is set)'
   fi
 
   local response status payload login

@@ -7,19 +7,18 @@
     "provenance": "issue-37-live-source-discovery"
   },
   {
-    "id": "batdongsan-rent",
-    "name": "Batdongsan.com.vn rentals",
+    "id": "homedy-nha-trang-rent",
+    "name": "Homedy Nha Trang rentals",
     "languages": ["vi"],
-    "url": "https://batdongsan.com.vn/nha-dat-cho-thue?query=Nha%20Trang",
-    "provenance": "configured-production-source"
+    "url": "https://homedy.com/cho-thue-can-ho-thanh-pho-nha-trang-khanh-hoa",
+    "provenance": "issue-50-live-source-discovery"
   },
   {
-    "id": "nhatot-nha-trang-rent",
-    "name": "Nha Tot Nha Trang rentals",
+    "id": "nhatrangland-nha-trang-rent",
+    "name": "Nha Trang Land rentals",
     "languages": ["vi"],
-    "url": "https://www.nhatot.com/thue-bat-dong-san-thanh-pho-nha-trang-khanh-hoa",
-    "provenance": "configured-production-source",
-    "knownRisk": "The rental route can present an access challenge; never bypass it."
+    "url": "https://nhatrangland.org/cho-thue/can-ho",
+    "provenance": "issue-50-live-source-discovery"
   },
   {
     "id": "nha-trang-renting",
@@ -29,25 +28,25 @@
     "provenance": "multilingual-browser-discovery"
   },
   {
-    "id": "dot-property-nha-trang",
-    "name": "Dot Property Nha Trang rentals",
-    "languages": ["en", "vi"],
-    "url": "https://www.dotproperty.com.vn/en/properties-for-rent/kh%C3%A1nh-h%C3%B2a/nha-trang",
-    "provenance": "multilingual-browser-discovery"
+    "id": "nha-trang-vn-rent",
+    "name": "Nha-Trang.vn rentals",
+    "languages": ["en"],
+    "url": "https://www.nha-trang.vn/en/rentals",
+    "provenance": "issue-50-live-source-discovery"
   },
   {
-    "id": "vietdom",
-    "name": "Vietdom",
-    "languages": ["ru"],
-    "url": "https://vietdom.com/ar",
-    "provenance": "multilingual-browser-discovery"
+    "id": "yourhome-nha-trang-rent",
+    "name": "Your Home Nha Trang rentals",
+    "languages": ["vi"],
+    "url": "https://www.yourhomenhatrang.com/can-ho",
+    "provenance": "issue-50-live-source-discovery"
   },
   {
-    "id": "xmetr-nha-trang",
-    "name": "Xmetr Nha Trang rentals",
-    "languages": ["ru"],
-    "url": "https://xmetr.com/ru/arenda-nedvizimosti/vietnam-nha-trang",
-    "provenance": "multilingual-browser-discovery"
+    "id": "newhome-nha-trang-rent",
+    "name": "New Home Nha Trang rentals",
+    "languages": ["vi"],
+    "url": "https://newhomenhatrang.com/",
+    "provenance": "issue-50-live-source-discovery"
   },
   {
     "id": "be-jib-nha-trang",

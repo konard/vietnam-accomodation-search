@@ -66,7 +66,7 @@ describe('immutable release identity collection', () => {
 
   it('joins authoritative GitHub, npm, candidate, and image facts', () => {
     const commitSha = 'c'.repeat(40);
-    const identity = buildReleaseIdentity({
+    const options = {
       candidate: {
         commitSha,
         packageVersion: '1.2.3',
@@ -90,10 +90,21 @@ describe('immutable release identity collection', () => {
       },
       installedPackage: {
         name: 'vietnam-accomodation-search',
+        provenance: {
+          predicateType: 'https://slsa.dev/provenance/v1',
+          sourceCommitSha: commitSha,
+          sourceRepository: 'https://github.com/owner/repo',
+        },
         version: '1.2.3',
       },
       npmMetadata: {
-        dist: { integrity: 'sha512-Zml4dHVyZQ==' },
+        dist: {
+          attestations: {
+            provenance: { predicateType: 'https://slsa.dev/provenance/v1' },
+            url: 'https://registry.npmjs.org/-/npm/v1/attestations/vietnam-accomodation-search@1.2.3',
+          },
+          integrity: 'sha512-Zml4dHVyZQ==',
+        },
         name: 'vietnam-accomodation-search',
         version: '1.2.3',
       },
@@ -101,16 +112,86 @@ describe('immutable release identity collection', () => {
       repository: 'owner/repo',
       runId: '42',
       tagTargetSha: commitSha,
-    });
+    };
+    const identity = buildReleaseIdentity(options);
 
     expect(identity.commitSha).toBe(commitSha);
     expect(identity.tagTargetSha).toBe(commitSha);
     expect(identity.package.installedVersion).toBe('1.2.3');
+    expect(identity.package.provenance.predicateType).toBe(
+      'https://slsa.dev/provenance/v1'
+    );
+    expect(identity.package.provenance.sourceCommitSha).toBe(commitSha);
     expect(identity.docker.version).toBe('1.2.3');
     expect(identity.schemas.releaseAudit).toBe(2);
     expect(identity.workflowRunUrl).toBe(
       'https://github.com/owner/repo/actions/runs/42'
     );
+    expect(() =>
+      buildReleaseIdentity({
+        ...options,
+        installedPackage: {
+          ...options.installedPackage,
+          provenance: {
+            ...options.installedPackage.provenance,
+            sourceCommitSha: 'a'.repeat(40),
+          },
+        },
+      })
+    ).toThrow(/Verified npm provenance source does not match/u);
+    expect(() =>
+      buildReleaseIdentity({
+        ...options,
+        installedPackage: {
+          ...options.installedPackage,
+          provenance: {
+            ...options.installedPackage.provenance,
+            sourceRepository: 'https://github.com/another/repo',
+          },
+        },
+      })
+    ).toThrow(/Verified npm provenance source does not match/u);
+  });
+
+  it('rejects a package with no registry provenance', () => {
+    expect(() =>
+      buildReleaseIdentity({
+        candidate: {
+          commitSha: 'a'.repeat(40),
+          packageVersion: '1.0.0',
+          runtimes: { bun: '1', deno: '2', node: '3' },
+        },
+        docker: {
+          image: 'owner/image',
+          manifestDigest: sha('d'),
+          platforms: {
+            'linux/amd64': { digest: sha('a') },
+            'linux/arm64': { digest: sha('b') },
+          },
+          version: '1.0.0',
+        },
+        githubRelease: {
+          draft: false,
+          html_url: 'https://github.com/owner/repo/releases/tag/v1.0.0',
+          prerelease: false,
+          published_at: '2026-09-23T00:00:00Z',
+          tag_name: 'v1.0.0',
+        },
+        installedPackage: {
+          name: 'vietnam-accomodation-search',
+          version: '1.0.0',
+        },
+        npmMetadata: {
+          dist: { integrity: 'sha512-Zml4dHVyZQ==' },
+          name: 'vietnam-accomodation-search',
+          version: '1.0.0',
+        },
+        previousRelease: { kind: 'first-release' },
+        repository: 'owner/repo',
+        runId: '42',
+        tagTargetSha: 'a'.repeat(40),
+      })
+    ).toThrow(/npm provenance/u);
   });
 
   it('rejects a tag that does not point at the exact tested candidate', () => {

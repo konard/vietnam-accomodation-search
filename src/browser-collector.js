@@ -84,11 +84,15 @@ export function extractPageListings(sourceType, selectors = {}) {
       ?.getAttribute?.('style')
       ?.match(/background-image\s*:\s*url\(["']?(.*?)["']?\)/iu)?.[1];
   const availabilityState = (value) => {
-    if (/\bsold\b|rented\s*out|сдано|недоступ|đã\s*thuê/iu.test(value || '')) {
+    if (
+      /\bsold\b|rented\s*out|сдано|недоступ|đã\s*thuê|đã\s*hết|hết\s*(?:phòng|chỗ)|không\s+còn\s+(?:phòng\s+)?trống/iu.test(
+        value || ''
+      )
+    ) {
       return false;
     }
     if (
-      /for\s*rent|available|in\s*stock|свобод|доступ|сда[её]т|cho\s*thuê|còn\s*trống/iu.test(
+      /for\s*rent|available|in\s*stock|свобод|доступ|сда[её]т|cho\s*thuê|trống/iu.test(
         value || ''
       )
     ) {
@@ -138,6 +142,35 @@ export function extractPageListings(sourceType, selectors = {}) {
         text,
       }));
   };
+  const semanticFor = (element) => {
+    const semantic = Object.fromEntries(
+      Object.entries(selectors.fields || {})
+        .map(([field, selector]) => [field, selectedText(element, selector)])
+        .filter(([, value]) => value !== undefined)
+    );
+    // Some rental sites only state rooms in a free-text title. Keep that
+    // evidence when present without labelling every title as a room count.
+    if (
+      semantic.rooms &&
+      !/(?:\d+\s*(?:pn\b|phòng\s*ngủ|beds?|bedrooms?|спальн\w*|комнат\w*)|\bstudio\b|студи)/iu.test(
+        semantic.rooms
+      )
+    ) {
+      delete semantic.rooms;
+    }
+    if (!semantic.availability) {
+      semantic.availability = String(element.innerText || '').match(
+        /rented\s*out|\bsold\b|đã\s*thuê|đã\s*hết|hết\s*(?:phòng|chỗ)|không\s+còn\s+(?:phòng\s+)?trống|còn\s*trống|trống|\bavailable\b|in\s*stock|сдано|недоступ|свобод|доступ/iu
+      )?.[0];
+    }
+    if (!semantic.availability && selectors.availabilityFallback) {
+      semantic.availability = selectors.availabilityFallback;
+    }
+    if (!semantic.location && selectors.locationFallback) {
+      semantic.location = selectors.locationFallback;
+    }
+    return semantic;
+  };
 
   const cards = [
     ...documentRef.querySelectorAll(
@@ -156,21 +189,17 @@ export function extractPageListings(sourceType, selectors = {}) {
     )
     .slice(0, 100);
   return cards.map((element) => {
-    const anchor = element.querySelector(selectors.link || 'a[href]');
+    const linkSelector = selectors.link || 'a[href]';
+    const anchor = element.matches?.(linkSelector)
+      ? element
+      : element.querySelector(linkSelector);
     const officialAnchor = element.querySelector(
       '[data-official-site][href], a[rel~="external"][href]'
     );
     const titleElement = element.querySelector(
       selectors.title || 'h1, h2, h3, [data-testid="title"], [itemprop="name"]'
     );
-    const semantic = Object.fromEntries(
-      Object.entries(selectors.fields || {})
-        .map(([field, selector]) => [field, selectedText(element, selector)])
-        .filter(([, value]) => value !== undefined)
-    );
-    if (!semantic.availability && selectors.availabilityFallback) {
-      semantic.availability = selectors.availabilityFallback;
-    }
+    const semantic = semanticFor(element);
     const title = titleElement?.textContent?.trim();
     const propertyId = pageIdentity(element, anchor);
     const bedrooms = numericSemantic(semantic.bedrooms);

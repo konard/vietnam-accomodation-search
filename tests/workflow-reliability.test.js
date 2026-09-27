@@ -94,6 +94,7 @@ function evaluateWorkflowIf(expression, context) {
   const javaScriptExpression = expression
     .replaceAll('!cancelled()', '!context.cancelled')
     .replaceAll('github.event_name', 'context.github.event_name')
+    .replaceAll('github.ref', 'context.github.ref')
     .replaceAll(
       'github.event.inputs.release_mode',
       'context.github.event.inputs.release_mode'
@@ -147,6 +148,7 @@ function createTestJobContext({
     cancelled: false,
     github: {
       event_name: eventName,
+      ref: 'refs/heads/main',
       event: {
         inputs: {
           release_mode: releaseMode,
@@ -582,17 +584,14 @@ describe('manual release quality gates', () => {
 describe('npm publish token bootstrap', () => {
   // The first publish of a brand-new package cannot use OIDC trusted publishing
   // (npm returns E404 because a trusted publisher can only be configured for an
-  // existing package). Every Publish-to-npm step must therefore expose an
-  // optional NODE_AUTH_TOKEN fallback sourced from secrets.NPM_TOKEN.
-  for (const jobName of ['release', 'instant-release']) {
-    it(`passes secrets.NPM_TOKEN as NODE_AUTH_TOKEN on the ${jobName} publish step`, () => {
-      const workflow = readWorkflow('.github/workflows/release.yml');
-      const job = getJobBlock(workflow, jobName);
+  // existing package). The resumed publish job needs a token fallback.
+  it('passes secrets.NPM_TOKEN to the resumed publish job', () => {
+    const workflow = readWorkflow('.github/workflows/release.yml');
+    const job = getJobBlock(workflow, 'release');
 
-      expect(job).toContain('node scripts/publish-to-npm.mjs');
-      expect(job).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
-    });
-  }
+    expect(job).toContain('node scripts/publish-to-npm.mjs');
+    expect(job).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
+  });
 });
 
 describe('npm user config cleanup', () => {
@@ -612,22 +611,35 @@ describe('npm user config cleanup', () => {
 });
 
 describe('install-from-package smoke test', () => {
-  for (const jobName of ['release', 'instant-release']) {
-    it(`smoke-tests the published npm package in the ${jobName} job`, () => {
-      const workflow = readWorkflow('.github/workflows/release.yml');
-      const job = getJobBlock(workflow, jobName);
+  it('smoke-tests the published npm package in the resumed release job', () => {
+    const workflow = readWorkflow('.github/workflows/release.yml');
+    const job = getJobBlock(workflow, 'release');
 
-      expectOrdered(job, [
-        '- name: Publish to npm',
-        '- name: Smoke-test published npm package',
-        '- name: Create GitHub Release',
-      ]);
-      // The version reaches the smoke test through an environment variable,
-      // never through an inline template expression in the run block.
-      expectOrdered(job, [
-        'PACKAGE_VERSION: ${{ steps.publish.outputs.published_version }}',
-        'node scripts/smoke-test-package.mjs --package-version "$PACKAGE_VERSION"',
-      ]);
-    });
-  }
+    expectOrdered(job, [
+      '- name: Publish to npm',
+      '- name: Smoke-test published npm package',
+      '- name: Create GitHub Release',
+    ]);
+    // The version reaches the smoke test through an environment variable,
+    // never through an inline template expression in the run block.
+    expectOrdered(job, [
+      'PACKAGE_VERSION: ${{ steps.publish.outputs.published_version }}',
+      'node scripts/smoke-test-package.mjs --package-version "$PACKAGE_VERSION"',
+    ]);
+  });
+
+  it('dispatches a fresh SHA-pinned run before publishing a version commit', () => {
+    const workflow = readWorkflow('.github/workflows/release.yml');
+    for (const jobName of ['release', 'instant-release']) {
+      const job = getJobBlock(workflow, jobName);
+      expect(job).toContain('gh workflow run release.yml --ref main');
+      expect(job).toContain('expected_sha=$version_sha');
+    }
+    expect(getJobBlock(workflow, 'instant-release')).not.toContain(
+      'node scripts/publish-to-npm.mjs'
+    );
+    expect(getJobBlock(workflow, 'release')).toContain(
+      'test "$GITHUB_SHA" = "$EXPECTED_SHA"'
+    );
+  });
 });

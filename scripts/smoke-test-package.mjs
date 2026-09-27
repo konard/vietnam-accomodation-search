@@ -9,6 +9,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process';
+import { Buffer } from 'node:buffer';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -251,7 +252,7 @@ export async function installFromNpm({
           packageSpec,
           '--no-audit',
           '--no-fund',
-          '--package-lock=false',
+          '--package-lock=true',
         ],
         { cwd, stdio: 'inherit' }
       );
@@ -269,6 +270,93 @@ export async function installFromNpm({
       await sleepFn(sleepSeconds);
     }
   }
+}
+
+function readNpmProvenanceSource(publishedPackage, packageName) {
+  const provenanceBundle = publishedPackage.attestationBundles.find(
+    (entry) =>
+      entry.predicateType ===
+      publishedPackage.attestations.provenance.predicateType
+  );
+  let statement;
+  try {
+    statement = JSON.parse(
+      Buffer.from(
+        provenanceBundle.bundle.dsseEnvelope.payload,
+        'base64'
+      ).toString('utf8')
+    );
+  } catch {
+    throw new Error(
+      `npm provenance statement is unreadable for ${packageName}`
+    );
+  }
+  const sourceRepository =
+    statement?.predicate?.buildDefinition?.externalParameters?.workflow
+      ?.repository;
+  const resolvedDependencies =
+    statement?.predicate?.buildDefinition?.resolvedDependencies;
+  const sources = (
+    Array.isArray(resolvedDependencies) ? resolvedDependencies : []
+  ).filter(
+    (dependency) =>
+      dependency.uri?.startsWith(`git+${sourceRepository}@`) &&
+      /^[\da-f]{40}$/u.test(dependency.digest?.gitCommit || '')
+  );
+  if (
+    statement?.predicateType !== provenanceBundle.predicateType ||
+    !sourceRepository ||
+    sources.length !== 1
+  ) {
+    throw new Error(`npm provenance source is missing for ${packageName}`);
+  }
+  return {
+    predicateType: statement.predicateType,
+    sourceCommitSha: sources[0].digest.gitCommit,
+    sourceRepository,
+  };
+}
+
+export function verifyNpmProvenance({
+  packageName,
+  packageVersion,
+  runCommandFn = runCommand,
+  workspace,
+}) {
+  const output = runCommandFn(
+    'npm',
+    ['audit', 'signatures', '--json', '--include-attestations'],
+    {
+      cwd: workspace,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+  );
+  let report;
+  try {
+    report = JSON.parse(String(output));
+  } catch {
+    throw new Error('npm signature audit did not return valid JSON');
+  }
+
+  const publishedPackage = (
+    Array.isArray(report?.verified) ? report.verified : []
+  ).find(
+    (entry) => entry.name === packageName && entry.version === packageVersion
+  );
+  if (
+    !publishedPackage?.attestations?.provenance?.predicateType?.startsWith(
+      'https://slsa.dev/provenance/'
+    ) ||
+    !publishedPackage.attestationBundles?.length ||
+    report.invalid?.length
+  ) {
+    throw new Error(
+      `npm could not verify registry signatures and provenance for ${packageName}@${packageVersion}`
+    );
+  }
+  return readNpmProvenanceSource(publishedPackage, packageName);
 }
 
 export function checkLibraryEntryPoint({
@@ -419,7 +507,7 @@ export async function checkServerEntryPoint({
   }
 }
 
-function writePackageEvidence(path, packageJson) {
+function writePackageEvidence(path, packageJson, provenance) {
   if (!path) {
     return;
   }
@@ -429,6 +517,7 @@ function writePackageEvidence(path, packageJson) {
       {
         name: packageJson.name,
         observedAt: new Date().toISOString(),
+        provenance,
         version: packageJson.version,
       },
       null,
@@ -481,6 +570,16 @@ export async function smokeTestPackage({
       stdout,
     });
 
+    // Keep the lockfile from the clean install: npm uses it to identify exact
+    // package versions when verifying registry signatures and provenance.
+    stdout('Verifying npm registry signatures and provenance');
+    const provenance = verifyNpmProvenance({
+      packageName,
+      packageVersion,
+      runCommandFn,
+      workspace,
+    });
+
     const installedPackageJson = readJsonFile(
       getInstalledPackageJsonPath(workspace, packageName)
     );
@@ -513,7 +612,7 @@ export async function smokeTestPackage({
       workspace,
     });
 
-    writePackageEvidence(evidenceOutput, installedPackageJson);
+    writePackageEvidence(evidenceOutput, installedPackageJson, provenance);
     stdout(`All configured entry points verified for ${packageSpec}`);
   } finally {
     rmSync(workspace, { force: true, recursive: true });

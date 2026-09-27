@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "bin": {
-    "vietnam-accomodation-search": "./bin/vietnam-accomodation-search.js"
+    "vietnam-accomodation-search": "bin/vietnam-accomodation-search.js"
   },
   "files": [
     "bin/",

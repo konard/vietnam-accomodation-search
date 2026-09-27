@@ -24,6 +24,131 @@ function browserRuntime(commander) {
 }
 
 describe('in-page listing extraction', () => {
+  it('uses a listing card itself when the card is the detail link', () => {
+    const previous = globalThis.document;
+    const url = 'https://rent.example/listing/unique-card';
+    const card = {
+      href: url,
+      innerText: 'Apartment for rent',
+      matches: (selector) => selector === 'a.card[href]',
+      getAttribute: () => null,
+      querySelector: (selector) =>
+        selector === 'h3' ? { textContent: 'Apartment for rent' } : null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const cards = extractPageListings('web', {
+        cards: 'a.card[href]',
+        link: 'a.card[href]',
+        title: 'h3',
+      });
+      expect(cards[0].url).toBe(url);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('does not classify an unrelated title as a room count', () => {
+    const previous = globalThis.document;
+    const title = { textContent: 'Apartment near the beach' };
+    const card = {
+      innerText: title.textContent,
+      getAttribute: () => null,
+      querySelector: (selector) => (selector === 'h3' ? title : null),
+      querySelectorAll: (selector) => (selector === 'h3' ? [title] : []),
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [listing] = extractPageListings('web', {
+        cards: '.card',
+        fields: { rooms: 'h3' },
+        title: 'h3',
+      });
+      expect(listing.semantic.rooms).toBe(undefined);
+      title.textContent = '2 bedroom apartment near the beach';
+      const [withRooms] = extractPageListings('web', {
+        cards: '.card',
+        fields: { rooms: 'h3' },
+        title: 'h3',
+      });
+      expect(withRooms.semantic.rooms).toBe(title.textContent);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('uses a source-scoped city when an individual card omits its address', () => {
+    const previous = globalThis.document;
+    const card = {
+      innerText: 'Studio for rent',
+      getAttribute: () => null,
+      querySelector: (selector) =>
+        selector === 'h3' ? { textContent: 'Studio for rent' } : null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [listing] = extractPageListings('web', {
+        cards: '.card',
+        locationFallback: 'Nha Trang',
+        title: 'h3',
+      });
+      expect(listing.semantic.location).toBe('Nha Trang');
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('maps Vietnamese availability labels to typed availability', () => {
+    const previous = globalThis.document;
+    let label = 'Trống';
+    const card = {
+      innerText: 'Cho thuê căn hộ',
+      getAttribute: () => null,
+      querySelector: (selector) =>
+        selector === '.availability' ? { textContent: label } : null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const selectors = {
+        cards: '.card',
+        fields: { availability: '.availability' },
+      };
+      expect(
+        extractPageListings('web', selectors)[0].attributes.availableNow
+      ).toBe(true);
+      label = 'Đã hết';
+      expect(
+        extractPageListings('web', selectors)[0].attributes.availableNow
+      ).toBe(false);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('preserves an explicit status in card text ahead of a source fallback', () => {
+    const previous = globalThis.document;
+    const card = {
+      innerText: '2 bedroom apartment\nĐã hết',
+      getAttribute: () => null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [listing] = extractPageListings('web', {
+        availabilityFallback: 'not stated on source card',
+        cards: '.card',
+      });
+      expect(listing.semantic.availability).toBe('Đã hết');
+      expect(listing.attributes.availableNow).toBe(false);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('keeps only Nha Trang cards from a countrywide rental page', () => {
     const previous = globalThis.document;
     const adapter = browserAdapterFor('https://vietnam-real.estate/ru/rent/');
@@ -207,6 +332,39 @@ describe('in-page listing extraction', () => {
         amenity: 'Rooftop pool',
         availability: 'Sold',
       });
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('does not treat a Vietnamese no-vacancy label as available', () => {
+    const previous = globalThis.document;
+    const card = {
+      getAttribute: () => null,
+      innerText: 'Căn hộ không còn trống',
+      querySelector: (selector) =>
+        selector === '.availability'
+          ? { textContent: 'Không còn trống' }
+          : selector === 'a[href]'
+            ? { href: 'https://rent.example/unit-42' }
+            : { textContent: 'Căn hộ' },
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [row] = extractPageListings('web', {
+        cards: '.card',
+        fields: { availability: '.availability' },
+        title: 'h5',
+      });
+      expect(row.semantic.availability).toBe('Không còn trống');
+      expect(row.attributes.availableNow).toBe(false);
+      const [textOnly] = extractPageListings('web', {
+        cards: '.card',
+        title: 'h5',
+      });
+      expect(textOnly.semantic.availability).toBe('không còn trống');
+      expect(textOnly.attributes.availableNow).toBe(false);
     } finally {
       globalThis.document = previous;
     }

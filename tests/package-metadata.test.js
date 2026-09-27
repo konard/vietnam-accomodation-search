@@ -25,9 +25,51 @@ describe('publishable package metadata', () => {
 
   it('defines a globally installable CLI command', () => {
     expect(packageJson.bin).toEqual({
-      'vietnam-accomodation-search': './bin/vietnam-accomodation-search.js',
+      'vietnam-accomodation-search': 'bin/vietnam-accomodation-search.js',
     });
     expect(existsSync('bin/vietnam-accomodation-search.js')).toBe(true);
+  });
+
+  it('keeps the CLI bin entry through npm publish normalization', () => {
+    // npm publication runs on Node; its CLI dry run can outlast
+    // Bun's five-second per-test default even when the package is valid.
+    if (typeof Deno !== 'undefined' || typeof Bun !== 'undefined') {
+      return;
+    }
+    // Windows cannot launch npm.cmd directly without a shell. npm supplies
+    // its JavaScript entry point when it runs the test suite.
+    const npmCli = process.env.npm_execpath;
+    const npm = npmCli
+      ? process.execPath
+      : process.platform === 'win32'
+        ? 'npm.cmd'
+        : 'npm';
+    const result = spawnSync(
+      npm,
+      [
+        ...(npmCli ? [npmCli] : []),
+        'publish',
+        '--dry-run',
+        '--json',
+        '--ignore-scripts',
+      ],
+      {
+        encoding: 'utf8',
+        shell: process.platform === 'win32' && !npmCli,
+      }
+    );
+    expect(result.error).toBe(undefined);
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('bin[vietnam-accomodation-search]');
+    const metadata = JSON.parse(result.stdout);
+    const packageFiles = Array.isArray(metadata)
+      ? metadata[0].files
+      : metadata[packageJson.name].files;
+    expect(
+      packageFiles.some(
+        ({ path }) => path === packageJson.bin[packageJson.name]
+      )
+    ).toBe(true);
   });
 
   it('prints the package version without constructing the application', async () => {

@@ -261,13 +261,13 @@ describe('run-with-budget-warning.sh SIGKILL escalation', () => {
     const childPath = writeIgnoreTermChild();
 
     try {
-      const result = runBudget(['2', 'stubborn step', childPath], {
-        BUDGET_GRACE_SECONDS: '2',
+      const result = runBudget(['1', 'stubborn step', childPath], {
+        BUDGET_GRACE_SECONDS: '1',
       });
 
       expect(result.status).toBe(124);
       expect(result.output).toContain(
-        'stubborn step ignored SIGTERM after 2s; sending SIGKILL.'
+        'stubborn step ignored SIGTERM after 1s; sending SIGKILL.'
       );
 
       const survivors = spawnSync('pgrep', ['-f', childPath], {
