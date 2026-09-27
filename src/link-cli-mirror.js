@@ -139,7 +139,7 @@ function linkKey(link) {
   return JSON.stringify([link.id, link.values.map(({ id }) => id)]);
 }
 
-function verifyExport(imported, exported) {
+export function verifyExport(imported, exported) {
   const importedLinks = new Parser().parse(imported);
   const exportedLinks = new Parser().parse(exported);
   const expected = new Set(importedLinks.map(linkKey));
