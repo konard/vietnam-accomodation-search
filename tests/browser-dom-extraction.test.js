@@ -24,6 +24,82 @@ function browserRuntime(commander) {
 }
 
 describe('in-page listing extraction', () => {
+  it('uses a listing card itself when the card is the detail link', () => {
+    const previous = globalThis.document;
+    const url = 'https://rent.example/listing/unique-card';
+    const card = {
+      href: url,
+      innerText: 'Apartment for rent',
+      matches: (selector) => selector === 'a.card[href]',
+      getAttribute: () => null,
+      querySelector: (selector) =>
+        selector === 'h3' ? { textContent: 'Apartment for rent' } : null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const cards = extractPageListings('web', {
+        cards: 'a.card[href]',
+        link: 'a.card[href]',
+        title: 'h3',
+      });
+      expect(cards[0].url).toBe(url);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('does not classify an unrelated title as a room count', () => {
+    const previous = globalThis.document;
+    const title = { textContent: 'Apartment near the beach' };
+    const card = {
+      innerText: title.textContent,
+      getAttribute: () => null,
+      querySelector: (selector) => (selector === 'h3' ? title : null),
+      querySelectorAll: (selector) => (selector === 'h3' ? [title] : []),
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [listing] = extractPageListings('web', {
+        cards: '.card',
+        fields: { rooms: 'h3' },
+        title: 'h3',
+      });
+      expect(listing.semantic.rooms).toBe(undefined);
+      title.textContent = '2 bedroom apartment near the beach';
+      const [withRooms] = extractPageListings('web', {
+        cards: '.card',
+        fields: { rooms: 'h3' },
+        title: 'h3',
+      });
+      expect(withRooms.semantic.rooms).toBe(title.textContent);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('uses a source-scoped city when an individual card omits its address', () => {
+    const previous = globalThis.document;
+    const card = {
+      innerText: 'Studio for rent',
+      getAttribute: () => null,
+      querySelector: (selector) =>
+        selector === 'h3' ? { textContent: 'Studio for rent' } : null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [listing] = extractPageListings('web', {
+        cards: '.card',
+        locationFallback: 'Nha Trang',
+        title: 'h3',
+      });
+      expect(listing.semantic.location).toBe('Nha Trang');
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('keeps only Nha Trang cards from a countrywide rental page', () => {
     const previous = globalThis.document;
     const adapter = browserAdapterFor('https://vietnam-real.estate/ru/rent/');

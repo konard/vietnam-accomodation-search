@@ -138,6 +138,30 @@ export function extractPageListings(sourceType, selectors = {}) {
         text,
       }));
   };
+  const semanticFor = (element) => {
+    const semantic = Object.fromEntries(
+      Object.entries(selectors.fields || {})
+        .map(([field, selector]) => [field, selectedText(element, selector)])
+        .filter(([, value]) => value !== undefined)
+    );
+    // Some rental sites only state rooms in a free-text title. Keep that
+    // evidence when present without labelling every title as a room count.
+    if (
+      semantic.rooms &&
+      !/(?:\d+\s*(?:pn\b|phòng\s*ngủ|beds?|bedrooms?|спальн\w*|комнат\w*)|\bstudio\b|студи)/iu.test(
+        semantic.rooms
+      )
+    ) {
+      delete semantic.rooms;
+    }
+    if (!semantic.availability && selectors.availabilityFallback) {
+      semantic.availability = selectors.availabilityFallback;
+    }
+    if (!semantic.location && selectors.locationFallback) {
+      semantic.location = selectors.locationFallback;
+    }
+    return semantic;
+  };
 
   const cards = [
     ...documentRef.querySelectorAll(
@@ -156,21 +180,17 @@ export function extractPageListings(sourceType, selectors = {}) {
     )
     .slice(0, 100);
   return cards.map((element) => {
-    const anchor = element.querySelector(selectors.link || 'a[href]');
+    const linkSelector = selectors.link || 'a[href]';
+    const anchor = element.matches?.(linkSelector)
+      ? element
+      : element.querySelector(linkSelector);
     const officialAnchor = element.querySelector(
       '[data-official-site][href], a[rel~="external"][href]'
     );
     const titleElement = element.querySelector(
       selectors.title || 'h1, h2, h3, [data-testid="title"], [itemprop="name"]'
     );
-    const semantic = Object.fromEntries(
-      Object.entries(selectors.fields || {})
-        .map(([field, selector]) => [field, selectedText(element, selector)])
-        .filter(([, value]) => value !== undefined)
-    );
-    if (!semantic.availability && selectors.availabilityFallback) {
-      semantic.availability = selectors.availabilityFallback;
-    }
+    const semantic = semanticFor(element);
     const title = titleElement?.textContent?.trim();
     const propertyId = pageIdentity(element, anchor);
     const bedrooms = numericSemantic(semantic.bedrooms);

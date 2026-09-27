@@ -6,6 +6,7 @@ import {
   BrowserSourceDiscoverer,
   SourceRegistry,
 } from '../src/index.js';
+import { browserAdapterFor } from '../src/browser-adapters.js';
 
 describe('ranked accommodation sources', () => {
   it('ships at least twenty web and twenty Telegram candidates', () => {
@@ -21,6 +22,30 @@ describe('ranked accommodation sources', () => {
       expect(Boolean(source.popularity.metric)).toBe(true);
       expect(Number.isFinite(source.popularity.value)).toBe(true);
       expect(source.popularity.evidenceUrl.startsWith('http')).toBe(true);
+    }
+  });
+
+  it('replaces the challenged rental source with enabled Nha Trang routes', () => {
+    expect(
+      DEFAULT_WEB_SOURCES.find(({ id }) => id === 'batdongsan').enabled
+    ).toBe(false);
+    for (const id of [
+      'homedy',
+      'nhatrangland',
+      'newhome',
+      'nha-trang-vn',
+      'yourhome',
+    ]) {
+      const source = DEFAULT_WEB_SOURCES.find((entry) => entry.id === id);
+      expect(source.enabled).toBe(true);
+      expect(browserAdapterFor(source.searchUrl).enabled).toBe(true);
+    }
+    for (const url of [
+      'https://dotproperty.com.vn/',
+      'https://vietdom.com/ar',
+      'https://xmetr.com/ru/arenda-nedvizimosti/vietnam-nha-trang',
+    ]) {
+      expect(browserAdapterFor(url).enabled).toBe(false);
     }
   });
 

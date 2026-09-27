@@ -12,6 +12,7 @@ function webSource(
     enabled = true,
     geographicFocus = 'vietnam',
     languages = ['en', 'vi'],
+    observedAt = OBSERVED_AT,
     reason,
   } = {}
 ) {
@@ -24,7 +25,7 @@ function webSource(
     access: 'public-web',
     geographicFocus,
     languages,
-    lastScannedAt: OBSERVED_AT,
+    lastScannedAt: observedAt,
     enabled,
     ...(reason ? { reason } : {}),
     popularity: {
@@ -33,7 +34,7 @@ function webSource(
       evidenceUrl,
       limitations:
         'Public traffic/search evidence is volatile and is not proof of rental inventory quality.',
-      observedAt: OBSERVED_AT,
+      observedAt,
     },
   };
 }
@@ -221,7 +222,76 @@ export const DEFAULT_WEB_SOURCES = [
     'https://batdongsan.com.vn',
     'https://batdongsan.com.vn/nha-dat-cho-thue?query={query}',
     64,
-    'https://www.similarweb.com/website/batdongsan.com.vn/'
+    'https://www.similarweb.com/website/batdongsan.com.vn/',
+    {
+      enabled: false,
+      reason: 'rental-route-disabled-after-access-challenge',
+    }
+  ),
+  webSource(
+    'homedy',
+    'Homedy Nha Trang rentals',
+    'https://homedy.com',
+    'https://homedy.com/cho-thue-can-ho-thanh-pho-nha-trang-khanh-hoa',
+    63,
+    'https://homedy.com/cho-thue-can-ho-thanh-pho-nha-trang-khanh-hoa',
+    {
+      geographicFocus: 'nha-trang',
+      languages: ['vi'],
+      observedAt: '2026-09-27T00:00:00.000Z',
+    }
+  ),
+  webSource(
+    'nhatrangland',
+    'Nha Trang Land rentals',
+    'https://nhatrangland.org',
+    'https://nhatrangland.org/cho-thue/can-ho',
+    62,
+    'https://nhatrangland.org/cho-thue/can-ho',
+    {
+      geographicFocus: 'nha-trang',
+      languages: ['vi'],
+      observedAt: '2026-09-27T00:00:00.000Z',
+    }
+  ),
+  webSource(
+    'newhome',
+    'New Home Nha Trang rentals',
+    'https://newhomenhatrang.com',
+    'https://newhomenhatrang.com/',
+    61.75,
+    'https://newhomenhatrang.com/',
+    {
+      geographicFocus: 'nha-trang',
+      languages: ['vi'],
+      observedAt: '2026-09-27T00:00:00.000Z',
+    }
+  ),
+  webSource(
+    'nha-trang-vn',
+    'Nha-Trang.vn rentals',
+    'https://www.nha-trang.vn',
+    'https://www.nha-trang.vn/en/rentals',
+    61.5,
+    'https://www.nha-trang.vn/en/rentals',
+    {
+      geographicFocus: 'nha-trang',
+      languages: ['en'],
+      observedAt: '2026-09-27T00:00:00.000Z',
+    }
+  ),
+  webSource(
+    'yourhome',
+    'Your Home Nha Trang rentals',
+    'https://www.yourhomenhatrang.com',
+    'https://www.yourhomenhatrang.com/can-ho',
+    61,
+    'https://www.yourhomenhatrang.com/can-ho',
+    {
+      geographicFocus: 'nha-trang',
+      languages: ['vi'],
+      observedAt: '2026-09-27T00:00:00.000Z',
+    }
   ),
   webSource(
     'chotot',
