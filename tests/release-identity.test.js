@@ -93,7 +93,13 @@ describe('immutable release identity collection', () => {
         version: '1.2.3',
       },
       npmMetadata: {
-        dist: { integrity: 'sha512-Zml4dHVyZQ==' },
+        dist: {
+          attestations: {
+            provenance: { predicateType: 'https://slsa.dev/provenance/v1' },
+            url: 'https://registry.npmjs.org/-/npm/v1/attestations/vietnam-accomodation-search@1.2.3',
+          },
+          integrity: 'sha512-Zml4dHVyZQ==',
+        },
         name: 'vietnam-accomodation-search',
         version: '1.2.3',
       },
@@ -106,11 +112,55 @@ describe('immutable release identity collection', () => {
     expect(identity.commitSha).toBe(commitSha);
     expect(identity.tagTargetSha).toBe(commitSha);
     expect(identity.package.installedVersion).toBe('1.2.3');
+    expect(identity.package.provenance.predicateType).toBe(
+      'https://slsa.dev/provenance/v1'
+    );
     expect(identity.docker.version).toBe('1.2.3');
     expect(identity.schemas.releaseAudit).toBe(2);
     expect(identity.workflowRunUrl).toBe(
       'https://github.com/owner/repo/actions/runs/42'
     );
+  });
+
+  it('rejects a package with no registry provenance', () => {
+    expect(() =>
+      buildReleaseIdentity({
+        candidate: {
+          commitSha: 'a'.repeat(40),
+          packageVersion: '1.0.0',
+          runtimes: { bun: '1', deno: '2', node: '3' },
+        },
+        docker: {
+          image: 'owner/image',
+          manifestDigest: sha('d'),
+          platforms: {
+            'linux/amd64': { digest: sha('a') },
+            'linux/arm64': { digest: sha('b') },
+          },
+          version: '1.0.0',
+        },
+        githubRelease: {
+          draft: false,
+          html_url: 'https://github.com/owner/repo/releases/tag/v1.0.0',
+          prerelease: false,
+          published_at: '2026-09-23T00:00:00Z',
+          tag_name: 'v1.0.0',
+        },
+        installedPackage: {
+          name: 'vietnam-accomodation-search',
+          version: '1.0.0',
+        },
+        npmMetadata: {
+          dist: { integrity: 'sha512-Zml4dHVyZQ==' },
+          name: 'vietnam-accomodation-search',
+          version: '1.0.0',
+        },
+        previousRelease: { kind: 'first-release' },
+        repository: 'owner/repo',
+        runId: '42',
+        tagTargetSha: 'a'.repeat(40),
+      })
+    ).toThrow(/npm provenance/u);
   });
 
   it('rejects a tag that does not point at the exact tested candidate', () => {
