@@ -31,7 +31,9 @@ describe('publishable package metadata', () => {
   });
 
   it('keeps the CLI bin entry through npm publish normalization', () => {
-    if (typeof Deno !== 'undefined') {
+    // npm publication runs on Node; its CLI dry run can outlast
+    // Bun's five-second per-test default even when the package is valid.
+    if (typeof Deno !== 'undefined' || typeof Bun !== 'undefined') {
       return;
     }
     const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
