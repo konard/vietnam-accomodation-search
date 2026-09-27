@@ -100,6 +100,55 @@ describe('in-page listing extraction', () => {
     }
   });
 
+  it('maps Vietnamese availability labels to typed availability', () => {
+    const previous = globalThis.document;
+    let label = 'Trống';
+    const card = {
+      innerText: 'Cho thuê căn hộ',
+      getAttribute: () => null,
+      querySelector: (selector) =>
+        selector === '.availability' ? { textContent: label } : null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const selectors = {
+        cards: '.card',
+        fields: { availability: '.availability' },
+      };
+      expect(
+        extractPageListings('web', selectors)[0].attributes.availableNow
+      ).toBe(true);
+      label = 'Đã hết';
+      expect(
+        extractPageListings('web', selectors)[0].attributes.availableNow
+      ).toBe(false);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('preserves an explicit status in card text ahead of a source fallback', () => {
+    const previous = globalThis.document;
+    const card = {
+      innerText: '2 bedroom apartment\nĐã hết',
+      getAttribute: () => null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [listing] = extractPageListings('web', {
+        availabilityFallback: 'not stated on source card',
+        cards: '.card',
+      });
+      expect(listing.semantic.availability).toBe('Đã hết');
+      expect(listing.attributes.availableNow).toBe(false);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('keeps only Nha Trang cards from a countrywide rental page', () => {
     const previous = globalThis.document;
     const adapter = browserAdapterFor('https://vietnam-real.estate/ru/rent/');

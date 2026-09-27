@@ -84,11 +84,15 @@ export function extractPageListings(sourceType, selectors = {}) {
       ?.getAttribute?.('style')
       ?.match(/background-image\s*:\s*url\(["']?(.*?)["']?\)/iu)?.[1];
   const availabilityState = (value) => {
-    if (/\bsold\b|rented\s*out|сдано|недоступ|đã\s*thuê/iu.test(value || '')) {
+    if (
+      /\bsold\b|rented\s*out|сдано|недоступ|đã\s*thuê|đã\s*hết|hết\s*(?:phòng|chỗ)/iu.test(
+        value || ''
+      )
+    ) {
       return false;
     }
     if (
-      /for\s*rent|available|in\s*stock|свобод|доступ|сда[её]т|cho\s*thuê|còn\s*trống/iu.test(
+      /for\s*rent|available|in\s*stock|свобод|доступ|сда[её]т|cho\s*thuê|trống/iu.test(
         value || ''
       )
     ) {
@@ -153,6 +157,11 @@ export function extractPageListings(sourceType, selectors = {}) {
       )
     ) {
       delete semantic.rooms;
+    }
+    if (!semantic.availability) {
+      semantic.availability = String(element.innerText || '').match(
+        /rented\s*out|\bsold\b|đã\s*thuê|đã\s*hết|hết\s*(?:phòng|chỗ)|còn\s*trống|trống|\bavailable\b|in\s*stock|сдано|недоступ|свобод|доступ/iu
+      )?.[0];
     }
     if (!semantic.availability && selectors.availabilityFallback) {
       semantic.availability = selectors.availabilityFallback;

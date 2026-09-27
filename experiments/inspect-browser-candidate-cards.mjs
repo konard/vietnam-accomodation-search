@@ -19,6 +19,32 @@ try {
     const cards = [...globalThis.document.querySelectorAll(cardSelector)];
     return {
       cardCount: cards.length,
+      availabilityHintCards: cards.filter((card) =>
+        /trống|đã\s*hết|hết\s*phòng|available|rented\s*out|đã\s*thuê/iu.test(
+          card.innerText
+        )
+      ).length,
+      availabilityNodes: cards
+        .flatMap((card) =>
+          [...card.querySelectorAll('*')].filter((element) =>
+            [...element.childNodes].some(
+              (node) =>
+                node.nodeType === 3 &&
+                /trống|đã\s*hết|hết\s*phòng|available|rented\s*out|đã\s*thuê/iu.test(
+                  node.textContent || ''
+                )
+            )
+          )
+        )
+        .slice(0, 10)
+        .map((element) => ({
+          tag: element.tagName.toLowerCase(),
+          classes: [...element.classList].slice(0, 8),
+          parentClasses: [...(element.parentElement?.classList || [])].slice(
+            0,
+            8
+          ),
+        })),
       roomHintCards: cards.filter((card) =>
         /\b(?:\d+\s*(?:pn|phòng ngủ|bedrooms?|beds?|спальн|комнат)|studio)\b/iu.test(
           card.innerText
