@@ -73,37 +73,38 @@ describe('optional Docker Hub publishing workflow', () => {
     );
   });
 
-  it('retests and records the exact version commit before either npm publish path', () => {
-    for (const jobName of ['release', 'instant-release']) {
-      const job = getWorkflowJob(releaseWorkflow, jobName);
+  it('retests and records the exact version commit in the resumed publication job', () => {
+    const job = getWorkflowJob(releaseWorkflow, 'release');
 
-      expectOrdered(job, [
-        '- name: Version packages and commit to main',
-        '- name: Verify exact release candidate',
-        '- name: Record exact release candidate identity',
-        '- name: Publish to npm',
-      ]);
-      expect(job).toContain('npm ci');
-      expect(job).toContain('npm run check');
-      expect(job).toContain('npm run test:coverage');
-      expect(job).toContain('bun install --no-save');
-      expect(job).toContain('bun test --timeout 30000');
-      expect(job).toContain("rmSync('bun.lock', { force: true })");
-      expect(job).toContain('deno test --frozen --allow-read');
-      expect(job).toContain('record-release-candidate.mjs');
-      expect(job).toContain(
-        '--evidence-output /tmp/release-evidence/published-package.json'
-      );
-      expect(job).toContain('name: release-candidate-${{ github.run_id }}');
-    }
+    expectOrdered(job, [
+      '- name: Pin resumed publication to its version commit',
+      '- name: Version packages and commit to main',
+      '- name: Resume publication on the committed version',
+      '- name: Verify exact release candidate',
+      '- name: Record exact release candidate identity',
+      '- name: Publish to npm',
+    ]);
+    expect(job).toContain('npm ci');
+    expect(job).toContain('npm run check');
+    expect(job).toContain('npm run test:coverage');
+    expect(job).toContain('bun install --no-save');
+    expect(job).toContain('bun test --timeout 30000');
+    expect(job).toContain("rmSync('bun.lock', { force: true })");
+    expect(job).toContain('deno test --frozen --allow-read');
+    expect(job).toContain('record-release-candidate.mjs');
+    expect(job).toContain(
+      '--evidence-output /tmp/release-evidence/published-package.json'
+    );
+    expect(job).toContain('name: release-candidate-${{ github.run_id }}');
+    expect(job).not.toContain(
+      "steps.version.outputs.version_committed == 'true' ||\n          steps.version.outputs.already_released == 'true'"
+    );
   });
 
-  it('adds a Docker publish job downstream of npm release jobs', () => {
+  it('adds a Docker publish job downstream of the resumed npm release', () => {
     const configJob = getWorkflowJob(releaseWorkflow, 'docker-publish-config');
 
-    expect(configJob).toContain(
-      'needs: [release, instant-release, release-preflight]'
-    );
+    expect(configJob).toContain('needs: [release, release-preflight]');
     expect(configJob).toContain('DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}');
     expect(configJob).toContain(
       'DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}'
@@ -112,7 +113,7 @@ describe('optional Docker Hub publishing workflow', () => {
       'DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}'
     );
     expect(configJob).toContain(
-      'RELEASE_VERSION: ${{ needs.release.outputs.published_version || needs.instant-release.outputs.published_version }}'
+      'RELEASE_VERSION: ${{ needs.release.outputs.published_version }}'
     );
   });
 
@@ -202,7 +203,7 @@ describe('optional Docker Hub publishing workflow', () => {
     const identityJob = getWorkflowJob(releaseWorkflow, 'release-identity');
 
     expect(identityJob).toContain(
-      'needs: [release, instant-release, docker-publish-config, docker-publish]'
+      'needs: [release, docker-publish-config, docker-publish]'
     );
     expect(identityJob).toContain(
       'docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw'

@@ -100,23 +100,21 @@ describe('release-preflight workflow wiring (issues #176, #181)', () => {
 
     expect(releaseBlock).toContain('needs: [lint, test, release-preflight]');
     expect(instantBlock).toContain('needs: [lint, test, release-preflight]');
-    expect(dockerConfigBlock).toContain(
-      'needs: [release, instant-release, release-preflight]'
-    );
+    expect(dockerConfigBlock).toContain('needs: [release, release-preflight]');
 
     for (const block of [releaseBlock, instantBlock, dockerConfigBlock]) {
       expect(block).toContain("needs.release-preflight.result == 'success'");
     }
   });
 
-  it('fails on main and manual instant releases, reports on pull requests', () => {
+  it('fails on main and manual publication releases, reports on pull requests', () => {
     const preflightBlock = getJobBlock(WORKFLOW, 'release-preflight');
 
     expect(preflightBlock).toContain(
       "github.event_name == 'push' && github.ref == 'refs/heads/main'"
     );
     expect(preflightBlock).toContain(
-      "github.event_name == 'workflow_dispatch' && github.event.inputs.release_mode == 'instant'"
+      "github.event.inputs.release_mode == 'instant' || github.event.inputs.release_mode == 'resume'"
     );
     expect(preflightBlock).toContain("&& 'release' || 'report'");
   });

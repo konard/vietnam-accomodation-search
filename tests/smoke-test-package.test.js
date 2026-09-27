@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'test-anywhere';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,6 +23,44 @@ import {
   smokeTestPackage,
   verifyNpmProvenance,
 } from '../scripts/smoke-test-package.mjs';
+
+function verifiedPackage({
+  commitSha = 'c'.repeat(40),
+  name = 'example-package',
+  repository = 'https://github.com/owner/repo',
+  version = '1.2.3',
+} = {}) {
+  const predicateType = 'https://slsa.dev/provenance/v1';
+  const statement = {
+    predicateType,
+    predicate: {
+      buildDefinition: {
+        externalParameters: { workflow: { repository } },
+        resolvedDependencies: [
+          {
+            uri: `git+${repository}@refs/heads/main`,
+            digest: { gitCommit: commitSha },
+          },
+        ],
+      },
+    },
+  };
+  return {
+    name,
+    version,
+    attestations: { provenance: { predicateType } },
+    attestationBundles: [
+      {
+        predicateType,
+        bundle: {
+          dsseEnvelope: {
+            payload: Buffer.from(JSON.stringify(statement)).toString('base64'),
+          },
+        },
+      },
+    ],
+  };
+}
 
 describe('smoke-test-package.mjs', () => {
   it('parses package smoke test options', () => {
@@ -122,14 +167,7 @@ describe('smoke-test-package.mjs', () => {
 
 describe('smoke-test-package entry point checks', () => {
   it('requires npm to verify provenance for the exact installed version', () => {
-    const verified = {
-      name: 'example-package',
-      version: '1.2.3',
-      attestations: {
-        provenance: { predicateType: 'https://slsa.dev/provenance/v1' },
-      },
-      attestationBundles: [{}],
-    };
+    const verified = verifiedPackage();
     let auditOptions;
     const verify = (report) =>
       verifyNpmProvenance({
@@ -142,7 +180,11 @@ describe('smoke-test-package entry point checks', () => {
         },
       });
 
-    expect(() => verify({ verified: [verified] })).not.toThrow();
+    expect(verify({ verified: [verified] })).toEqual({
+      predicateType: 'https://slsa.dev/provenance/v1',
+      sourceCommitSha: 'c'.repeat(40),
+      sourceRepository: 'https://github.com/owner/repo',
+    });
     expect(auditOptions.maxBuffer).toBe(16 * 1024 * 1024);
     expect(() =>
       verify({ verified: [{ ...verified, version: '1.2.2' }] })
@@ -156,6 +198,9 @@ describe('smoke-test-package entry point checks', () => {
     expect(() => verify({ verified: [verified], invalid: [{}] })).toThrow(
       /could not verify registry signatures and provenance/u
     );
+    expect(() =>
+      verify({ verified: [verifiedPackage({ commitSha: 'wrong' })] })
+    ).toThrow(/npm provenance source is missing/u);
     expect(() =>
       verifyNpmProvenance({
         packageName: 'example-package',
@@ -174,7 +219,10 @@ describe('smoke-test-package entry point checks', () => {
     }
     const calls = [];
     const workspace = mkdtempSync(join(tmpdir(), 'npm-signatures-test-'));
+    const evidenceDirectory = mkdtempSync(join(tmpdir(), 'npm-evidence-test-'));
+    const evidenceOutput = join(evidenceDirectory, 'published-package.json');
     await smokeTestPackage({
+      evidenceOutput,
       packageName: 'example-package',
       packageVersion: '1.2.3',
       runCommandFn(command, args) {
@@ -195,18 +243,7 @@ describe('smoke-test-package entry point checks', () => {
           return JSON.stringify({
             invalid: [],
             missing: [],
-            verified: [
-              {
-                name: 'example-package',
-                version: '1.2.3',
-                attestations: {
-                  provenance: {
-                    predicateType: 'https://slsa.dev/provenance/v1',
-                  },
-                },
-                attestationBundles: [{}],
-              },
-            ],
+            verified: [verifiedPackage()],
           });
         }
       },
@@ -221,6 +258,9 @@ describe('smoke-test-package entry point checks', () => {
           '["npm","audit","signatures","--json","--include-attestations"]'
       )
     ).toBe(true);
+    const evidence = JSON.parse(readFileSync(evidenceOutput, 'utf8'));
+    expect(evidence.provenance.sourceCommitSha).toBe('c'.repeat(40));
+    rmSync(evidenceDirectory, { force: true, recursive: true });
   });
 
   it('resolves npm-installed bin shims for each platform', () => {

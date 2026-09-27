@@ -66,7 +66,7 @@ describe('immutable release identity collection', () => {
 
   it('joins authoritative GitHub, npm, candidate, and image facts', () => {
     const commitSha = 'c'.repeat(40);
-    const identity = buildReleaseIdentity({
+    const options = {
       candidate: {
         commitSha,
         packageVersion: '1.2.3',
@@ -90,6 +90,11 @@ describe('immutable release identity collection', () => {
       },
       installedPackage: {
         name: 'vietnam-accomodation-search',
+        provenance: {
+          predicateType: 'https://slsa.dev/provenance/v1',
+          sourceCommitSha: commitSha,
+          sourceRepository: 'https://github.com/owner/repo',
+        },
         version: '1.2.3',
       },
       npmMetadata: {
@@ -107,7 +112,8 @@ describe('immutable release identity collection', () => {
       repository: 'owner/repo',
       runId: '42',
       tagTargetSha: commitSha,
-    });
+    };
+    const identity = buildReleaseIdentity(options);
 
     expect(identity.commitSha).toBe(commitSha);
     expect(identity.tagTargetSha).toBe(commitSha);
@@ -115,11 +121,36 @@ describe('immutable release identity collection', () => {
     expect(identity.package.provenance.predicateType).toBe(
       'https://slsa.dev/provenance/v1'
     );
+    expect(identity.package.provenance.sourceCommitSha).toBe(commitSha);
     expect(identity.docker.version).toBe('1.2.3');
     expect(identity.schemas.releaseAudit).toBe(2);
     expect(identity.workflowRunUrl).toBe(
       'https://github.com/owner/repo/actions/runs/42'
     );
+    expect(() =>
+      buildReleaseIdentity({
+        ...options,
+        installedPackage: {
+          ...options.installedPackage,
+          provenance: {
+            ...options.installedPackage.provenance,
+            sourceCommitSha: 'a'.repeat(40),
+          },
+        },
+      })
+    ).toThrow(/Verified npm provenance source does not match/u);
+    expect(() =>
+      buildReleaseIdentity({
+        ...options,
+        installedPackage: {
+          ...options.installedPackage,
+          provenance: {
+            ...options.installedPackage.provenance,
+            sourceRepository: 'https://github.com/another/repo',
+          },
+        },
+      })
+    ).toThrow(/Verified npm provenance source does not match/u);
   });
 
   it('rejects a package with no registry provenance', () => {

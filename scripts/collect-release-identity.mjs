@@ -146,6 +146,16 @@ export function buildReleaseIdentity({
   ) {
     throw new Error('npm provenance is missing from registry metadata.');
   }
+  const verifiedSource = installedPackage?.provenance;
+  if (
+    verifiedSource?.sourceRepository !== `https://github.com/${repository}` ||
+    verifiedSource?.sourceCommitSha !== commitSha ||
+    verifiedSource?.predicateType !== provenance.provenance.predicateType
+  ) {
+    throw new Error(
+      'Verified npm provenance source does not match the tested commit and repository.'
+    );
+  }
   required(previousRelease?.tag || previousRelease?.kind, 'Release baseline');
   return {
     baseline: previousRelease,
@@ -159,6 +169,8 @@ export function buildReleaseIdentity({
       name: PACKAGE_NAME,
       provenance: {
         predicateType: provenance.provenance.predicateType,
+        sourceCommitSha: verifiedSource.sourceCommitSha,
+        sourceRepository: verifiedSource.sourceRepository,
         url: provenance.url,
       },
       ...(npmMetadata.dist.tarball
