@@ -28,8 +28,31 @@ regression, native Telegram modes, and first-source binary projection remained
 failed or unproved at that commit. The [Issue #50 ledger](case-studies/issue-50/README.md)
 records current candidate repairs and the release gates still open in PR #51.
 PR #49 closed Issues #16 and #39–#43 before acceptance.
-Historical audits remain evidence of what was observed at their recorded commit,
-including failures.
+[The 2026-09-28 post-PR #51 rerun](case-studies/revalidation-2026-09-28/README.md)
+supersedes the 2026-09-27 candidate observations: both complete ten-route
+browser passes succeeded, bot-only E2E and host-bind durability passed again,
+and an instrumented same-bind redeploy observed a 3,691 ms maximum sampled
+readiness interruption. PR #51 nevertheless closed Issues #16, #39–#43, #48,
+and #50 without completing publication, native Telegram, full source audit,
+or immutable-release acceptance. The latest release preflight failed because
+the first-publish `NPM_TOKEN` was absent. Historical audits below remain
+evidence at their recorded commits, including failures, not current passing
+claims.
+
+## Latest acceptance delta — 2026-09-28
+
+| Requirement group             | Latest candidate observation                                                                                                                                                                                                                                      | Remaining gate                                                                                                                                                                                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DEP-1, REL-1, FINAL-1         | Local package dry run includes the CLI; CI release preflight failed with empty `NPM_TOKEN`; no npm package, Git tag, GitHub Release, or OCI digest.                                                                                                               | Bootstrap publication and retest one immutable identity under [#39](https://github.com/konard/vietnam-accomodation-search/issues/39) and [#16](https://github.com/konard/vietnam-accomodation-search/issues/16).                                  |
+| DEP-2, DEP-4                  | First deploy, same-bind redeploy, exact rollback, and fresh-container host-bind recovery passed. A 48-sample probe observed two failed `/ready` samples and a 3,691 ms maximum interruption. `getMe` stayed available but is not app-message continuity evidence. | Fix the macOS login-shell fake-Docker test fixture; prove one poller/no lost or duplicated update, failed-candidate automatic restore, and immutable image behavior under [#41](https://github.com/konard/vietnam-accomodation-search/issues/41). |
+| WEB-2, PARSE-5                | Two consecutive live Browser Commander passes each achieved 10/10 VI/EN/RU routes, 224 cards, 1,607/1,607 consumed segments, and zero incomplete cards.                                                                                                           | Repeat on the exact immutable release under [#40](https://github.com/konard/vietnam-accomodation-search/issues/40); Telegram parsing remains separately open.                                                                                     |
+| TG-1, TG-2, QA-4              | Real bot-only conversation, fresh delivery, restart deduplication, and cleanup passed with zero leftover test messages.                                                                                                                                           | Native mtcute user-only/combined/degraded modes, independent pins, and capability fallback under [#42](https://github.com/konard/vietnam-accomodation-search/issues/42).                                                                          |
+| SRC-2, PARSE-1, PARSE-3, QA-2 | Retained private source journal/checkpoint resumed, but binary projection timed out at 600 seconds without a report.                                                                                                                                              | Complete and review the 40-source/two-month audit, typed-link binary mirror, and second run under [#43](https://github.com/konard/vietnam-accomodation-search/issues/43).                                                                         |
+
+The matrix below preserves detailed contracts and earlier observations; where
+an earlier candidate result conflicts with this delta, the linked 2026-09-28
+case study is the latest evidence. None of these candidate checks substitutes
+for an immutable-release acceptance run.
 
 Status meanings:
 
