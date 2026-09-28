@@ -12,9 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-import { Parser } from 'links-notation';
-
-import { verifyExport } from '../src/link-cli-mirror.js';
+import { parseNotation, verifyExport } from '../src/link-cli-mirror.js';
 
 function parseOptions(argv) {
   const options = { count: 1_000, mode: 'bare' };
@@ -104,7 +102,7 @@ export async function profile(options) {
       exportMs: exported.elapsedMs,
       importMs: imported.elapsedMs,
       inputBytes: Buffer.byteLength(notation),
-      links: new Parser().parse(notation).length,
+      links: parseNotation(notation).length,
       mode: options.mode,
       stderrBytes: imported.stderrBytes + exported.stderrBytes,
       verifyMs: Math.round(performance.now() - verificationStarted),

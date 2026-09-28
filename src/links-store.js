@@ -1,9 +1,13 @@
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { Link, Parser, formatLinks } from 'links-notation';
+import { Link, formatLinks } from 'links-notation';
 
-import { LinkCliMirror, durableWrite } from './link-cli-mirror.js';
+import {
+  LinkCliMirror,
+  durableWrite,
+  parseNotation,
+} from './link-cli-mirror.js';
 import { deduplicateOffers, removeOfferMessageVariants } from './offers.js';
 
 function decodeJson(value) {
@@ -134,11 +138,29 @@ export function serializeRecords(kind, records) {
   return formatLinks(links);
 }
 
-function deserializeAssociativeV1(headers, links) {
+// Index links once so decoding stays linear in the collection size instead
+// of scanning every link for each record and field.
+function indexLinks(links) {
+  const byId = new Map();
+  const byOwner = new Map();
+  for (const link of links) {
+    if (!byId.has(link.id)) {
+      byId.set(link.id, link);
+    }
+    const owner = link.values[0]?.id;
+    if (!byOwner.has(owner)) {
+      byOwner.set(owner, []);
+    }
+    byOwner.get(owner).push(link);
+  }
+  return { byId, byOwner };
+}
+
+function deserializeAssociativeV1(headers, { byOwner }) {
   return headers.map((header) => {
     const reference = header.values[0].id;
-    const fields = links.filter(
-      (link) => link.id.startsWith('field:') && link.values[0]?.id === reference
+    const fields = (byOwner.get(reference) || []).filter((link) =>
+      link.id.startsWith('field:')
     );
     const root = scalarValue(
       fields.find((link) => link.id === 'field:/').values[1].id
@@ -154,7 +176,10 @@ export function deserializeRecords(kind, notation = '') {
   if (!notation.trim()) {
     return [];
   }
-  const links = new Parser().parse(notation);
+  return recordsFromLinks(kind, parseNotation(notation));
+}
+
+function recordsFromLinks(kind, links) {
   const legacyHeaders = links.filter((link) => link.id === kind);
   if (
     legacyHeaders.some((link) => link.values.some(({ id }) => id === 'data'))
@@ -172,19 +197,17 @@ export function deserializeRecords(kind, notation = '') {
       (header) => header.values[0]?.id !== 'schema:associative-records-v2'
     )
   ) {
-    return deserializeAssociativeV1(legacyHeaders, links);
+    return deserializeAssociativeV1(legacyHeaders, indexLinks(links));
   }
+  const { byId, byOwner } = indexLinks(links);
   return headers.map((header) => {
     const reference = header.id;
     const prefix = `${reference}:field:`;
-    const fields = links.filter(
-      (link) => link.id.startsWith(prefix) && link.values[0]?.id === reference
+    const fields = (byOwner.get(reference) || []).filter((link) =>
+      link.id.startsWith(prefix)
     );
-    const valueOf = (field) => {
-      const valueNode = field.values[1].id;
-      const definition = links.find((link) => link.id === valueNode);
-      return scalarValue(definition.values[1].id);
-    };
+    const valueOf = (field) =>
+      scalarValue(byId.get(field.values[1].id).values[1].id);
     const rootField = fields.find((link) => link.id === `${prefix}/`);
     const root = valueOf(rootField);
     for (const field of fields.filter((link) => link !== rootField)) {
@@ -198,18 +221,16 @@ export function queryRecords(kind, notation, { path, value }) {
   if (!notation.trim()) {
     return [];
   }
-  const links = new Parser().parse(notation);
+  const links = parseNotation(notation);
+  const { byId } = indexLinks(links);
   const suffix = `:field:/${path.split('/').map(pointerSegment).join('/')}`;
   const expected = scalar(value);
   const references = new Set(
     links
       .filter((link) => link.id.endsWith(suffix))
-      .filter((field) => {
-        const definition = links.find(
-          (candidate) => candidate.id === field.values[1]?.id
-        );
-        return definition?.values[1]?.id === expected;
-      })
+      .filter(
+        (field) => byId.get(field.values[1]?.id)?.values[1]?.id === expected
+      )
       .map((field) => field.values[0]?.id)
   );
   const identifiers = new Set(
@@ -217,7 +238,7 @@ export function queryRecords(kind, notation, { path, value }) {
       reference.slice(`record:${kind}:`.length)
     )
   );
-  return deserializeRecords(kind, notation).filter((record) =>
+  return recordsFromLinks(kind, links).filter((record) =>
     identifiers.has(String(record.id))
   );
 }

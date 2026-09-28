@@ -24,6 +24,31 @@ canonical file is fsynced, atomically renamed, and followed by a parent
 directory fsync. Only then is a small `KIND.current.json` pointer atomically
 activated. Old candidates are compacted after activation.
 
+`clink` 0.2.x imports in time quadratic in the database size, because every
+update scans the whole store for uniqueness and usages; a 16 MiB collection
+did not finish within the 10-minute process deadline (#43). Collections larger
+than 128 top-level links are therefore projected as content-defined shards:
+boundaries fall after whole links chosen by a hash of the link id (32 links
+minimum, about 64 on average, 128 maximum), and the shards must concatenate to
+the canonical text byte-for-byte or the collection is projected as a single
+database. Each shard is imported into its own `.binary/KIND.shards/SHARD-HASH`
+database with bounded parallelism, and its export is verified link-by-link
+before its manifest is written. The `KIND-HASH` manifest lists the ordered
+shard hashes. A later save reuses every unchanged shard by hash and imports
+only the shards containing edits. Reuse requires the database, names database,
+and verified export to match the SHA-256 digests recorded after verification,
+so an unchanged shard is never trusted without its verified bytes. Progress is
+reported as aggregate `completed`/`reused`/`total` shard counts only.
+
+`links-notation` rejects input longer than 10 MiB by default, which a single
+real Telegram source already exceeds, so canonical snapshots are parsed with
+an explicit 256 MiB bound (`parseNotation`). Decoding indexes links by id and
+owner once instead of scanning every link per record and field, so reading
+42,001 links fell from about 60 seconds to about 8 seconds, most of which is
+the parse itself. An unchanged save still parses the text once to derive its
+shard layout; `experiments/measure-sharded-projection.mjs` and
+`experiments/measure-deserialize.mjs` reproduce these measurements.
+
 The text is authoritative because it is portable and reviewable. A missing,
 corrupt, or mismatched binary pointer is rebuilt from its hash-matched text on
 read. A binary-stage failure leaves the prior text untouched. Interruption
@@ -67,7 +92,8 @@ guessed around: restore the last archive, retain the damaged file for
 forensics, and run the test/query preflight before restart.
 
 Compaction is snapshot based: successful writes replace old logical records,
-binary activation prunes non-current candidates, shown-update and send-outcome
+binary activation prunes non-current candidates and shards (keeping only the
+three newest `.failed-*` diagnostics per directory), shown-update and send-outcome
 sets are bounded, and media eviction handles blobs. Never edit `.binary`
 directly. Editing canonical LiNo intentionally causes a verified binary rebuild
 on next read.
