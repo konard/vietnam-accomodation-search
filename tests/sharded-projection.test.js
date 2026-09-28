@@ -365,6 +365,58 @@ describe('sharded link-cli projection', () => {
     }
   });
 
+  it('resumes an interrupted projection from its verified shards', async () => {
+    if (isDeno) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'sharded-resume-'));
+    // The third import fails as a deadline or TERM would.
+    const clink = fakeClink({ fail: (call) => call === 3 });
+    const events = [];
+    const mirror = new LinkCliMirror({
+      ...tinyMirror,
+      concurrency: 1,
+      onProgress: (event) => events.push(event),
+      run: clink.run,
+    });
+    try {
+      const notation = serializeRecords('offer', offers(12));
+      const shards = splitNotation(notation, tiny);
+      expect(shards.length > 3).toBe(true);
+      const error = await mirror
+        .stage({ directory, kind: 'offers', notation })
+        .then(
+          () => undefined,
+          (caught) => caught
+        );
+      expect(error?.code).toBe('storage-process-failed');
+
+      await mirror.ensure({ directory, kind: 'offers', notation });
+      expect(events.at(-1).reused).toBe(2);
+      expect(events.at(-1).completed).toBe(shards.length);
+      expect(clink.calls.length).toBe(shards.length + 1);
+      const pointer = await pointerOf(directory, 'offers');
+      expect(pointer.sha256).toBe(sha256(notation));
+      const exported = await Promise.all(
+        shards.map((shard) =>
+          readFile(
+            join(
+              directory,
+              '.binary',
+              'offers.shards',
+              sha256(shard),
+              'verified.lino'
+            ),
+            'utf8'
+          )
+        )
+      );
+      expect(exported.join('\n')).toBe(notation);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('propagates missing databases and unreadable shard manifests', async () => {
     if (isDeno) {
       return;
