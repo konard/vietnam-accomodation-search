@@ -103,13 +103,30 @@ describe('container runtime contract', () => {
         '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }));\n'
       );
       await chmod(docker, 0o700);
+      // command-stream uses a login shell. Emulate a profile that moves
+      // another docker ahead of the caller PATH, as macOS path_helper does
+      // with /usr/local/bin, so the fixture must not depend on PATH order.
+      const shadow = join(directory, 'shadow');
+      const home = join(directory, 'home');
+      await mkdir(shadow);
+      await mkdir(home);
+      await writeFile(
+        join(shadow, 'docker'),
+        '#!/bin/sh\necho \'{"argv":["shadowed"]}\'\n'
+      );
+      await chmod(join(shadow, 'docker'), 0o700);
+      const profile = `PATH="${shadow}:$PATH"; export PATH\n`;
+      await writeFile(join(home, '.profile'), profile);
+      await writeFile(join(home, '.bash_profile'), profile);
       const { $ } = await loadCommandStream();
       const run = $({
         capture: true,
-        env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+        env: { ...process.env, HOME: home },
         mirror: false,
       });
-      const labels = await inspectImageLabels(run, 'candidate:image');
+      const labels = await inspectImageLabels(run, 'candidate:image', {
+        docker,
+      });
       expect(labels.argv).toEqual([
         'image',
         'inspect',

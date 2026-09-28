@@ -603,13 +603,22 @@ export declare class LinksStore {
 
 export declare class LinkCliMirror {
   constructor(options?: {
+    /** Content-defined shard bounds, in top-level links (default 64/128/32). */
+    averageShardLinks?: number;
     command?: string;
+    /** Parallel clink imports for sharded projections (default up to 4). */
+    concurrency?: number;
     heartbeatMs?: number;
+    maxShardLinks?: number;
+    minShardLinks?: number;
     onProgress?: (event: {
+      completed?: number;
       elapsedMs: number;
       phase: string;
+      reused?: number;
       status: string;
-      stderrBytes: number;
+      stderrBytes?: number;
+      total?: number;
     }) => void;
     run?: (
       command: string,
