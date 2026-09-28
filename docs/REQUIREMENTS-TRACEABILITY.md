@@ -42,6 +42,30 @@ The [Issue #52 ledger](case-studies/issue-52/README.md) records PR #53: it
 traces the projection timeout to quadratic `clink` import and a 10 MiB parser
 limit, adds verified content-defined shard projection and linear decoding, and
 repairs the Docker-argv fixture; the live and published gates remain open.
+[The 2026-09-29 post-PR #53 rerun](case-studies/revalidation-2026-09-29/README.md)
+tested the retained private corpus and exposed a new offer-shard verification
+mismatch after the large domain-record and trace projections completed. It
+also confirmed a green local suite, full browser cohort, bot-only E2E, and
+local production-image smoke test. PR #53 closed the previous issues despite
+the release and live gates remaining unmet. Per the operator's instruction,
+the new successor batch is [#54](https://github.com/konard/vietnam-accomodation-search/issues/54)–[#58](https://github.com/konard/vietnam-accomodation-search/issues/58);
+closed issues are not reopened.
+
+## Latest acceptance delta — 2026-09-29
+
+| Requirement group                      | Latest candidate observation                                                                                                                                                                                                                                          | Remaining new issue                                                                                                                                                                     |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DEP-1, REL-1                           | The exact local production image builds and passes labels/CLI/UID/`clink`/Chromium smoke. Local Node passes 817/817 and package dry run includes the CLI. Release preflight still fails with empty `NPM_TOKEN`; npm returns E404, and Docker Hub publishing is unset. | [#54](https://github.com/konard/vietnam-accomodation-search/issues/54) publishes and verifies one immutable identity.                                                                   |
+| SRC-2, PARSE-1, PARSE-3, PARSE-5, QA-2 | The retained audit resumed; 881 domain-record and 122 trace shards completed, then one offers shard failed exact `clink` export verification (73 canonical/100 exported links; 1 missing/2 unexpected). No complete 40-source report exists.                          | [#55](https://github.com/konard/vietnam-accomodation-search/issues/55) fixes the mismatch without weakening LiNo authority, then completes/repeats human-reviewed 40-source acceptance. |
+| WEB-2                                  | One current polite live run passed 10/10 VI/EN/RU routes with 224 cards, 1,607/1,607 segments consumed, zero incomplete cards, and zero missing semantic checks.                                                                                                      | [#58](https://github.com/konard/vietnam-accomodation-search/issues/58) repeats the complete cohort twice on the immutable release.                                                      |
+| TG-1, TG-2, QA-4                       | Real bot-only preset/subscription/fresh delivery/restart/search/cleanup passed; pre/post scans found zero test messages. Native mtcute and independent identity pins remain unavailable.                                                                              | [#56](https://github.com/konard/vietnam-accomodation-search/issues/56) runs the protected user-only/combined/fallback matrix.                                                           |
+| DEP-2, DEP-4                           | The exact local image passed smoke. The previous candidate passed host-bind durability but measured a 3,691 ms sampled readiness gap; `getMe` was not message-continuity evidence. No current-commit failed-candidate drill was run.                                  | [#57](https://github.com/konard/vietnam-accomodation-search/issues/57) proves message-level single-poller handoff, automatic restoration, and retained data on the published target.    |
+| FINAL-1                                | Candidate successes and failures are recorded with sanitized aggregates; no immutable target or complete privacy-safe comparison exists.                                                                                                                              | [#58](https://github.com/konard/vietnam-accomodation-search/issues/58) performs the exact-release acceptance audit after #54–#57.                                                       |
+
+The 2026-09-28 delta and detailed matrix below preserve earlier candidate
+observations and contracts. This 2026-09-29 section is the current status where
+those historical cells differ; a green synthetic test never substitutes for
+the failed real corpus or an unpublished release.
 
 ## Latest acceptance delta — 2026-09-28
 
