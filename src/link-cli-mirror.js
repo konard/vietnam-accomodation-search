@@ -10,9 +10,10 @@ import {
   rm,
   stat,
 } from 'node:fs/promises';
+import { availableParallelism } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { Parser } from 'links-notation';
+import { Parser, formatLinks } from 'links-notation';
 
 export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -139,9 +140,19 @@ function linkKey(link) {
   return JSON.stringify([link.id, link.values.map(({ id }) => id)]);
 }
 
+// links-notation rejects input longer than 10 MiB by default, a guard for
+// untrusted text. Canonical snapshots are this application's own durable
+// files and a real Telegram source already produced about 16 MiB (#43), so
+// they are parsed with an explicit, larger bound instead.
+export const MAX_NOTATION_LENGTH = 256 * 1024 * 1024;
+
+export function parseNotation(notation) {
+  return new Parser({ maxInputSize: MAX_NOTATION_LENGTH }).parse(notation);
+}
+
 export function verifyExport(imported, exported) {
-  const importedLinks = new Parser().parse(imported);
-  const exportedLinks = new Parser().parse(exported);
+  const importedLinks = parseNotation(imported);
+  const exportedLinks = parseNotation(exported);
   const expected = new Set(importedLinks.map(linkKey));
   const actual = new Set(exportedLinks.map(linkKey));
   const referenced = new Set(
@@ -164,30 +175,125 @@ export function verifyExport(imported, exported) {
   }
 }
 
+function fnv1a(value) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+// clink 0.2.x imports in time quadratic in the database size (each update
+// scans the whole store for uniqueness and usages), so one large import can
+// take hours. Content-defined chunking over whole top-level links keeps each
+// independently verified database small, and a local edit changes only the
+// shard containing it, so unchanged shards are reused by digest. Boundaries
+// depend on link ids only, never on offsets, so insertions do not shift them.
+export function splitNotation(
+  notation,
+  { averageLinks = 64, maxLinks = 128, minLinks = 32 } = {}
+) {
+  const links = notation.trim() ? parseNotation(notation) : [];
+  if (links.length <= maxLinks) {
+    return [notation];
+  }
+  const groups = [[]];
+  for (const link of links) {
+    const current = groups.at(-1);
+    if (
+      current.length >= maxLinks ||
+      (current.length >= minLinks &&
+        fnv1a(link.id) % (averageLinks - minLinks) === 0)
+    ) {
+      groups.push([link]);
+    } else {
+      current.push(link);
+    }
+  }
+  const shards = groups.map((group) => formatLinks(group));
+  // Canonical LiNo stays authoritative: shard only when the shards are an
+  // exact textual partition of it, otherwise project it as one database.
+  return shards.join('\n') === notation ? shards : [notation];
+}
+
 class SnapshotCorruptionError extends Error {}
 
-async function verifyCandidate(candidate, kind, notation, digest) {
+// Every file a projection is trusted by. `data.names.links` is written by
+// clink's named-types decorator and is absent only for unnamed stores.
+const REQUIRED_FILES = ['data.links', 'verified.lino'];
+const PROJECTION_FILES = [...REQUIRED_FILES, 'data.names.links'];
+
+async function fileDigests(directory) {
+  const digests = {};
+  for (const name of PROJECTION_FILES) {
+    try {
+      digests[name] = await sha256File(join(directory, name));
+    } catch (error) {
+      if (error.code !== 'ENOENT' || REQUIRED_FILES.includes(name)) {
+        throw error;
+      }
+    }
+  }
+  return digests;
+}
+
+async function readManifest(directory, kind, digest) {
   const manifest = JSON.parse(
-    await readFile(join(candidate, 'manifest.json'), 'utf8')
+    await readFile(join(directory, 'manifest.json'), 'utf8')
   );
   if (
     manifest.kind !== kind ||
     manifest.sha256 !== digest ||
-    manifest.version !== 2
+    manifest.version !== 3
   ) {
     throw new SnapshotCorruptionError('Invalid clink manifest.');
   }
-  const databasePath = join(candidate, 'data.links');
-  await stat(databasePath);
-  if ((await sha256File(databasePath)) !== manifest.databaseSha256) {
-    throw new SnapshotCorruptionError(
-      'The clink database does not match its manifest.'
-    );
+  return manifest;
+}
+
+// The export is compared link-by-link with its canonical shard once, before
+// the manifest is written. Reuse then requires every trusted file to be
+// byte-identical to that verified state, which avoids re-parsing unchanged
+// shards on every save without accepting any unverified byte.
+async function verifyDatabase(directory, kind, digest) {
+  const manifest = await readManifest(directory, kind, digest);
+  const expected = Object.entries(manifest.files || {});
+  if (
+    !REQUIRED_FILES.every((name) => manifest.files?.[name]) ||
+    expected.some(([name]) => !PROJECTION_FILES.includes(name))
+  ) {
+    throw new SnapshotCorruptionError('Invalid clink manifest.');
   }
-  verifyExport(
-    notation,
-    await readFile(join(candidate, 'verified.lino'), 'utf8')
-  );
+  for (const [name, fileSha256] of expected) {
+    if ((await sha256File(join(directory, name))) !== fileSha256) {
+      throw new SnapshotCorruptionError(
+        'The clink projection does not match its manifest.'
+      );
+    }
+  }
+}
+
+async function verifyCandidate(candidate, shardRoot, kind, shards, digest) {
+  const manifest = await readManifest(candidate, kind, digest);
+  if (!manifest.shards) {
+    if (shards.length !== 1) {
+      throw new SnapshotCorruptionError('The clink shard layout changed.');
+    }
+    await verifyDatabase(candidate, kind, digest);
+    return manifest;
+  }
+  const digests = shards.map((shard) => sha256(shard));
+  if (
+    shards.length === 1 ||
+    JSON.stringify(manifest.shards) !== JSON.stringify(digests)
+  ) {
+    throw new SnapshotCorruptionError('The clink shard layout changed.');
+  }
+  for (const shardDigest of digests) {
+    await verifyDatabase(join(shardRoot, shardDigest), kind, shardDigest);
+  }
+  return manifest;
 }
 
 function recoverableSnapshotError(error) {
@@ -199,37 +305,109 @@ function recoverableSnapshotError(error) {
   );
 }
 
-async function pruneCandidates(root, kind, current) {
+// Failed candidates are retained for diagnosis, but only the newest few, so
+// repeated failures cannot grow the private state directory without bound.
+export const RETAINED_FAILURES = 3;
+
+async function prune(root, keep, { prefix = '' } = {}) {
+  const failures = [];
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
-    if (
-      entry.isDirectory() &&
-      entry.name.startsWith(`${kind}-`) &&
-      !entry.name.includes('.failed-') &&
-      path !== current
-    ) {
+    if (!entry.isDirectory() || !entry.name.startsWith(prefix)) {
+      continue;
+    }
+    const failedAt = entry.name.match(/\.failed-(\d+)$/u);
+    if (failedAt) {
+      failures.push({ failedAt: Number(failedAt[1]), path });
+    } else if (!keep.has(path)) {
       await rm(path, { force: true, recursive: true });
     }
+  }
+  failures.sort((left, right) => right.failedAt - left.failedAt);
+  for (const { path } of failures.slice(RETAINED_FAILURES)) {
+    await rm(path, { force: true, recursive: true });
+  }
+}
+
+async function pruneCandidates(root, kind, current, manifest) {
+  await prune(root, new Set([current]), { prefix: `${kind}-` });
+  const shardRoot = join(root, `${kind}.shards`);
+  if (manifest?.shards) {
+    await prune(
+      shardRoot,
+      new Set(manifest.shards.map((digest) => join(shardRoot, digest)))
+    );
+  } else {
+    await rm(shardRoot, { force: true, recursive: true });
+  }
+}
+
+// Runs callbacks with bounded parallelism. After the first failure no new
+// item starts, and the in-flight ones settle before the failure is rethrown,
+// so no clink process outlives the transaction that started it.
+async function mapConcurrent(items, concurrency, callback) {
+  let next = 0;
+  let failure;
+  const worker = async () => {
+    while (!failure && next < items.length) {
+      const index = next;
+      next += 1;
+      try {
+        await callback(items[index], index);
+      } catch (error) {
+        failure ??= { error };
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker)
+  );
+  if (failure) {
+    throw failure.error;
   }
 }
 
 export class LinkCliMirror {
   constructor({
+    averageShardLinks,
     command = 'clink',
+    concurrency = Math.max(1, Math.min(4, availableParallelism())),
     heartbeatMs,
+    maxShardLinks,
+    minShardLinks,
     onProgress,
     run = runClink,
     statCandidate = stat,
     timeoutMs,
   } = {}) {
     this.command = command;
+    this.concurrency = concurrency;
+    this.onProgress = onProgress;
     this.run = run;
     this.statCandidate = statCandidate;
     this.runOptions = { heartbeatMs, onProgress, timeoutMs };
+    this.heartbeatMs = heartbeatMs ?? 15_000;
+    this.shardOptions = {
+      averageLinks: averageShardLinks,
+      maxLinks: maxShardLinks,
+      minLinks: minShardLinks,
+    };
   }
 
   async preflight() {
     await this.run(this.command, ['--help'], this.runOptions);
+  }
+
+  #report(event) {
+    try {
+      this.onProgress?.({ phase: 'binary-projection', ...event });
+    } catch {
+      // Diagnostics must not change the storage transaction outcome.
+    }
+  }
+
+  #split(notation) {
+    return splitNotation(notation, this.shardOptions);
   }
 
   async ensure({ directory, kind, notation }) {
@@ -244,8 +422,14 @@ export class LinkCliMirror {
         pointer.directory === expectedDirectory
       ) {
         try {
-          await verifyCandidate(expectedDirectory, kind, notation, digest);
-          await pruneCandidates(root, kind, expectedDirectory);
+          const manifest = await verifyCandidate(
+            expectedDirectory,
+            join(root, `${kind}.shards`),
+            kind,
+            this.#split(notation),
+            digest
+          );
+          await pruneCandidates(root, kind, expectedDirectory, manifest);
           return pointer;
         } catch (error) {
           if (!recoverableSnapshotError(error)) {
@@ -263,26 +447,141 @@ export class LinkCliMirror {
     return { sha256: staged.sha256 };
   }
 
+  async #retire(directory) {
+    try {
+      await this.statCandidate(directory);
+      await rename(directory, `${directory}.failed-${Date.now()}`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  async #build(directory, manifestFields, write) {
+    await this.#retire(directory);
+    await mkdir(directory, { recursive: true });
+    try {
+      await write();
+      await durableWrite(
+        join(directory, 'manifest.json'),
+        `${JSON.stringify({ ...manifestFields, version: 3 })}\n`
+      );
+    } catch (error) {
+      await durableWrite(
+        join(directory, 'failure.json'),
+        `${JSON.stringify({ code: error.code || 'storage-error', failedAt: new Date().toISOString() })}\n`
+      ).catch(() => {});
+      throw error;
+    }
+  }
+
+  async #buildDatabase(directory, kind, notation, digest, runOptions) {
+    const importPath = join(directory, 'canonical.lino');
+    const exportPath = join(directory, 'verified.lino');
+    const manifest = { kind, sha256: digest };
+    await this.#build(directory, manifest, async () => {
+      await durableWrite(importPath, notation);
+      await this.run(
+        this.command,
+        [
+          '--db',
+          join(directory, 'data.links'),
+          '--auto-create-missing-references',
+          '--import',
+          importPath,
+          '--export',
+          exportPath,
+        ],
+        runOptions
+      );
+      verifyExport(notation, await readFile(exportPath, 'utf8'));
+      manifest.files = await fileDigests(directory);
+    });
+  }
+
+  async #buildShards(candidate, shardRoot, kind, shards, digest) {
+    const startedAt = Date.now();
+    const digests = shards.map((shard) => sha256(shard));
+    let completed = 0;
+    let reused = 0;
+    let reportedAt = startedAt;
+    // Per-process heartbeats and timeouts stay on; per-shard completion is
+    // aggregated below so progress remains bounded and free of content.
+    const runOptions = {
+      ...this.runOptions,
+      onProgress: (event) => {
+        if (event.status !== 'finished') {
+          this.#report(event);
+        }
+      },
+    };
+    await this.#build(
+      candidate,
+      { kind, sha256: digest, shards: digests },
+      async () => {
+        await mapConcurrent(shards, this.concurrency, async (shard, index) => {
+          const directory = join(shardRoot, digests[index]);
+          try {
+            await verifyDatabase(directory, kind, digests[index]);
+            reused += 1;
+          } catch (error) {
+            if (!recoverableSnapshotError(error)) {
+              throw error;
+            }
+            await this.#buildDatabase(
+              directory,
+              kind,
+              shard,
+              digests[index],
+              runOptions
+            );
+          }
+          completed += 1;
+          if (
+            completed === shards.length ||
+            Date.now() - reportedAt >= this.heartbeatMs
+          ) {
+            reportedAt = Date.now();
+            this.#report({
+              completed,
+              elapsedMs: reportedAt - startedAt,
+              reused,
+              status: 'shards',
+              total: shards.length,
+            });
+          }
+        });
+      }
+    );
+  }
+
   async stage({ directory, kind, notation }) {
     const digest = sha256(notation);
     const root = join(directory, '.binary');
     const candidate = join(root, `${kind}-${digest}`);
-    const importPath = join(candidate, 'canonical.lino');
-    const exportPath = join(candidate, 'verified.lino');
-    const databasePath = join(candidate, 'data.links');
+    const shardRoot = join(root, `${kind}.shards`);
+    const shards = this.#split(notation);
     const activate = async () => {
       await durableWrite(
         join(root, `${kind}.current.json`),
         `${JSON.stringify({ directory: candidate, sha256: digest, version: 1 })}\n`
       );
-      await pruneCandidates(root, kind, candidate);
+      await pruneCandidates(
+        root,
+        kind,
+        candidate,
+        shards.length > 1
+          ? { shards: shards.map((shard) => sha256(shard)) }
+          : undefined
+      );
     };
     try {
       const pointer = JSON.parse(
         await readFile(join(root, `${kind}.current.json`), 'utf8')
       );
       if (pointer.sha256 === digest && pointer.directory === candidate) {
-        await verifyCandidate(candidate, kind, notation, digest);
+        await verifyCandidate(candidate, shardRoot, kind, shards, digest);
         return { activate: async () => {}, sha256: digest };
       }
     } catch (error) {
@@ -291,49 +590,23 @@ export class LinkCliMirror {
       }
     }
     try {
-      await verifyCandidate(candidate, kind, notation, digest);
+      await verifyCandidate(candidate, shardRoot, kind, shards, digest);
       return { activate, sha256: digest };
     } catch (error) {
       if (!recoverableSnapshotError(error)) {
         throw error;
       }
     }
-    try {
-      await this.statCandidate(candidate);
-      await rename(candidate, `${candidate}.failed-${Date.now()}`);
-    } catch (error) {
-      if (error.code !== 'ENOENT') {
-        throw error;
-      }
-    }
-    await mkdir(candidate, { recursive: true });
-    try {
-      await durableWrite(importPath, notation);
-      await this.run(
-        this.command,
-        [
-          '--db',
-          databasePath,
-          '--auto-create-missing-references',
-          '--import',
-          importPath,
-          '--export',
-          exportPath,
-        ],
+    if (shards.length === 1) {
+      await this.#buildDatabase(
+        candidate,
+        kind,
+        notation,
+        digest,
         this.runOptions
       );
-      await stat(databasePath);
-      verifyExport(notation, await readFile(exportPath, 'utf8'));
-      await durableWrite(
-        join(candidate, 'manifest.json'),
-        `${JSON.stringify({ databaseSha256: await sha256File(databasePath), kind, sha256: digest, version: 2 })}\n`
-      );
-    } catch (error) {
-      await durableWrite(
-        join(candidate, 'failure.json'),
-        `${JSON.stringify({ code: error.code || 'storage-error', failedAt: new Date().toISOString() })}\n`
-      ).catch(() => {});
-      throw error;
+    } else {
+      await this.#buildShards(candidate, shardRoot, kind, shards, digest);
     }
     return { activate, sha256: digest };
   }
