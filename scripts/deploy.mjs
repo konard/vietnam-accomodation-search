@@ -115,10 +115,17 @@ export function assertImageIdentity(labels, { buildDate, revision, version }) {
   return true;
 }
 
-export async function inspectImageLabels(run, image) {
+// command-stream runs commands through a login shell (`/bin/sh -l -c`), whose
+// profile may reorder PATH (macOS path_helper does). Callers that must select
+// one exact executable, such as the argv regression fixture, pass its path.
+export async function inspectImageLabels(
+  run,
+  image,
+  { docker = 'docker' } = {}
+) {
   const format = '{{json .Config.Labels}}';
   return JSON.parse(
-    await text(await run`docker image inspect --format=${format} ${image}`)
+    await text(await run`${docker} image inspect --format=${format} ${image}`)
   );
 }
 
