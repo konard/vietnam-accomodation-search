@@ -38,7 +38,19 @@ shard hashes. A later save reuses every unchanged shard by hash and imports
 only the shards containing edits. Reuse requires the database, names database,
 and verified export to match the SHA-256 digests recorded after verification,
 so an unchanged shard is never trusted without its verified bytes. Progress is
-reported as aggregate `completed`/`reused`/`total` shard counts only.
+reported as aggregate `completed`/`reused`/`total` shard counts only. A failed
+or interrupted projection keeps its verified shards, because only activation
+prunes, so the next attempt imports only the rest.
+
+The 10-minute `clink` deadline applies to each process, which now imports at
+most 128 links. On the reference host (6 vCPU, 11 GiB, four concurrent `clink`
+processes), a 4.8 MB collection of 42,001 links in 647 shards projected cold in
+77–100 seconds with a peak resident set of about 400 MiB for the whole process
+tree, and re-saved after a one-record edit in about 10 seconds. Cold time and
+memory grow linearly with the text, so a 16 MiB collection is expected to need
+roughly 5–6 minutes and about 1.4 GiB once, then seconds per incremental save.
+That is an extrapolation until the private corpus is rerun.
+`experiments/sample-tree-rss.sh` measures the peak memory of any benchmark.
 
 `links-notation` rejects input longer than 10 MiB by default, which a single
 real Telegram source already exceeds, so canonical snapshots are parsed with
