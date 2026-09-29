@@ -76,7 +76,7 @@ export async function withDeadline(action, timeoutMs, label) {
   }
 }
 
-function driverDeadline(timeoutMs) {
+export function driverDeadline(timeoutMs) {
   return Math.min(timeoutMs, DRIVER_OPERATION_TIMEOUT_MS);
 }
 
@@ -181,7 +181,7 @@ export function assertConversationBoundary(
   }
 }
 
-async function environmentFile(path) {
+export async function environmentFile(path) {
   return parseDotEnv(await readFile(resolve(path), 'utf8'));
 }
 
@@ -202,7 +202,7 @@ async function secretValue(environment, names) {
   return undefined;
 }
 
-async function botCredentials(environment, expectedId) {
+export async function botCredentials(environment, expectedId) {
   const token = await secretValue(environment, ['TELEGRAM_BOT_TOKEN']);
   if (!token) {
     throw new Error('The bot environment does not contain a bot token.');
@@ -210,7 +210,7 @@ async function botCredentials(environment, expectedId) {
   return { expectedId, token };
 }
 
-async function userCredentials(environment, expectedId) {
+export async function userCredentials(environment, expectedId) {
   const apiId = Number(
     await secretValue(environment, [
       'TELEGRAM_API_ID',
@@ -238,7 +238,7 @@ async function nativeRuntimeCredentials(environment, expectedId) {
   return { ...credentials, format };
 }
 
-async function getBotIdentity(token, expectedId) {
+export async function getBotIdentity(token, expectedId) {
   let response;
   let payload;
   try {
@@ -261,7 +261,7 @@ async function getBotIdentity(token, expectedId) {
   return { id, username: payload.result.username };
 }
 
-async function connectDriver(credentials, timeoutMs) {
+export async function connectDriver(credentials, timeoutMs) {
   const client = new TelegramClient(
     new StringSession(credentials.session),
     credentials.apiId,
@@ -412,11 +412,11 @@ async function settledLog(path, expected) {
   return contents;
 }
 
-function messageText(message) {
+export function messageText(message) {
   return String(message?.message || message?.text || '');
 }
 
-function messageId(message) {
+export function messageId(message) {
   return Number(message?.id || 0);
 }
 

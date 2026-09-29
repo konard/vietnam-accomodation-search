@@ -101,6 +101,47 @@ the short interval between old-poller stop and candidate-poller readiness is
 unavoidable; the workflow never overlaps them. A candidate that cannot pass
 offline/preflight checks never reaches cutover.
 
+## Message-level cutover drill
+
+`experiments/deploy-cutover-drill.mjs` proves those guarantees through
+Telegram itself. It is manual and local-only: it refuses CI and needs
+`TELEGRAM_DEPLOY_DRILL=1`, distinct numeric bot and driver identity pins, a
+Compose project whose name contains `drill`, and a new data directory whose
+path contains `drill`. The bot environment file is the Compose `env_file` and
+must allowlist the driver account.
+
+```bash
+TELEGRAM_DEPLOY_DRILL=1 node experiments/deploy-cutover-drill.mjs \
+  --bot-env /secure/drill-bot.env --user-env /secure/driver.env \
+  --project-name vas-drill --data-directory /srv/vas-drill/data \
+  --image OWNER/IMAGE:VERSION --health-port 18080
+```
+
+The drill runs `first-deploy`, `redeploy`, `failed-preflight` (an image that
+cannot be pulled), `rollback`, `unhealthy-candidate`, and `recreate`
+(`docker compose down`, then a fresh container on the same bind);
+`--transitions ...,docker-restart` adds a Docker daemon restart through
+`sudo -n`. After the first deploy it saves a drill preset and subscribes to
+it. During every transition the driver sends a read-only
+`/preset show drill-RUN-N` marker every `--marker-interval-ms`, while the
+drill samples `/ready` and the project's running app containers. The
+unhealthy candidate uses a generated Compose file in `.deploy/PROJECT/` that
+extends the production service; its health check fails for every image except
+the deploy helper's `:rollback-` tag of the prior image.
+
+A transition fails when the deploy result is not the expected one, more than
+one app container runs, a marker is never answered or answered twice, a
+delivery arrives twice, the decoded records of any collection (presets,
+subscriptions, delivered offers, cursors) change, media files are lost, or
+the binary projection is not rebuilt. A failed preflight must also keep the
+old container running throughout, an unhealthy candidate must end on the
+exact previous image ID, and a rollback must end on the first deploy's image
+ID. The report contains counts, digests, image IDs, the longest `/ready`
+outage, and the longest marker reply latency by Telegram server time. Deploy
+output stays in `.deploy/PROJECT/drill-RUN.log`. Cleanup unsubscribes,
+deletes the preset and every drill message, re-reads the conversation to
+count leftovers, and removes the drill project.
+
 ## Backup, restore, and disaster recovery
 
 Stop the writer for a point-in-time backup, then archive the one host root.
