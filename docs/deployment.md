@@ -49,7 +49,10 @@ APP_IMAGE=OWNER/IMAGE:VERSION docker compose up -d --no-build app
 
 ## Safe redeploy and operations
 
-The deployment command serializes mutations with `.deploy/operation.lock`:
+The deployment command serializes mutations with `.deploy/operation.lock` and
+keeps its record for each Compose project in `.deploy/PROJECT/state.json`, so
+a drill run with `--project-name` never replaces the production rollback
+record:
 
 ```bash
 node scripts/deploy.mjs deploy
@@ -74,13 +77,70 @@ Pass `--image OWNER/IMAGE:IMMUTABLE_TAG` to pull rather than build. A deploy
 creates a unique candidate tag, smoke-tests the CLI and `clink`, validates
 credentials without `getUpdates`, and checks the data mount while the old
 poller remains live. It then gracefully stops the old poller and starts the
-candidate. A readiness failure retags and restores the exact prior image ID,
-and the deploy exits non-zero.
+candidate. After the old service stops, the canonical state (every file in
+the data directory except the rebuildable `.binary` projection, the `media`
+cache, and lock or probe files) is copied into a private `0700` snapshot in
+`.deploy/PROJECT/snapshots/`, with a manifest of relative paths, modes, and
+SHA-256 digests only. The two newest snapshots are kept. Only then is the
+data schema marker raised to the candidate's version. A readiness failure
+stops the candidate, removes files it created, restores every snapshot file
+and verifies its digest, and restarts the exact prior image ID; the deploy
+exits non-zero.
+
+The data schema marker is version 2 from the release that writes collections
+as schema v3 (#55); an image built for version 1 would read the escaped names
+of that text literally. `rollback` therefore compares the previous image's
+recorded data schema with the directory's marker. For an older schema it
+refuses unless `--restore-snapshot` is passed, which restores the state
+captured before the last cutover and discards changes written since. A
+rollback within one data schema keeps the current data. Both require the
+same `--data-directory` as the recorded deploy.
 
 Telegram allows only one `getUpdates` consumer per bot token. Consequently,
 the short interval between old-poller stop and candidate-poller readiness is
 unavoidable; the workflow never overlaps them. A candidate that cannot pass
 offline/preflight checks never reaches cutover.
+
+## Message-level cutover drill
+
+`experiments/deploy-cutover-drill.mjs` proves those guarantees through
+Telegram itself. It is manual and local-only: it refuses CI and needs
+`TELEGRAM_DEPLOY_DRILL=1`, distinct numeric bot and driver identity pins, a
+Compose project whose name contains `drill`, and a new data directory whose
+path contains `drill`. The bot environment file is the Compose `env_file` and
+must allowlist the driver account.
+
+```bash
+TELEGRAM_DEPLOY_DRILL=1 node experiments/deploy-cutover-drill.mjs \
+  --bot-env /secure/drill-bot.env --user-env /secure/driver.env \
+  --project-name vas-drill --data-directory /srv/vas-drill/data \
+  --image OWNER/IMAGE:VERSION --health-port 18080
+```
+
+The drill runs `first-deploy`, `redeploy`, `failed-preflight` (an image that
+cannot be pulled), `rollback`, `unhealthy-candidate`, and `recreate`
+(`docker compose down`, then a fresh container on the same bind);
+`--transitions ...,docker-restart` adds a Docker daemon restart through
+`sudo -n`. After the first deploy it saves a drill preset and subscribes to
+it. During every transition the driver sends a read-only
+`/preset show drill-RUN-N` marker every `--marker-interval-ms`, while the
+drill samples `/ready` and the project's running app containers. The
+unhealthy candidate uses a generated Compose file in `.deploy/PROJECT/` that
+extends the production service; its health check fails for every image except
+the deploy helper's `:rollback-` tag of the prior image.
+
+A transition fails when the deploy result is not the expected one, more than
+one app container runs, a marker is never answered or answered twice, a
+delivery arrives twice, the decoded records of any collection (presets,
+subscriptions, delivered offers, cursors) change, media files are lost, or
+the binary projection is not rebuilt. A failed preflight must also keep the
+old container running throughout, an unhealthy candidate must end on the
+exact previous image ID, and a rollback must end on the first deploy's image
+ID. The report contains counts, digests, image IDs, the longest `/ready`
+outage, and the longest marker reply latency by Telegram server time. Deploy
+output stays in `.deploy/PROJECT/drill-RUN.log`. Cleanup unsubscribes,
+deletes the preset and every drill message, re-reads the conversation to
+count leftovers, and removes the drill project.
 
 ## Backup, restore, and disaster recovery
 
@@ -154,7 +214,17 @@ The existing release workflow builds on native `linux/amd64` and
 `linux/arm64` runners, publishes per-platform digests, combines immutable
 digests into `latest` and version manifests, and verifies both platforms.
 Configure repository variables `DOCKERHUB_IMAGE` and `DOCKERHUB_USERNAME` plus
-the `DOCKERHUB_TOKEN` secret to enable it. Inspect a release with:
+the `DOCKERHUB_TOKEN` secret.
+
+The accepted OCI policy is committed in `.github/oci-policy.json`: every
+release must publish both `linux/amd64` and `linux/arm64` images (issue #54).
+Release-mode preflight and the Docker configuration job therefore fail, before
+and after npm publication respectively, when `DOCKERHUB_IMAGE` is unset; a
+skipped image job is never reported as a successful release.
+`release-identity.json` records the policy it was checked against, and the
+release audit rejects an identity without a `required` policy. Shipping without
+images would need a reviewed change to that file, the identity collector, and
+the audit, not a missing variable. Inspect a release with:
 
 ```bash
 docker buildx imagetools inspect OWNER/IMAGE:VERSION
@@ -164,8 +234,8 @@ Docker builds check out the final `vVERSION` tag, not the pre-version workflow
 event SHA. After npm, the GitHub Release, and both native manifests exist, the
 workflow cross-checks their versions and digests against the exact retested
 candidate. It uploads `release-identity.json` as a retained workflow artifact
-and a GitHub Release asset. If Docker Hub publishing is not configured, no
-identity artifact is created and the post-release audit remains pending.
+and a GitHub Release asset. If Docker Hub publishing is not configured, the
+release run fails instead of producing an identity without images.
 
 ## Example application and GitHub Pages
 

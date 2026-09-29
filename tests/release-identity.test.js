@@ -123,6 +123,11 @@ describe('immutable release identity collection', () => {
     );
     expect(identity.package.provenance.sourceCommitSha).toBe(commitSha);
     expect(identity.docker.version).toBe('1.2.3');
+    expect(identity.ociPolicy).toEqual({
+      platforms: ['linux/amd64', 'linux/arm64'],
+      policy: 'required',
+      registry: 'docker.io',
+    });
     expect(identity.schemas.releaseAudit).toBe(2);
     expect(identity.workflowRunUrl).toBe(
       'https://github.com/owner/repo/actions/runs/42'

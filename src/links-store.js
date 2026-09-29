@@ -101,6 +101,45 @@ function assignPath(root, path, value) {
   }
 }
 
+export const RECORDS_SCHEMA = 'schema:associative-records-v3';
+const SCHEMA_V2 = 'schema:associative-records-v2';
+
+// clink 0.2.x trims every line of an imported document and every name,
+// including a trailing colon, and links-notation cannot round-trip a name that
+// contains both quote kinds (#55). Schema v3 therefore percent-encodes, as
+// UTF-8, each character one of those steps could rewrite: the escape itself,
+// quotes, backslashes, all whitespace except a single interior space, control
+// characters, and a trailing colon. Other text, including non-Latin scripts,
+// stays readable.
+const UNSAFE_NAME = /[%'"`\\]|[^\S ]|\p{Cc}|^ | $| (?= )|:$/gu;
+
+function percentEncode(character) {
+  return [...new globalThis.TextEncoder().encode(character)]
+    .map((byte) => `%${byte.toString(16).toUpperCase().padStart(2, '0')}`)
+    .join('');
+}
+
+export function encodeName(name) {
+  return name.replace(UNSAFE_NAME, percentEncode);
+}
+
+export function decodeName(name) {
+  return name.includes('%') ? decodeURIComponent(name) : name;
+}
+
+function decodeLink(link) {
+  return {
+    id: decodeName(link.id),
+    values: (link.values || []).map(decodeLink),
+  };
+}
+
+function nameLink(name, values) {
+  return values
+    ? new Link(encodeName(name), values)
+    : new Link(encodeName(name));
+}
+
 function legacyRecords(kind, links) {
   return links
     .filter((link) => link.id === kind)
@@ -109,33 +148,47 @@ function legacyRecords(kind, links) {
     .map((data) => decodeJson(data.values[0].id));
 }
 
+function schemaHeader(kind) {
+  return nameLink(kind, [nameLink(RECORDS_SCHEMA), nameLink(`kind:${kind}`)]);
+}
+
 export function serializeRecords(kind, records) {
   if (!records.length) {
     return '';
   }
-  const links = [
-    new Link(kind, [
-      new Link('schema:associative-records-v2'),
-      new Link(`kind:${kind}`),
-    ]),
-  ];
+  const links = [schemaHeader(kind)];
   for (const [index, input] of records.entries()) {
     const record = normalized(input);
     const id = record.id ?? String(index);
     const reference = `record:${kind}:${id}`;
     links.push(
-      new Link(reference, [new Link(`kind:${kind}`), new Link(scalar(id))])
+      nameLink(reference, [nameLink(`kind:${kind}`), nameLink(scalar(id))])
     );
     for (const [path, value] of flatten(record)) {
       const field = `${reference}:field:${path || '/'}`;
       const valueNode = `${field}:value`;
       links.push(
-        new Link(field, [new Link(reference), new Link(valueNode)]),
-        new Link(valueNode, [new Link(valueNode), new Link(value)])
+        nameLink(field, [nameLink(reference), nameLink(valueNode)]),
+        nameLink(valueNode, [nameLink(valueNode), nameLink(value)])
       );
     }
   }
   return formatLinks(links);
+}
+
+// True when the text already uses the current schema. The schema header is
+// always the first link, so this avoids parsing a whole large collection.
+export function isCurrentSchema(kind, notation) {
+  const end = notation.indexOf('\n');
+  const first = end === -1 ? notation : notation.slice(0, end);
+  return first === formatLinks([schemaHeader(kind)]);
+}
+
+function parseRecordLinks(notation) {
+  const links = parseNotation(notation);
+  return links.some((link) => link.values[0]?.id === RECORDS_SCHEMA)
+    ? links.map(decodeLink)
+    : links;
 }
 
 // Index links once so decoding stays linear in the collection size instead
@@ -176,7 +229,7 @@ export function deserializeRecords(kind, notation = '') {
   if (!notation.trim()) {
     return [];
   }
-  return recordsFromLinks(kind, parseNotation(notation));
+  return recordsFromLinks(kind, parseRecordLinks(notation));
 }
 
 function recordsFromLinks(kind, links) {
@@ -194,7 +247,7 @@ function recordsFromLinks(kind, links) {
   if (
     !headers.length &&
     legacyHeaders.some(
-      (header) => header.values[0]?.id !== 'schema:associative-records-v2'
+      (header) => ![SCHEMA_V2, RECORDS_SCHEMA].includes(header.values[0]?.id)
     )
   ) {
     return deserializeAssociativeV1(legacyHeaders, indexLinks(links));
@@ -221,7 +274,7 @@ export function queryRecords(kind, notation, { path, value }) {
   if (!notation.trim()) {
     return [];
   }
-  const links = parseNotation(notation);
+  const links = parseRecordLinks(notation);
   const { byId } = indexLinks(links);
   const suffix = `:field:/${path.split('/').map(pointerSegment).join('/')}`;
   const expected = scalar(value);
@@ -336,9 +389,22 @@ export class LinksStore {
     return join(this.directory, `${collection}.lino`);
   }
 
-  #loadNotation(collection) {
+  // Reads canonical text and ensures its binary projection. Text written by an
+  // earlier schema may hold names clink rewrites on import (#55), so with the
+  // mirror enabled it is first rewritten as schema v3 under the write lock.
+  #loadNotation(collection, path = this.pathFor(collection)) {
+    const kind =
+      collection === 'search-state' ? collection : singular(collection);
     const load = async () => {
-      const notation = await readOrEmpty(this.pathFor(collection));
+      const notation = await readOrEmpty(path);
+      if (this.mirror && notation.trim() && !isCurrentSchema(kind, notation)) {
+        const migrated = serializeRecords(
+          kind,
+          deserializeRecords(kind, notation)
+        );
+        await this.#commit(collection, path, migrated);
+        return migrated;
+      }
       await this.mirror?.ensure?.({
         directory: this.directory,
         kind: collection,
@@ -347,6 +413,18 @@ export class LinksStore {
       return notation;
     };
     return this.mirror ? this.#locked(load) : load();
+  }
+
+  async #commit(collection, path, notation) {
+    const staged = this.mirror
+      ? await this.mirror.stage({
+          directory: this.directory,
+          kind: collection,
+          notation,
+        })
+      : undefined;
+    await durableWrite(path, notation);
+    await staged?.activate();
   }
 
   async loadRecords(kind) {
@@ -427,17 +505,12 @@ export class LinksStore {
     });
   }
 
-  async #saveRecords(collection, records) {
-    const notation = serializeRecords(singular(collection), records);
-    const staged = this.mirror
-      ? await this.mirror.stage({
-          directory: this.directory,
-          kind: collection,
-          notation,
-        })
-      : undefined;
-    await durableWrite(this.pathFor(collection), notation);
-    await staged?.activate();
+  #saveRecords(collection, records) {
+    return this.#commit(
+      collection,
+      this.pathFor(collection),
+      serializeRecords(singular(collection), records)
+    );
   }
 
   async listOffers() {
@@ -462,15 +535,7 @@ export class LinksStore {
         offers.pop();
         notation = serializeOffers(offers);
       }
-      const staged = this.mirror
-        ? await this.mirror.stage({
-            directory: this.directory,
-            kind: 'offers',
-            notation,
-          })
-        : undefined;
-      await durableWrite(this.offersPath, notation);
-      await staged?.activate();
+      await this.#commit('offers', this.offersPath, notation);
     });
   }
 
@@ -493,16 +558,7 @@ export class LinksStore {
       if (!changed) {
         return;
       }
-      const notation = serializeOffers(remaining);
-      const staged = this.mirror
-        ? await this.mirror.stage({
-            directory: this.directory,
-            kind: 'offers',
-            notation,
-          })
-        : undefined;
-      await durableWrite(this.offersPath, notation);
-      await staged?.activate();
+      await this.#commit('offers', this.offersPath, serializeOffers(remaining));
     });
   }
 
@@ -515,31 +571,19 @@ export class LinksStore {
     return this.saveRecords('sources', sources);
   }
 
-  loadSearchState() {
-    const load = async () => {
-      const notation = await readOrEmpty(this.searchStatePath);
-      await this.mirror?.ensure?.({
-        directory: this.directory,
-        kind: 'search-state',
-        notation,
-      });
-      return deserializeSearchState(notation);
-    };
-    return this.mirror ? this.#locked(load) : load();
+  async loadSearchState() {
+    return deserializeSearchState(
+      await this.#loadNotation('search-state', this.searchStatePath)
+    );
   }
 
   saveSearchState(state) {
-    return this.#locked(async () => {
-      const notation = serializeSearchState(state);
-      const staged = this.mirror
-        ? await this.mirror.stage({
-            directory: this.directory,
-            kind: 'search-state',
-            notation,
-          })
-        : undefined;
-      await durableWrite(this.searchStatePath, notation);
-      await staged?.activate();
-    });
+    return this.#locked(() =>
+      this.#commit(
+        'search-state',
+        this.searchStatePath,
+        serializeSearchState(state)
+      )
+    );
   }
 }

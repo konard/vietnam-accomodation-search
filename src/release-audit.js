@@ -92,6 +92,7 @@ function releaseIdentity(release = {}) {
       manifestDigest: docker.manifestDigest || release.imageDigest,
       platforms: docker.platforms,
     },
+    ociPolicy: release.ociPolicy,
     runtimes: release.runtimes,
     schemas: release.schemas,
     baseline: release.baseline,
@@ -121,6 +122,7 @@ function releaseIdentityAssessment(identity, runtime) {
     ['npm-package-version', identity.package?.version],
     ['installed-package-version', identity.package?.installedVersion],
     ['npm-package-integrity', identity.package?.integrity],
+    ['oci-policy', identity.ociPolicy?.policy],
     ['docker-image', identity.docker?.image],
     ['docker-version', identity.docker?.version],
     ['docker-manifest-digest', identity.docker?.manifestDigest],
@@ -209,6 +211,10 @@ function releaseIdentityAssessment(identity, runtime) {
     identity.docker.version !== identity.package.version
   ) {
     conflicts.push('docker-package-version-mismatch');
+  }
+  // The committed OCI policy requires both native images.
+  if (identity.ociPolicy?.policy && identity.ociPolicy.policy !== 'required') {
+    conflicts.push('oci-policy-not-required');
   }
   const digests = [
     identity.package?.integrity,

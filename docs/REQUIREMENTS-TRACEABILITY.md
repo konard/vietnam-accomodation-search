@@ -50,6 +50,13 @@ local production-image smoke test. PR #53 closed the previous issues despite
 the release and live gates remaining unmet. Per the operator's instruction,
 the new successor batch is [#54](https://github.com/konard/vietnam-accomodation-search/issues/54)–[#58](https://github.com/konard/vietnam-accomodation-search/issues/58);
 closed issues are not reopened.
+The [Issue #59 ledger](case-studies/issue-59/README.md) records PR #60 for
+that batch. It traces the offer-shard mismatch to `clink` name trimming and
+writes schema v3, fails the release closed on the committed OCI policy,
+restores the pre-cutover state with the prior image, adds identity-pinned
+native capability and message-level cutover harnesses, and fixes the missing
+user fallback for a Bot API `chat not found`. The credentialed, private-corpus,
+and published-release runs remain owner actions.
 
 ## Latest acceptance delta — 2026-09-29
 

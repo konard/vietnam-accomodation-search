@@ -150,7 +150,9 @@ export function parseNotation(notation) {
   return new Parser({ maxInputSize: MAX_NOTATION_LENGTH }).parse(notation);
 }
 
-export function verifyExport(imported, exported) {
+// Compares a clink export with the canonical text it imported. The result
+// holds only counts, so it is safe to log and to retain in failure.json.
+export function compareExport(imported, exported) {
   const importedLinks = parseNotation(imported);
   const exportedLinks = parseNotation(exported);
   const expected = new Set(importedLinks.map(linkKey));
@@ -158,7 +160,7 @@ export function verifyExport(imported, exported) {
   const referenced = new Set(
     importedLinks.flatMap((link) => link.values.map(({ id }) => id))
   );
-  const missing = [...expected].filter((key) => !actual.has(key));
+  const missing = importedLinks.filter((link) => !actual.has(linkKey(link)));
   const unexpected = exportedLinks.filter(
     (link) =>
       !expected.has(linkKey(link)) &&
@@ -168,11 +170,32 @@ export function verifyExport(imported, exported) {
         link.values.every(({ id }) => id === link.id)
       )
   );
-  if (missing.length || unexpected.length) {
-    throw new Error(
-      `clink export verification failed (${missing.length} links missing, ${unexpected.length} unexpected links)`
+  const unexpectedIds = new Set(unexpected.map((link) => link.id));
+  return {
+    canonicalLinks: importedLinks.length,
+    exportedLinks: exportedLinks.length,
+    missingLinks: missing.length,
+    // A missing link whose id reappears with other values is a name clink
+    // rewrote on import (#55); a dropped link leaves no such id.
+    rewrittenLinks: missing.filter((link) => unexpectedIds.has(link.id)).length,
+    unexpectedLinks: unexpected.length,
+    unreferencedUnexpectedLinks: unexpected.filter(
+      (link) => !referenced.has(link.id)
+    ).length,
+  };
+}
+
+export function verifyExport(imported, exported) {
+  const diagnostics = compareExport(imported, exported);
+  if (diagnostics.missingLinks || diagnostics.unexpectedLinks) {
+    const error = new Error(
+      `clink export verification failed (${diagnostics.missingLinks} links missing, ${diagnostics.unexpectedLinks} unexpected links)`
     );
+    error.code = 'storage-verification-failed';
+    error.diagnostics = diagnostics;
+    throw error;
   }
+  return diagnostics;
 }
 
 function fnv1a(value) {
@@ -470,7 +493,7 @@ export class LinkCliMirror {
     } catch (error) {
       await durableWrite(
         join(directory, 'failure.json'),
-        `${JSON.stringify({ code: error.code || 'storage-error', failedAt: new Date().toISOString() })}\n`
+        `${JSON.stringify({ code: error.code || 'storage-error', ...(error.diagnostics ? { diagnostics: error.diagnostics } : {}), failedAt: new Date().toISOString() })}\n`
       ).catch(() => {});
       throw error;
     }

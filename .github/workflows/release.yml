@@ -477,6 +477,15 @@ jobs:
                 await store.deleteOffersByMessages('image-smoke', [1]);
                 const offers = await store.listOffers();
                 if (offers.length !== 1 || offers[0]?.id !== 'keep-me') process.exitCode = 1;
+                // Values the real clink rewrote before schema v3 (#55), in
+                // more than 128 links so the collection is sharded.
+                const quotes = String.fromCharCode(39, 34);
+                const values = ['', 'a ', ' a', 'a  b', 'a\n', 'a\r\nb', 'a\n  b', 'a:', 'a\tb', '%41', 'Căn hộ ' + quotes];
+                const sensitive = values.concat(values).map((text, index) => ({ id: 'sensitive-' + index + text, [text + ' key']: text, text }));
+                await store.saveRecords('presets', sensitive);
+                const loaded = await store.loadRecords('presets');
+                const entries = (record) => JSON.stringify(Object.entries(record).sort());
+                if (loaded.length !== sensitive.length || loaded.some((record, index) => entries(record) !== entries(sensitive[index]))) process.exitCode = 1;
               } finally {
               await rm(directory, { force: true, recursive: true });
             }
@@ -846,8 +855,9 @@ jobs:
           gh workflow run release.yml --ref main --repo "$GITHUB_REPOSITORY" \
             -f release_mode=resume -f bump_type=patch -f "expected_sha=$version_sha"
 
-  # Optional Docker Hub publishing for packages that also ship Docker images.
-  # Set vars.DOCKERHUB_IMAGE to enable this path, then configure
+  # Docker Hub publishing required by the committed .github/oci-policy.json
+  # (issue #54): an unset vars.DOCKERHUB_IMAGE fails this job, so the image
+  # jobs are never silently skipped. Configure vars.DOCKERHUB_IMAGE,
   # vars.DOCKERHUB_USERNAME and secrets.DOCKERHUB_TOKEN.
   docker-publish-config:
     name: Configure Docker Hub Publish
@@ -953,7 +963,7 @@ jobs:
           retention-days: 1
 
   docker-publish:
-    name: Optional Docker Hub Publish
+    name: Docker Hub Publish
     needs: [docker-publish-config, docker-publish-build]
     if: needs.docker-publish-build.result == 'success'
     timeout-minutes: 30

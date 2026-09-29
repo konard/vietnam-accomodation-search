@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
 // Inspect a retained private clink shard failure without printing link data.
+// Only counts and the schema version are printed. `rewrittenLinks` counts
+// missing links whose id reappears with other values, the signature of clink
+// rewriting an imported name (#55); a dropped link leaves it at zero.
 // Usage: node experiments/inspect-failed-clink-shard.mjs PATH_TO_FAILED_SHARD
 
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-import { parseNotation, verifyExport } from '../src/link-cli-mirror.js';
+import { compareExport } from '../src/link-cli-mirror.js';
 
 if (!process.argv[2]) {
   throw new TypeError('Pass the retained failed shard directory.');
@@ -18,51 +21,20 @@ const [canonical, exported, failure] = await Promise.all([
   readFile(join(directory, 'verified.lino'), 'utf8'),
   readFile(join(directory, 'failure.json'), 'utf8').then(JSON.parse),
 ]);
-const canonicalLinks = parseNotation(canonical);
-const exportedLinks = parseNotation(exported);
-const linkKey = (link) =>
-  JSON.stringify([link.id, link.values.map(({ id }) => id)]);
-const expected = new Set(canonicalLinks.map(linkKey));
-const actual = new Set(exportedLinks.map(linkKey));
-const referenced = new Set(
-  canonicalLinks.flatMap((link) => link.values.map(({ id }) => id))
-);
-const missing = canonicalLinks.filter((link) => !actual.has(linkKey(link)));
-const unexpected = exportedLinks.filter(
-  (link) =>
-    !expected.has(linkKey(link)) &&
-    !(
-      referenced.has(link.id) &&
-      link.values.length === 2 &&
-      link.values.every(({ id }) => id === link.id)
-    )
-);
+const diagnostics = compareExport(canonical, exported);
+const schema = canonical.match(/schema:associative-records-v(\d+)/u);
 const result = {
-  canonicalLinks: canonicalLinks.length,
-  exportedLinks: exportedLinks.length,
+  ...diagnostics,
   failureCode: failure.code,
-  missingArities: missing.map((link) => link.values.length),
-  missingIdMatchesUnexpected: missing.some((link) =>
-    unexpected.some((candidate) => candidate.id === link.id)
-  ),
-  unexpectedArities: unexpected.map((link) => link.values.length),
-  unexpectedIdsReferenced: unexpected.map((link) => referenced.has(link.id)),
+  schemaVersion: schema ? Number(schema[1]) : 'not-in-shard',
+  verification:
+    diagnostics.missingLinks || diagnostics.unexpectedLinks
+      ? diagnostics.rewrittenLinks
+        ? 'name-rewritten'
+        : 'link-mismatch'
+      : 'pass',
 };
-
-try {
-  verifyExport(canonical, exported);
-  result.verification = 'pass';
-} catch (error) {
-  const counts = String(error?.message).match(
-    /^clink export verification failed \((\d+) links missing, (\d+) unexpected links\)$/u
-  );
-  result.verification = counts ? 'link-mismatch' : 'other-error';
-  if (counts) {
-    result.missingLinks = Number(counts[1]);
-    result.unexpectedLinks = Number(counts[2]);
-  } else {
-    result.errorType = error?.constructor?.name || 'Error';
-  }
+if (result.verification !== 'pass') {
   process.exitCode = 1;
 }
 

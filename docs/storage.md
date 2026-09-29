@@ -9,6 +9,22 @@ types. Raw input and future unknown fields use the same recursively addressable
 representation; they are not hidden in a single base64 JSON value. Every link
 has exactly two values so `clink` can import it.
 
+Schema v3 (`schema:associative-records-v3`) writes every name so `clink`
+imports it unchanged (#55). `clink` 0.2.10 and 0.2.11 trim every line of an
+imported document and every name, including trailing colons
+(`normalize_links_notation` and `normalize_identifier` in
+`src/lino_database_input.rs`). A value with a trailing newline or space, a
+blank or indented line, CRLF, a double space, or the empty string (whose name
+`value:string:` ends in a colon) was therefore imported as a different name.
+The export then failed verification with one missing link and two unexpected
+links. `links-notation` also writes a name containing both quote kinds with
+backslash escapes that its own parser does not read back. Schema v3
+percent-encodes (as UTF-8 `%XX`) `%`, both quotes, the backtick, the
+backslash, all whitespace except a single interior space, control characters,
+and a trailing colon. Other text, including Vietnamese and Cyrillic, stays
+readable, and `experiments/inspect-failed-clink-shard.mjs` classifies a
+retained failure as `name-rewritten` or `link-mismatch` from counts alone.
+
 The generic collection API is used for sources, offers and variants,
 identities, observations, contacts, presets, user settings, subscriptions,
 shown deliveries, Telegram update IDs, transport provenance, and persisted
@@ -40,7 +56,9 @@ and verified export to match the SHA-256 digests recorded after verification,
 so an unchanged shard is never trusted without its verified bytes. Progress is
 reported as aggregate `completed`/`reused`/`total` shard counts only. A failed
 or interrupted projection keeps its verified shards, because only activation
-prunes, so the next attempt imports only the rest.
+prunes, so the next attempt imports only the rest. A verification failure
+records only counts (canonical, exported, missing, rewritten, and unexpected
+links) in the candidate's `failure.json`, never names or values.
 
 The 10-minute `clink` deadline applies to each process, which now imports at
 most 128 links. On the reference host (6 vCPU, 11 GiB, four concurrent `clink`
@@ -75,9 +93,16 @@ updates. Failed lock acquisition is bounded and actionable.
 
 ## Migration and local installation
 
-The reader recognizes the previous opaque base64url LiNo record and the first
-associative schema. The next successful save deterministically writes schema
-v2 and creates the binary mirror without data loss. Install the supported CLI:
+The reader recognizes the previous opaque base64url LiNo record and the
+associative schemas v1, v2, and v3. With the binary mirror enabled, a read of
+text written by an earlier schema first rewrites it as schema v3 under the
+write lock, projects and verifies it, and only then replaces the text, so a v2
+collection that `clink` cannot import unchanged is still readable. Without the
+mirror, the next successful save writes schema v3. A v2 name containing both
+quote kinds was never readable as written. With the mirror enabled, `clink`
+refused that text before it was committed; without the mirror, the damaged
+value was already read back on the first load and cannot be recovered.
+Install the supported CLI:
 
 ```bash
 cargo install link-cli --version 0.2.10 --locked
