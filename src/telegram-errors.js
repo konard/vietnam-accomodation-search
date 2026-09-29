@@ -48,8 +48,12 @@ export function classifyTelegramError(error) {
       retryable: false,
     };
   }
+  // The Bot API answers a peer it cannot address (such as a user's
+  // @username) with 400 "chat not found" before anything is sent.
   if (
-    /\b(?:USERNAME_[A-Z_]*|ENTITY(?:_[A-Z_]*)?|PEER_ID_INVALID)\b/iu.test(text)
+    /\b(?:USERNAME_[A-Z_]*|ENTITY(?:_[A-Z_]*)?|PEER_ID_INVALID)\b|\b(?:chat|user) not found\b/iu.test(
+      text
+    )
   ) {
     return { category: 'entity', fatal: false, retryable: false };
   }

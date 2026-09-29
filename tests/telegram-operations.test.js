@@ -251,6 +251,47 @@ describe('Telegram capability routing', () => {
     expect(forbidden.preSend).toBe(true);
   });
 
+  it('falls back to the user client when the Bot API cannot address a username', async () => {
+    // The Bot API accepts @username only for channels and supergroups; a
+    // user's username is rejected before anything is sent.
+    const unknownChat = {
+      description: 'Bad Request: chat not found',
+      error_code: 400,
+    };
+    expect(classifyTelegramError(unknownChat).category).toBe('entity');
+    expect(
+      classifyTelegramError({
+        description: 'Bad Request: user not found',
+        error_code: 400,
+      }).category
+    ).toBe('entity');
+    expect(
+      classifyTelegramError({
+        description: 'Bad Request: message text is empty',
+        error_code: 400,
+      }).category
+    ).toBe('malformed');
+    const sends = [];
+    const router = new TelegramCapabilityRouter({
+      bot: new BotApiTelegramProvider({
+        sendMessage: async () => {
+          throw unknownChat;
+        },
+      }),
+      mode: 'both',
+      retryOptions: { sleep: async () => {} },
+      user: {
+        capabilities: new Set(['send']),
+        send: async (destination) => {
+          sends.push(destination);
+          return { id: 5 };
+        },
+      },
+    });
+    expect((await router.send('@owner_name', 'still free?')).id).toBe(5);
+    expect(sends).toEqual(['@owner_name']);
+  });
+
   it('enforces bot-only, user-only, and bot-first combined capability matrices', async () => {
     const calls = [];
     const bot = {
