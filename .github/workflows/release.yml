@@ -477,6 +477,15 @@ jobs:
                 await store.deleteOffersByMessages('image-smoke', [1]);
                 const offers = await store.listOffers();
                 if (offers.length !== 1 || offers[0]?.id !== 'keep-me') process.exitCode = 1;
+                // Values the real clink rewrote before schema v3 (#55), in
+                // more than 128 links so the collection is sharded.
+                const quotes = String.fromCharCode(39, 34);
+                const values = ['', 'a ', ' a', 'a  b', 'a\n', 'a\r\nb', 'a\n  b', 'a:', 'a\tb', '%41', 'Căn hộ ' + quotes];
+                const sensitive = values.concat(values).map((text, index) => ({ id: 'sensitive-' + index + text, [text + ' key']: text, text }));
+                await store.saveRecords('presets', sensitive);
+                const loaded = await store.loadRecords('presets');
+                const entries = (record) => JSON.stringify(Object.entries(record).sort());
+                if (loaded.length !== sensitive.length || loaded.some((record, index) => entries(record) !== entries(sensitive[index]))) process.exitCode = 1;
               } finally {
               await rm(directory, { force: true, recursive: true });
             }
