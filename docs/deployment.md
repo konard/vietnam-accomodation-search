@@ -49,7 +49,10 @@ APP_IMAGE=OWNER/IMAGE:VERSION docker compose up -d --no-build app
 
 ## Safe redeploy and operations
 
-The deployment command serializes mutations with `.deploy/operation.lock`:
+The deployment command serializes mutations with `.deploy/operation.lock` and
+keeps its record for each Compose project in `.deploy/PROJECT/state.json`, so
+a drill run with `--project-name` never replaces the production rollback
+record:
 
 ```bash
 node scripts/deploy.mjs deploy
@@ -74,8 +77,24 @@ Pass `--image OWNER/IMAGE:IMMUTABLE_TAG` to pull rather than build. A deploy
 creates a unique candidate tag, smoke-tests the CLI and `clink`, validates
 credentials without `getUpdates`, and checks the data mount while the old
 poller remains live. It then gracefully stops the old poller and starts the
-candidate. A readiness failure retags and restores the exact prior image ID,
-and the deploy exits non-zero.
+candidate. After the old service stops, the canonical state (every file in
+the data directory except the rebuildable `.binary` projection, the `media`
+cache, and lock or probe files) is copied into a private `0700` snapshot in
+`.deploy/PROJECT/snapshots/`, with a manifest of relative paths, modes, and
+SHA-256 digests only. The two newest snapshots are kept. Only then is the
+data schema marker raised to the candidate's version. A readiness failure
+stops the candidate, removes files it created, restores every snapshot file
+and verifies its digest, and restarts the exact prior image ID; the deploy
+exits non-zero.
+
+The data schema marker is version 2 from the release that writes collections
+as schema v3 (#55); an image built for version 1 would read the escaped names
+of that text literally. `rollback` therefore compares the previous image's
+recorded data schema with the directory's marker. For an older schema it
+refuses unless `--restore-snapshot` is passed, which restores the state
+captured before the last cutover and discards changes written since. A
+rollback within one data schema keeps the current data. Both require the
+same `--data-directory` as the recorded deploy.
 
 Telegram allows only one `getUpdates` consumer per bot token. Consequently,
 the short interval between old-poller stop and candidate-poller readiness is

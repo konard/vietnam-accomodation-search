@@ -156,7 +156,7 @@ describe('container runtime contract', () => {
     expect(deploy).toContain('await syncDirectory(dirname(path))');
     expect(deploy).toContain('docker image tag ${imageId} ${rollbackImage}');
     expect(deploy).toContain(
-      'Candidate readiness failed; previous image restored'
+      'Candidate readiness failed; previous image and state restored'
     );
     expect(deploy.indexOf('prepareCandidate(config)')).toBeLessThan(
       deploy.indexOf('stop -t 30 app')
@@ -318,7 +318,7 @@ describe('container runtime contract', () => {
     } catch (caught) {
       error = caught;
     }
-    expect(error.message).toContain('previous image restored');
+    expect(error.message).toContain('previous image and state restored');
     expect(calls).toEqual([
       'stop',
       'start:candidate:unique',
