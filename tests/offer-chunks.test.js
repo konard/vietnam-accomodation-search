@@ -265,6 +265,31 @@ describe('bounded offer persistence', () => {
     }
   });
 
+  it('protects offers with a recent collection time or an unknown age', async () => {
+    if (isDeno) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'offer-budget-age-'));
+    try {
+      const store = new LinksStore({ directory, maxBytes: 1 });
+      for (const offer of [
+        {
+          collectedAt: new Date().toISOString(),
+          id: 'recent-collection',
+          title: 'Recent room',
+        },
+        { id: 'unknown-age', title: 'Undated room' },
+      ]) {
+        expect(
+          (await failureOf(() => store.saveRecords('offers', [offer]))).code
+        ).toBe('offer-budget-exhausted');
+      }
+      expect(await store.listOffers()).toEqual([]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('rejects duplicate write IDs and malformed schema markers', async () => {
     if (isDeno) {
       return;

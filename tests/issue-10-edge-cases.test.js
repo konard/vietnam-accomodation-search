@@ -82,7 +82,13 @@ describe('issue 10 defensive storage paths', () => {
         maxBytes: 1,
       });
       expect(() => store.pathFor('../invalid')).toThrow();
-      await store.saveOffers([{ id: 'too-large', title: 'large' }]);
+      await store.saveOffers([
+        {
+          collectedAt: '2020-01-01T00:00:00Z',
+          id: 'too-large',
+          title: 'large',
+        },
+      ]);
       expect(await store.listOffers()).toEqual([]);
       await store.saveRecords('user-settings', [{ id: '1', enabled: true }]);
       expect(

@@ -2,22 +2,33 @@
 
 // Aggregate-only reproduction of a retained Telegram audit offer merge.
 // Never prints an offer, source, identity, journal path, or raw field.
-// Usage: node experiments/profile-private-offer-merge.mjs OFFERS_LINO JOURNAL_JSON
+// Usage: node experiments/profile-private-offer-merge.mjs OFFERS_LINO_OR_DIRECTORY JOURNAL_JSON
 
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
 
-import { deserializeOffers, serializeRecords } from '../src/links-store.js';
+import {
+  LinksStore,
+  deserializeOffers,
+  serializeRecords,
+} from '../src/links-store.js';
 import { deduplicateOffers } from '../src/offers.js';
 
 if (!process.argv[2] || !process.argv[3]) {
   throw new TypeError('Pass a private offers snapshot and source journal.');
 }
 
-const [notation, journalText] = await Promise.all([
-  readFile(process.argv[2], 'utf8'),
+const inputPath = process.argv[2];
+const [details, journalText] = await Promise.all([
+  stat(inputPath),
   readFile(process.argv[3], 'utf8'),
 ]);
-const existing = deserializeOffers(notation);
+const existing =
+  details.isDirectory() || basename(inputPath) === 'offers.lino'
+    ? await new LinksStore({
+        directory: details.isDirectory() ? inputPath : dirname(inputPath),
+      }).listOffers()
+    : deserializeOffers(await readFile(inputPath, 'utf8'));
 const incoming = JSON.parse(journalText).payload.batch.offers;
 const merged = deduplicateOffers([...existing, ...incoming]);
 

@@ -40,7 +40,9 @@ function ordered(offers) {
 
 function protectedOffer(offer, now) {
   const postedAt = Date.parse(offer.postedAt);
-  return Number.isFinite(postedAt) && postedAt >= now - TWO_MONTHS_MS;
+  const collectedAt = Date.parse(offer.collectedAt);
+  const ageAnchor = Number.isFinite(postedAt) ? postedAt : collectedAt;
+  return !Number.isFinite(ageAnchor) || ageAnchor >= now - TWO_MONTHS_MS;
 }
 
 function preparedOffers(offers, maxBytes, maxShardBytes) {
