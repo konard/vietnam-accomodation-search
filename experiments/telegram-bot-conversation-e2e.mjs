@@ -39,6 +39,14 @@ import {
   assertManualLocalRun,
   parseDotEnv,
 } from './telegram-accommodation-audit-lib.mjs';
+import {
+  CONVERSATION_MODES,
+  assertDegradedToBotOnly,
+  assertPinnedIdentity,
+  countLeftovers,
+  degradedRuntimeEnvironment,
+  requireIdentityPins,
+} from './telegram-e2e-identities.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const BOT_ENTRY = join(ROOT, 'bin', 'vietnam-accomodation-search.js');
@@ -81,8 +89,14 @@ function usage() {
     '  --user-env PATH          MTProto test-user environment file',
     '',
     'Options:',
-    '  --mode bot-only|both     Runtime capability mode (default: bot-only)',
+    '  --mode bot-only|both|degraded',
+    '                           Runtime capability mode (default: bot-only);',
+    '                           degraded configures an incomplete runtime user',
     '  --runtime-user-env PATH  Native mtcute runtime credentials for both mode',
+    '',
+    'Every run requires distinct numeric pins for the bot',
+    '(TELEGRAM_E2E_EXPECTED_BOT_ID), the driver (TELEGRAM_E2E_EXPECTED_USER_ID),',
+    'and in both mode the runtime user (TELEGRAM_EXPECTED_USER_ID).',
     '  --data-directory PATH    Empty isolated E2E state directory',
     '  --timeout-ms NUMBER      Per-operation timeout (default: 60000)',
     '  --keep-data              Preserve redacted logs and synthetic state',
@@ -136,8 +150,8 @@ export function parseConversationArguments(values) {
   ) {
     throw new RangeError('--timeout-ms must be between 5000 and 600000.');
   }
-  if (!['bot-only', 'both'].includes(options.mode)) {
-    throw new TypeError('--mode must be bot-only or both.');
+  if (!CONVERSATION_MODES.includes(options.mode)) {
+    throw new TypeError(`--mode must be ${CONVERSATION_MODES.join(', ')}.`);
   }
   if (!options.help && (!options.botEnv || !options.userEnv)) {
     throw new TypeError('--bot-env and --user-env are required.');
@@ -188,20 +202,15 @@ async function secretValue(environment, names) {
   return undefined;
 }
 
-async function botCredentials(environment) {
+async function botCredentials(environment, expectedId) {
   const token = await secretValue(environment, ['TELEGRAM_BOT_TOKEN']);
   if (!token) {
     throw new Error('The bot environment does not contain a bot token.');
   }
-  return {
-    expectedId:
-      environment.TELEGRAM_E2E_EXPECTED_BOT_ID ||
-      environment.TELEGRAM_EXPECTED_BOT_ID,
-    token,
-  };
+  return { expectedId, token };
 }
 
-async function userCredentials(environment) {
+async function userCredentials(environment, expectedId) {
   const apiId = Number(
     await secretValue(environment, [
       'TELEGRAM_API_ID',
@@ -216,25 +225,15 @@ async function userCredentials(environment) {
   if (!Number.isInteger(apiId) || apiId < 1 || !apiHash || !session) {
     throw new Error('The test-user environment is incomplete.');
   }
-  return {
-    apiHash,
-    apiId,
-    expectedId:
-      environment.TELEGRAM_E2E_EXPECTED_USER_ID ||
-      environment.TELEGRAM_EXPECTED_USER_ID,
-    session,
-  };
+  return { apiHash, apiId, expectedId, session };
 }
 
-async function nativeRuntimeCredentials(environment) {
-  const credentials = await userCredentials(environment);
+async function nativeRuntimeCredentials(environment, expectedId) {
+  const credentials = await userCredentials(environment, expectedId);
   const format =
     environment.TELEGRAM_USER_SESSION_FORMAT || 'mtcute/session-string-v1';
   if (format !== 'mtcute/session-string-v1') {
     throw new Error('Both mode requires a native mtcute runtime session.');
-  }
-  if (!credentials.expectedId) {
-    throw new Error('Both mode requires a pinned runtime user identity.');
   }
   return { ...credentials, format };
 }
@@ -254,10 +253,8 @@ async function getBotIdentity(token, expectedId) {
     throw new Error('Telegram Bot API rejected the configured bot token.');
   }
   const id = String(payload.result.id);
-  const tokenId = token.split(':', 1)[0];
-  if (id !== tokenId || (expectedId && id !== String(expectedId))) {
-    throw new Error('Telegram bot identity pin mismatch.');
-  }
+  assertPinnedIdentity('bot', token.split(':', 1)[0], id);
+  assertPinnedIdentity('bot', expectedId, id);
   if (!payload.result.username) {
     throw new Error('The configured Telegram bot has no public username.');
   }
@@ -289,13 +286,11 @@ async function connectDriver(credentials, timeoutMs) {
       deadline,
       'test-user identity check'
     );
-    const id = identity.id?.toString();
-    if (
-      !id ||
-      (credentials.expectedId && id !== String(credentials.expectedId))
-    ) {
-      throw new Error('Telegram test-user identity pin mismatch.');
-    }
+    const id = assertPinnedIdentity(
+      'test-user',
+      credentials.expectedId,
+      identity.id?.toString()
+    );
     return { client, id };
   } catch (error) {
     await withDeadline(
@@ -401,6 +396,20 @@ async function startBot({ environment, logPath, port, timeoutMs }) {
     await stopBot(instance, timeoutMs).catch(() => {});
     throw error;
   }
+}
+
+// Log chunks are appended asynchronously, so give a notice printed before
+// readiness a short bounded time to reach the file.
+async function settledLog(path, expected) {
+  let contents = '';
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    contents = await readFile(path, 'utf8');
+    if (contents.includes(expected)) {
+      break;
+    }
+    await delay(200);
+  }
+  return contents;
 }
 
 function messageText(message) {
@@ -592,10 +601,13 @@ function runtimeEnvironment({
     Object.assign(environment, {
       TELEGRAM_API_HASH: runtimeUser.apiHash,
       TELEGRAM_API_ID: String(runtimeUser.apiId),
-      TELEGRAM_EXPECTED_USER_ID: String(runtimeUser.expectedId || ''),
+      TELEGRAM_EXPECTED_USER_ID: runtimeUser.expectedId,
       TELEGRAM_USER_SESSION: runtimeUser.session,
       TELEGRAM_USER_SESSION_FORMAT: runtimeUser.format,
     });
+  }
+  if (mode === 'degraded') {
+    Object.assign(environment, degradedRuntimeEnvironment());
   }
   return environment;
 }
@@ -760,13 +772,23 @@ export async function runConversationE2E(options, environment = process.env) {
   assertConversationBoundary(environment);
   const botEnvironment = await environmentFile(options.botEnv);
   const driverEnvironment = await environmentFile(options.userEnv);
-  const botSecret = await botCredentials(botEnvironment);
+  const runtimeUserEnvironment =
+    options.mode === 'both'
+      ? await environmentFile(options.runtimeUserEnv)
+      : undefined;
+  const pins = requireIdentityPins({
+    bot: botEnvironment,
+    driver: driverEnvironment,
+    mode: options.mode,
+    runtimeUser: runtimeUserEnvironment,
+  });
+  const botSecret = await botCredentials(botEnvironment, pins.bot);
   const botIdentity = await getBotIdentity(
     botSecret.token,
     botSecret.expectedId
   );
   const driver = await connectDriver(
-    await userCredentials(driverEnvironment),
+    await userCredentials(driverEnvironment, pins.driver),
     options.timeoutMs
   );
   progress('test-user-authorized');
@@ -775,6 +797,8 @@ export async function runConversationE2E(options, environment = process.env) {
   let state;
   let scenario;
   let messagesDeleted = false;
+  let leftoverMessages;
+  let degradedToBotOnly = false;
   let staleMessagesDeleted = 0;
   let runError;
   try {
@@ -800,13 +824,18 @@ export async function runConversationE2E(options, environment = process.env) {
       messagesDeleted = true;
       return {
         cleanupOnly: true,
+        leftoverMessages: (
+          await recentMessages(driver.client, target, options.timeoutMs)
+        ).filter((message) => isE2ELeftoverMessage(messageText(message)))
+          .length,
         messagesDeleted,
         staleMessagesDeleted,
       };
     }
-    const runtimeUser = options.runtimeUserEnv
+    const runtimeUser = runtimeUserEnvironment
       ? await nativeRuntimeCredentials(
-          await environmentFile(options.runtimeUserEnv)
+          runtimeUserEnvironment,
+          pins['runtime user']
         )
       : undefined;
     dataDirectory = temporary
@@ -848,13 +877,22 @@ export async function runConversationE2E(options, environment = process.env) {
       runtimeUser,
       userId: driver.id,
     });
-    const start = (phase) =>
-      startBot({
+    const start = async (phase) => {
+      const logPath = join(dataDirectory, `bot-${phase}.redacted.log`);
+      const instance = await startBot({
         environment: childEnvironment,
-        logPath: join(dataDirectory, `bot-${phase}.redacted.log`),
+        logPath,
         port,
         timeoutMs: options.timeoutMs,
       });
+      if (options.mode === 'degraded') {
+        state.bot = instance;
+        degradedToBotOnly = assertDegradedToBotOnly(
+          await settledLog(logPath, 'continuing in bot-only mode')
+        );
+      }
+      return instance;
+    };
     scenario = await runScenario(state, marker, offerTitle, start);
     const unexpected = (await messagesAfterBoundary(state)).filter(
       (message) => !message.out && isFailureReply(messageText(message))
@@ -890,6 +928,22 @@ export async function runConversationE2E(options, environment = process.env) {
           'Failed to delete every message created by the Telegram E2E.'
         );
       }
+      try {
+        // Re-read after deletion: success means nothing newer than the
+        // boundary is still visible to the driver.
+        leftoverMessages = countLeftovers(
+          await recentMessages(state.client, state.target, state.timeoutMs),
+          state.baselineMessageId,
+          messageId
+        );
+      } catch (error) {
+        runError ||= error;
+      }
+      if (leftoverMessages) {
+        runError ||= new Error(
+          `${leftoverMessages} Telegram E2E messages remain after cleanup.`
+        );
+      }
     }
     await withDeadline(
       () => driver.client.disconnect(),
@@ -912,18 +966,18 @@ export async function runConversationE2E(options, environment = process.env) {
     botIdentityVerified: true,
     botRestarted: true,
     combinedRuntime: options.mode === 'both',
+    degradedToBotOnly,
     duplicateAfterRestart: scenario.duplicateAfterRestart,
+    identityPins: Object.keys(pins),
+    leftoverMessages,
     messagesDeleted,
+    mode: options.mode,
     persistedPreset: true,
     persistedSubscription: true,
     realTelegramConversation: true,
     staleMessagesDeleted,
     syntheticCacheUsed: true,
     testUserAuthorized: true,
-    testUserIdentityPinned: Boolean(
-      driverEnvironment.TELEGRAM_E2E_EXPECTED_USER_ID ||
-      driverEnvironment.TELEGRAM_EXPECTED_USER_ID
-    ),
   };
 }
 

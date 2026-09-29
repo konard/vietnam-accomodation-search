@@ -43,6 +43,16 @@ describe('manual Telegram bot conversation E2E boundary', () => {
         '--bot-env',
         '.env.bot',
         '--user-env',
+        '.env.driver',
+        '--mode',
+        'degraded',
+      ]).mode
+    ).toBe('degraded');
+    expect(
+      parseConversationArguments([
+        '--bot-env',
+        '.env.bot',
+        '--user-env',
         '.env.user',
         '--cleanup-leftovers-only',
       ]).cleanupOnly

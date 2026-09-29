@@ -171,11 +171,13 @@ The `PATH` prefix is intentional: another unrelated executable also uses the
 name `clink`. `clink --version` for this test must report `clink 0.2.10`, the
 same Rust `link-cli` version pinned in the production image.
 
-The bot environment needs `TELEGRAM_BOT_TOKEN` and should pin
-`TELEGRAM_EXPECTED_BOT_ID`. The driver environment needs
-`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and a legacy
-`TELEGRAM_USER_SESSION`; set `TELEGRAM_E2E_EXPECTED_USER_ID` to pin the test
-account. The harness derives the private numeric allowlist from the authorized
+The bot environment needs `TELEGRAM_BOT_TOKEN` and must pin
+`TELEGRAM_EXPECTED_BOT_ID` (or `TELEGRAM_E2E_EXPECTED_BOT_ID`). The driver
+environment needs `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, a legacy
+`TELEGRAM_USER_SESSION`, and the pin `TELEGRAM_E2E_EXPECTED_USER_ID` (or
+`TELEGRAM_EXPECTED_USER_ID`). Before any network call the harness requires a
+numeric pin for every role of the selected mode and refuses two roles that
+name the same account; error messages name the role, never the ID. The harness derives the private numeric allowlist from the authorized
 driver account, never prints message text or identities, writes only redacted
 `0600` process logs, and deletes its temporary data directory by default.
 Explicit `--data-directory` paths must be empty real directories whose final
@@ -197,10 +199,17 @@ Use `--cleanup-leftovers-only` with the same bot/user environment arguments to
 verify or remove narrowly recognized remnants without starting the bot or
 running the scenario.
 
+After deleting its messages, the runner reads the conversation again and
+fails unless nothing newer than the boundary remains; the report records
+`leftoverMessages: 0`.
+
 To verify the combined production runtime as well, add `--mode both` and
 `--runtime-user-env PATH`. That second file must contain a native
-`mtcute/session-string-v1` session and `TELEGRAM_EXPECTED_USER_ID`; the harness
-does not reinterpret the legacy driver session. Use `--help` for the complete
+`mtcute/session-string-v1` session and a `TELEGRAM_EXPECTED_USER_ID` that
+differs from the driver's; the harness does not reinterpret the legacy driver
+session. `--mode degraded` gives the bot process an incomplete runtime user
+(an API ID and hash without a session): the run passes only if the process
+reports that it continues bot-only and every bot-owned step still succeeds. Use `--help` for the complete
 option list. The runner refuses common CI environments and an explicit
 `TELEGRAM_BOT_POLLER_ACTIVE=1` safety marker, and it is deliberately excluded
 from normal test scripts.
