@@ -57,6 +57,30 @@ restores the pre-cutover state with the prior image, adds identity-pinned
 native capability and message-level cutover harnesses, and fixes the missing
 user fallback for a Bot API `chat not found`. The credentialed, private-corpus,
 and published-release runs remain owner actions.
+[The post-PR #60 live revalidation](case-studies/revalidation-2026-09-29-pr60/README.md)
+tested a protected copy of the retained private corpus. The schema-v3 fix
+passed the previous offer-shard name-rewrite mismatch, but a later source
+failed at a new 1.29-billion-character offer serialization boundary before a
+final report. The browser cohort and local image passed, while publication,
+native identity-pinned E2E, and message-level cutover remain unaccepted. PR
+#60 closed #54–#59 before those gates passed. In accordance with the operator
+request, the successor batch is [#61](https://github.com/konard/vietnam-accomodation-search/issues/61)–[#65](https://github.com/konard/vietnam-accomodation-search/issues/65);
+closed issues were not reopened.
+
+## Latest acceptance delta — 2026-09-29, post-PR #60
+
+| Requirement group                              | Latest observation                                                                                                                                                                                                                                                                                                                              | Open successor gate                                                                                                                                                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SRC-2, PARSE-1, PARSE-3, PARSE-5, LINK-1, QA-2 | The retained shard is classified as clink name rewriting and schema v3 advances past it. A protected 40-source resume then fails with `RangeError: Invalid string length` at `serializeOffers`, before budget enforcement or a final report. The pending 398-offer merge expands to about 1.295 billion individually formatted LiNo characters. | [#61](https://github.com/konard/vietnam-accomodation-search/issues/61) bounds/streams serialization without weakening typed links or verification, then completes and repeats the private corpus audit. |
+| DEP-1, REL-1                                   | Local Node 849/849 and exact local image labels/CLI/UID/`clink`/Chromium pass. Release preflight fails for absent bootstrap `NPM_TOKEN` and required Docker Hub configuration; no immutable artifact exists.                                                                                                                                    | [#62](https://github.com/konard/vietnam-accomodation-search/issues/62) publishes one cross-checked npm/GitHub/multiarch OCI release.                                                                    |
+| WEB-2                                          | A current polite candidate run passes 10/10 VI/EN/RU routes, 224 cards, 1,609/1,609 segments, zero incomplete cards or missing semantic checks.                                                                                                                                                                                                 | [#65](https://github.com/konard/vietnam-accomodation-search/issues/65) repeats the full cohort twice on the exact immutable release.                                                                    |
+| TG-1, TG-2, QA-4                               | The updated real conversation harness correctly fails closed before network use because independent numeric bot/driver pins are absent; no native mtcute runtime session was exercised.                                                                                                                                                         | [#63](https://github.com/konard/vietnam-accomodation-search/issues/63) provisions protected independent identities/session and runs all real modes and safe cleanup.                                    |
+| DEP-2, DEP-4                                   | The exact local image passes smoke, but the new message-level cutover and unhealthy-candidate drill have not run on published digests or with pinned identities.                                                                                                                                                                                | [#64](https://github.com/konard/vietnam-accomodation-search/issues/64) proves one poller, no lost/duplicate messages, restoration, and host-bind survival.                                              |
+| FINAL-1                                        | Passing candidate checks and failing private audit are documented, but no immutable target exists for a complete comparison.                                                                                                                                                                                                                    | [#65](https://github.com/konard/vietnam-accomodation-search/issues/65) performs the exact-release acceptance twice and links sanitized evidence.                                                        |
+
+The older deltas and detailed matrix below retain historical contracts and
+observations. This post-PR #60 section supersedes their candidate statuses
+where they differ; closure by PR syntax is never live acceptance evidence.
 
 ## Latest acceptance delta — 2026-09-29
 
