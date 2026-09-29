@@ -33,6 +33,7 @@ NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org}"
 DOCKER_REGISTRY="${DOCKER_REGISTRY:-https://registry-1.docker.io}"
 DOCKER_AUTH="${DOCKER_AUTH:-https://auth.docker.io}"
 CURL_TIMEOUT="${PREFLIGHT_CURL_TIMEOUT:-15}"
+OCI_POLICY_FILE="${OCI_POLICY_FILE:-.github/oci-policy.json}"
 NEWLINE=$'\n'
 
 verified=0
@@ -68,9 +69,12 @@ http() {
 }
 
 # Run package.json-relative JSON reads through node: the runtime is the one
-# dependency a JS template guarantees, and no jq is needed.
+# dependency a JS template guarantees, and no jq is needed. Further
+# arguments reach the snippet as process.argv[1...].
 node_read() {
-  node -e "$1" 2>/dev/null
+  local snippet="$1"
+  shift
+  node -e "$snippet" -- "$@" 2>/dev/null
 }
 
 check_npm() {
@@ -162,8 +166,22 @@ check_docker_hub() {
 
   printf 'Docker Hub:\n'
 
+  # Issue #54: the committed OCI policy, not the absence of a variable,
+  # decides whether a release may ship without an image.
+  local policy
+  policy=$(node_read '
+      const policy = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      const platforms = Array.isArray(policy.platforms) ? policy.platforms : [];
+      if (policy.policy !== "required" || platforms.length === 0) process.exit(1);
+      process.stdout.write(platforms.join(" and "));
+    ' "$OCI_POLICY_FILE")
+  if [ -z "$policy" ]; then
+    bad "OCI policy is missing or invalid (${OCI_POLICY_FILE}) -- only a committed required policy is supported"
+    return 0
+  fi
+
   if [ -z "$image" ]; then
-    printf '  SKIP: DOCKERHUB_IMAGE is not set -- Docker publishing is disabled (scripts/check-docker-publish.mjs)\n'
+    bad "${OCI_POLICY_FILE} requires ${policy} images, but DOCKERHUB_IMAGE is not set -- set vars.DOCKERHUB_IMAGE, vars.DOCKERHUB_USERNAME and secrets.DOCKERHUB_TOKEN"
     return 0
   fi
 

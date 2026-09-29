@@ -89,6 +89,11 @@ function immutableReleaseIdentity() {
       version: '1.0.0',
     },
     draft: false,
+    ociPolicy: {
+      platforms: ['linux/amd64', 'linux/arm64'],
+      policy: 'required',
+      registry: 'docker.io',
+    },
     package: {
       integrity: auditDigest,
       installedVersion: '1.0.0',
@@ -500,6 +505,7 @@ describe('issue 20 semantic, trace, session, and release edges', () => {
       },
       version: '6.0.0',
     };
+    contradictory.ociPolicy = { policy: 'none' };
     contradictory.schemas.releaseAudit = 1;
     const contradictoryAudit = createReleaseAudit({
       credentials: true,
@@ -521,6 +527,7 @@ describe('issue 20 semantic, trace, session, and release edges', () => {
       'tag-package-version-mismatch',
       'installed-package-version-mismatch',
       'docker-package-version-mismatch',
+      'oci-policy-not-required',
       'artifact-digest-invalid',
       'release-audit-schema-mismatch',
     ]);

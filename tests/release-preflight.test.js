@@ -169,19 +169,62 @@ describe('release-preflight probe behaviour (offline, curl stub)', () => {
 
     expect(code).toBe(1);
     expect(stdout).toContain('npm has no publish path');
-    expect(stdout).toContain('Docker publishing is disabled');
+    expect(stdout).toContain('DOCKERHUB_IMAGE is not set');
     expect(stdout).not.toContain('npm OIDC trusted publishing is available');
   });
 
   it('passes in release mode when OIDC publishing is available', async () => {
     const fixtures = makeFixtures();
     const { code, stdout } = await runPreflight(
-      { PREFLIGHT_MODE: 'release', ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL },
+      {
+        PREFLIGHT_MODE: 'release',
+        ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL,
+        DOCKERHUB_IMAGE: 'acme/widget',
+        DOCKERHUB_USERNAME: 'acme',
+        DOCKERHUB_TOKEN: 'stub',
+      },
       fixtures
     );
 
     expect(code).toBe(0);
     expect(stdout).toContain('npm OIDC trusted publishing is available');
+  });
+
+  it('refuses a release without an image while the OCI policy requires one', async () => {
+    // A skipped image job must not pass as a release.
+    const fixtures = makeFixtures();
+    const release = await runPreflight(
+      { PREFLIGHT_MODE: 'release', ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL },
+      fixtures
+    );
+
+    expect(release.code).toBe(1);
+    expect(release.stdout).toContain(
+      'FAIL: .github/oci-policy.json requires linux/amd64 and linux/arm64 images, but DOCKERHUB_IMAGE is not set'
+    );
+    expect(release.stdout).not.toContain('SKIP: DOCKERHUB_IMAGE');
+
+    const report = await runPreflight(
+      { PREFLIGHT_MODE: 'report', ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL },
+      fixtures
+    );
+    expect(report.code).toBe(0);
+    expect(report.stdout).toContain('DOCKERHUB_IMAGE is not set');
+  });
+
+  it('refuses a release when the committed OCI policy is unreadable', async () => {
+    const fixtures = makeFixtures();
+    const { code, stdout } = await runPreflight(
+      {
+        PREFLIGHT_MODE: 'release',
+        ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL,
+        OCI_POLICY_FILE: join(fixtures, 'missing-policy.json'),
+      },
+      fixtures
+    );
+
+    expect(code).toBe(1);
+    expect(stdout).toContain('OCI policy is missing or invalid');
   });
 
   it('requires a bootstrap token when OIDC cannot create the package', async () => {
@@ -196,9 +239,15 @@ describe('release-preflight probe behaviour (offline, curl stub)', () => {
   });
 
   it('does not infer package existence from an inconclusive registry response', async () => {
-    const fixtures = makeFixtures({ packageStatus: 500 });
+    const fixtures = makeFixtures({ packageStatus: 500, postStatus: 500 });
     const { code, stdout } = await runPreflight(
-      { PREFLIGHT_MODE: 'release', ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL },
+      {
+        PREFLIGHT_MODE: 'release',
+        ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_URL,
+        DOCKERHUB_IMAGE: 'acme/widget',
+        DOCKERHUB_USERNAME: 'acme',
+        DOCKERHUB_TOKEN: 'stub',
+      },
       fixtures
     );
 
@@ -319,10 +368,16 @@ describe('release-preflight probe behaviour (offline, curl stub)', () => {
 
   it('fails in release mode when it verified nothing', async () => {
     // No OIDC URL, an unknown-answering registry (500 has not said the token
-    // is broken), and Docker publishing disabled: zero verified probes.
-    const fixtures = makeFixtures({ whoamiStatus: 500 });
+    // is broken), and an unanswered Docker write probe: zero verified probes.
+    const fixtures = makeFixtures({ whoamiStatus: 500, postStatus: 500 });
     const { code, stdout } = await runPreflight(
-      { PREFLIGHT_MODE: 'release', NPM_TOKEN: 'stub-token' },
+      {
+        PREFLIGHT_MODE: 'release',
+        NPM_TOKEN: 'stub-token',
+        DOCKERHUB_IMAGE: 'acme/widget',
+        DOCKERHUB_USERNAME: 'acme',
+        DOCKERHUB_TOKEN: 'stub',
+      },
       fixtures
     );
 

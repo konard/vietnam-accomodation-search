@@ -10,6 +10,7 @@ import { DOMAIN_GRAPH_SCHEMA_VERSION } from '../src/domain-graph.js';
 import { durableWrite } from '../src/link-cli-mirror.js';
 import { RELEASE_AUDIT_SCHEMA_VERSION } from '../src/release-audit.js';
 import { TRACE_SCHEMA_VERSION } from '../src/trace.js';
+import { readOciPolicy } from './check-docker-publish.mjs';
 
 const PACKAGE_NAME = 'vietnam-accomodation-search';
 const FULL_SHA = /^[\da-f]{40}$/u;
@@ -47,7 +48,12 @@ function parseArguments(values) {
   return result;
 }
 
-export function buildDockerIdentity({ image, rawManifest, version }) {
+export function buildDockerIdentity({
+  image,
+  platforms: requiredPlatforms = readOciPolicy().platforms,
+  rawManifest,
+  version,
+}) {
   const bytes =
     typeof rawManifest === 'string'
       ? new TextEncoder().encode(rawManifest)
@@ -65,7 +71,7 @@ export function buildDockerIdentity({ image, rawManifest, version }) {
       return [key, { digest }];
     })
   );
-  for (const platform of ['linux/amd64', 'linux/arm64']) {
+  for (const platform of requiredPlatforms) {
     if (!platforms[platform]) {
       throw new Error(`Published manifest is missing ${platform}.`);
     }
@@ -85,6 +91,7 @@ export function buildReleaseIdentity({
   githubRelease,
   installedPackage,
   npmMetadata,
+  ociPolicy = readOciPolicy(),
   previousRelease,
   repository,
   runId,
@@ -122,7 +129,7 @@ export function buildReleaseIdentity({
   for (const runtime of ['node', 'bun', 'deno']) {
     required(candidate?.runtimes?.[runtime], `Tested ${runtime} version`);
   }
-  for (const platform of ['linux/amd64', 'linux/arm64']) {
+  for (const platform of ociPolicy.platforms) {
     if (!SHA256.test(docker?.platforms?.[platform]?.digest || '')) {
       throw new Error(`Docker evidence is missing ${platform}.`);
     }
@@ -163,6 +170,8 @@ export function buildReleaseIdentity({
     collectedAt: new Date().toISOString(),
     docker,
     draft: false,
+    // The committed OCI policy this identity was checked against (#54).
+    ociPolicy,
     package: {
       installedVersion: installedPackage.version,
       integrity: npmMetadata.dist.integrity,

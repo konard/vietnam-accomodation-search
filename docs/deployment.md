@@ -154,7 +154,17 @@ The existing release workflow builds on native `linux/amd64` and
 `linux/arm64` runners, publishes per-platform digests, combines immutable
 digests into `latest` and version manifests, and verifies both platforms.
 Configure repository variables `DOCKERHUB_IMAGE` and `DOCKERHUB_USERNAME` plus
-the `DOCKERHUB_TOKEN` secret to enable it. Inspect a release with:
+the `DOCKERHUB_TOKEN` secret.
+
+The accepted OCI policy is committed in `.github/oci-policy.json`: every
+release must publish both `linux/amd64` and `linux/arm64` images (issue #54).
+Release-mode preflight and the Docker configuration job therefore fail, before
+and after npm publication respectively, when `DOCKERHUB_IMAGE` is unset; a
+skipped image job is never reported as a successful release.
+`release-identity.json` records the policy it was checked against, and the
+release audit rejects an identity without a `required` policy. Shipping without
+images would need a reviewed change to that file, the identity collector, and
+the audit, not a missing variable. Inspect a release with:
 
 ```bash
 docker buildx imagetools inspect OWNER/IMAGE:VERSION
@@ -164,8 +174,8 @@ Docker builds check out the final `vVERSION` tag, not the pre-version workflow
 event SHA. After npm, the GitHub Release, and both native manifests exist, the
 workflow cross-checks their versions and digests against the exact retested
 candidate. It uploads `release-identity.json` as a retained workflow artifact
-and a GitHub Release asset. If Docker Hub publishing is not configured, no
-identity artifact is created and the post-release audit remains pending.
+and a GitHub Release asset. If Docker Hub publishing is not configured, the
+release run fails instead of producing an identity without images.
 
 ## Example application and GitHub Pages
 

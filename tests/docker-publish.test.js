@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'test-anywhere';
 import { readFileSync } from 'node:fs';
 
-import { evaluateDockerPublishConfig } from '../scripts/check-docker-publish.mjs';
+import {
+  evaluateDockerPublishConfig,
+  main,
+  readOciPolicy,
+} from '../scripts/check-docker-publish.mjs';
 
 const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf8');
 const dockerHubAction = readFileSync(
@@ -57,7 +61,7 @@ function expectOrdered(text, markers) {
   }
 }
 
-describe('optional Docker Hub publishing workflow', () => {
+describe('Docker Hub publishing workflow', () => {
   it('passes the checked-out identity to the pull request Docker build', () => {
     const buildJob = getWorkflowJob(releaseWorkflow, 'docker-build');
     expect(buildJob).toContain('id: image_identity');
@@ -215,13 +219,38 @@ describe('optional Docker Hub publishing workflow', () => {
 });
 
 describe('Docker publish configuration', () => {
-  it('keeps Docker publishing disabled until DOCKERHUB_IMAGE is configured', () => {
+  it('fails closed without DOCKERHUB_IMAGE while the OCI policy requires images', () => {
+    // A skipped image job must not pass as a release.
+    expect(readOciPolicy()).toEqual({
+      platforms: ['linux/amd64', 'linux/arm64'],
+      policy: 'required',
+      registry: 'docker.io',
+    });
     const config = evaluateDockerPublishConfig({
       env: {},
     });
 
     expect(config.enabled).toBe(false);
-    expect(config.errors).toEqual([]);
+    expect(config.errors).toEqual([
+      '.github/oci-policy.json requires linux/amd64 and linux/arm64 images, but DOCKERHUB_IMAGE is not set',
+    ]);
+    const errors = [];
+    expect(main({ env: {}, stderr: (line) => errors.push(line) })).toBe(1);
+    expect(errors).toEqual([`::error::${config.errors[0]}`]);
+  });
+
+  it('rejects a missing or unsupported OCI policy', () => {
+    const config = evaluateDockerPublishConfig({
+      env: {},
+      policyFile: 'package.json',
+    });
+
+    expect(config.errors).toEqual([
+      'OCI policy is missing or invalid (package.json) -- only a committed required policy is supported',
+    ]);
+    expect(() => readOciPolicy({ file: 'missing.json' })).toThrow(
+      'OCI policy is missing or invalid (missing.json)'
+    );
   });
 
   it('reports missing Docker Hub credentials when publishing is enabled', () => {

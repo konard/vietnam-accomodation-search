@@ -1,0 +1,6 @@
+{
+  "policy": "required",
+  "registry": "docker.io",
+  "platforms": ["linux/amd64", "linux/arm64"],
+  "decision": "https://github.com/konard/vietnam-accomodation-search/issues/54"
+}

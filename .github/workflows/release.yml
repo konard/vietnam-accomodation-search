@@ -855,8 +855,9 @@ jobs:
           gh workflow run release.yml --ref main --repo "$GITHUB_REPOSITORY" \
             -f release_mode=resume -f bump_type=patch -f "expected_sha=$version_sha"
 
-  # Optional Docker Hub publishing for packages that also ship Docker images.
-  # Set vars.DOCKERHUB_IMAGE to enable this path, then configure
+  # Docker Hub publishing required by the committed .github/oci-policy.json
+  # (issue #54): an unset vars.DOCKERHUB_IMAGE fails this job, so the image
+  # jobs are never silently skipped. Configure vars.DOCKERHUB_IMAGE,
   # vars.DOCKERHUB_USERNAME and secrets.DOCKERHUB_TOKEN.
   docker-publish-config:
     name: Configure Docker Hub Publish
@@ -962,7 +963,7 @@ jobs:
           retention-days: 1
 
   docker-publish:
-    name: Optional Docker Hub Publish
+    name: Docker Hub Publish
     needs: [docker-publish-config, docker-publish-build]
     if: needs.docker-publish-build.result == 'success'
     timeout-minutes: 30
