@@ -75,7 +75,10 @@ describe('deployment state snapshots (#57)', () => {
         'offers.lino',
       ]);
       expect(JSON.stringify(manifest)).not.toContain('v2 offers');
-      expect((await lstat(snapshot)).mode & 0o777).toBe(0o700);
+      // Windows has no POSIX permission bits.
+      if (process.platform !== 'win32') {
+        expect((await lstat(snapshot)).mode & 0o777).toBe(0o700);
+      }
 
       // The candidate migrates, adds a collection, and bumps the marker.
       await writeFile(join(data, 'offers.lino'), 'v3 offers\n');
@@ -91,7 +94,11 @@ describe('deployment state snapshots (#57)', () => {
       expect(await readFile(join(data, 'nested', 'cursor.lino'), 'utf8')).toBe(
         'cursor 1\n'
       );
-      expect((await lstat(join(data, 'offers.lino'))).mode & 0o777).toBe(0o600);
+      if (process.platform !== 'win32') {
+        expect((await lstat(join(data, 'offers.lino'))).mode & 0o777).toBe(
+          0o600
+        );
+      }
       expect((await readdir(data)).includes('presets.lino')).toBe(false);
       expect(await readDataSchemaVersion(data)).toBe(DATA_SCHEMA_VERSION);
       // The projection and cache are left for the rebuild and eviction.

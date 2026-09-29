@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'test-anywhere';
 
@@ -47,7 +47,7 @@ const required = [
 describe('deploy cutover drill (#57)', () => {
   it('runs only against an isolated drill project and data directory', () => {
     const options = parseDrillArguments(required, { cwd: '/srv' });
-    expect(options.dataDirectory).toBe('/srv/drill-data');
+    expect(options.dataDirectory).toBe(resolve('/srv', 'drill-data'));
     expect(options.transitions).toEqual(DEFAULT_TRANSITIONS);
     expect(DEFAULT_TRANSITIONS.includes('docker-restart')).toBe(false);
     expect(options.healthPort).toBe(18_080);
