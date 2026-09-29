@@ -213,3 +213,40 @@ reports that it continues bot-only and every bot-owned step still succeeds. Use 
 option list. The runner refuses common CI environments and an explicit
 `TELEGRAM_BOT_POLLER_ACTIVE=1` safety marker, and it is deliberately excluded
 from normal test scripts.
+
+## Manual native capability E2E
+
+`experiments/telegram-capability-e2e.mjs` checks the capability router
+itself against real Telegram with a native mtcute runtime session (issue #56).
+It is local-only: it refuses CI and needs `TELEGRAM_CAPABILITY_E2E=1`.
+
+```bash
+TELEGRAM_CAPABILITY_E2E=1 node experiments/telegram-capability-e2e.mjs \
+  --bot-env /secure/bot.env --user-env /secure/runtime-user.env \
+  --driver-env /secure/driver.env --source @public_channel
+```
+
+`--user-env` must declare
+`TELEGRAM_USER_SESSION_FORMAT=mtcute/session-string-v1`; any other session
+is refused, never converted. Create it with `telegram auth login`. The bot,
+runtime user, and driver each need a distinct numeric identity pin, checked
+before any send. The driver needs a public username and must have started the
+bot. `--source` is a public channel with recent media.
+
+| Scenario         | Must pass                                                                                               | Must fail closed           |
+| ---------------- | ------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `user-only`      | identity, entity, popularity, membership, history, media, live updates, send, availability              | —                          |
+| `combined`       | the same, plus a restart that reuses a persisted idempotency key                                        | —                          |
+| `degraded`       | Bot API identity, entity, popularity, send (the user session is withheld)                               | history, live updates      |
+| `fallback`       | a send to the driver's `@username`, which the Bot API rejects as `chat not found` and the user delivers | —                          |
+| `ambiguous-send` | —                                                                                                       | a send whose reply is lost |
+
+Every provider call is recorded as `transport:outcome`. A run fails when a
+user-only run touches the bot; a capability the bot has reaches the user
+without an earlier `blocked`, `capability`, or `entity` bot failure; an
+ambiguous send is retried or rerouted; a test message arrives other than
+exactly one time; a client is not destroyed; or a message remains after
+cleanup. The only injected fault is the lost reply in `ambiguous-send`, raised
+after a real send; every other fallback is a real Bot API limit. On failure, a
+redacted `0600` transcript goes to `experiments/logs/` before cleanup. The
+report holds transports, categories, and counts only.
