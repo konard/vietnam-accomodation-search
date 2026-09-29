@@ -31,6 +31,21 @@ shown deliveries, Telegram update IDs, transport provenance, and persisted
 send outcomes. `queryRecords` locates field relationships in links before
 materializing matching records.
 
+Large offer collections use `offers.index.json` as an atomic commit pointer to
+content-addressed canonical `offers.chunks/HASH/offers.lino` files. Each file
+still uses typed schema-v3 LiNo. A chunk is limited to 16 MiB by default;
+the collection is partitioned by offer-id hash before any combined formatting.
+The byte budget is checked from individually formatted offers in one pass.
+Offers posted within the rolling two-month window are never evicted: an
+insufficient budget fails the write and leaves the prior index active. Older
+offers are evicted from oldest to newest, with ID as the tie-breaker. Search
+state, update cursors, subscriptions, and delivery cursors are separate
+collections and are never included in offer eviction. Small collections keep
+the existing `offers.lino` layout. The first large write stages and verifies
+all chunks, then atomically activates the index; any interrupted staging
+leaves the older file or index authoritative. An old `offers.lino` is retained
+as a migration backup after index activation but is no longer current.
+
 ## Binary projection and commit protocol
 
 Each canonical text snapshot has a SHA-256 content hash. `LinkCliMirror`
@@ -86,6 +101,18 @@ after the text rename but before pointer activation leaves a complete text
 snapshot that is repaired on restart. `clink` performs its import against a
 new database, so a partial database is never made current.
 
+For indexed offers, each chunk has its own verified binary projection.
+Readers compare the chunk's SHA-256, byte length, and record count with the
+index, then check or repair that chunk's binary projection. Duplicate index
+entries and duplicate offer IDs fail closed. An interrupted write cannot
+expose some new chunks and some old chunks because the index is written last.
+The data schema marker advances to version 3 before index activation, so an
+older image cannot silently read the stale legacy file after an indexed write.
+Generic record reads, queries, replacements, and updates for `offers` also
+resolve through the active index. Deploy snapshots include the index and
+canonical chunks, while excluding each chunk's rebuildable `.binary` cache;
+the cutover drill fingerprints decoded offers from the active index.
+
 In-process writes share a promise queue. Separate processes coordinate through
 `.write.lock/owner.json`; a dead owner PID is recovered, while a live owner is
 never stolen. Offer merge/read/write occurs under this lock, preventing lost
@@ -115,11 +142,12 @@ they are never silently treated as a successful write.
 
 ## Budget, backup, corruption, and compaction
 
-The 10 GiB budget counts every file below the data directory: canonical text,
-binary and recovery metadata, offer state, and media. Oldest media blobs are
-evicted first. Offer `photos` URLs remain intact; only local `cachedPhotos`
-entries are removed. If durable state alone exceeds the budget, it is retained
-rather than corrupted, and operators must archive/compact it.
+The default offer ceiling is 10 GiB of canonical LiNo. The media cache has a
+separate 10 GiB ceiling and evicts its oldest blobs first. Offer `photos` URLs
+remain intact; only local `cachedPhotos` entries are removed. Provision space
+for canonical text, binary projections, recovery metadata, and media together.
+If protected durable state cannot fit its configured ceiling, the write fails
+without replacing the current snapshot; operators must expand or compact it.
 
 For a consistent point-in-time backup, stop the writer and archive the entire
 host data root as described in [deployment](deployment.md). To restore, extract
@@ -127,6 +155,12 @@ into an empty stopped `0700` directory. On first read, content hashes and verifi
 `clink` export repair the binary projection. Corrupt canonical text is not
 guessed around: restore the last archive, retain the damaged file for
 forensics, and run the test/query preflight before restart.
+
+The offer collection also has its own configured byte ceiling. Its conservative
+preflight sum includes one schema header per offer, so it can reject a tight
+budget before a formatted shard would exceed it. Indexed chunks are bounded
+individually; `experiments/measure-offer-serialization.mjs` measures time,
+peak process RSS, expansion, and shard sizes using synthetic records.
 
 Compaction is snapshot based: successful writes replace old logical records,
 binary activation prunes non-current candidates and shards (keeping only the

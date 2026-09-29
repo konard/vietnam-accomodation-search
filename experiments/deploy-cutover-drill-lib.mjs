@@ -250,6 +250,24 @@ async function countFiles(directory) {
   return count;
 }
 
+async function countOfferProjectionFiles(dataDirectory) {
+  const root = join(dataDirectory, 'offers.chunks');
+  let names;
+  try {
+    names = await readdir(root);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return 0;
+    }
+    throw error;
+  }
+  let count = 0;
+  for (const name of names) {
+    count += await countFiles(join(root, name, '.binary'));
+  }
+  return count;
+}
+
 /**
  * Digest the decoded records of every canonical collection, so a text
  * migration that preserves the records keeps the fingerprint.
@@ -257,11 +275,26 @@ async function countFiles(directory) {
 export async function stateFingerprint(dataDirectory) {
   const store = new LinksStore({ directory: dataDirectory });
   const collections = {};
-  const names = (await readdir(dataDirectory))
-    .filter((name) => name.endsWith('.lino'))
-    .sort();
+  const entries = await readdir(dataDirectory);
+  const names = entries.filter((name) => name.endsWith('.lino'));
+  if (entries.includes('offers.index.json') && !names.includes('offers.lino')) {
+    names.push('offers.lino');
+  }
+  names.sort();
   for (const name of names) {
     const kind = name.slice(0, -'.lino'.length);
+    if (kind === 'offers') {
+      const offers = await store.listOffers();
+      collections[kind] = {
+        digest: digest(
+          [...offers].sort((left, right) =>
+            String(left.id).localeCompare(String(right.id))
+          )
+        ),
+        records: offers.length,
+      };
+      continue;
+    }
     if (kind === 'search-state') {
       collections[kind] = { digest: digest(await store.loadSearchState()) };
       continue;
@@ -283,7 +316,9 @@ export async function stateFingerprint(dataDirectory) {
     };
   }
   return {
-    binaryFiles: await countFiles(join(dataDirectory, '.binary')),
+    binaryFiles:
+      (await countFiles(join(dataDirectory, '.binary'))) +
+      (await countOfferProjectionFiles(dataDirectory)),
     collections,
     dataSchema: await readDataSchemaVersion(dataDirectory),
     mediaFiles: await countFiles(join(dataDirectory, 'media')),

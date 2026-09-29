@@ -67,6 +67,23 @@ native identity-pinned E2E, and message-level cutover remain unaccepted. PR
 request, the successor batch is [#61](https://github.com/konard/vietnam-accomodation-search/issues/61)–[#65](https://github.com/konard/vietnam-accomodation-search/issues/65);
 closed issues were not reopened.
 
+[The Issue #66 acceptance ledger](case-studies/issue-66/README.md) tracks the
+successor #61–#65 batch. It records the bounded offer-chunk implementation and
+synthetic regression, and keeps the private-corpus, publication, native
+Telegram, immutable Docker, and exact-release gates open until live evidence
+exists. The deployment data schema is now version 3 to prevent old images
+from ignoring an indexed offer collection.
+
+## Latest acceptance delta — Issue #66 candidate
+
+| Requirement group                     | Current observation                                                                                                                                             | Remaining gate                                                                                                                                              |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SRC-2, PARSE-1, PARSE-3, LINK-1, QA-2 | A bounded schema-v3 offer index and chunk path passes synthetic, corruption, and interrupted-stage regressions. The private 398-offer merge has not been rerun. | [#61](https://github.com/konard/vietnam-accomodation-search/issues/61): complete and repeat the protected 40-source audit; investigate the timeout warning. |
+| DEP-1, REL-1                          | npm remains unpublished; required Docker Hub configuration and immutable artifacts are absent.                                                                  | [#62](https://github.com/konard/vietnam-accomodation-search/issues/62): owner bootstrap, trusted publishing, multiarch digests, and one release identity.   |
+| TG-1, TG-2, QA-4                      | Independent pins and native mtcute session are unavailable.                                                                                                     | [#63](https://github.com/konard/vietnam-accomodation-search/issues/63): run every live capability/conversation mode and cleanup.                            |
+| DEP-2, DEP-4                          | Message-level drill is waiting on published digests and pinned identities.                                                                                      | [#64](https://github.com/konard/vietnam-accomodation-search/issues/64): complete both architecture cutovers and restoration.                                |
+| WEB-2, FINAL-1                        | A prior candidate browser pass exists, but no exact-release double audit or complete requirement matrix.                                                        | [#65](https://github.com/konard/vietnam-accomodation-search/issues/65): perform all live gates twice where specified and commit sanitized results.          |
+
 ## Latest acceptance delta — 2026-09-29, post-PR #60
 
 | Requirement group                              | Latest observation                                                                                                                                                                                                                                                                                                                              | Open successor gate                                                                                                                                                                                     |
