@@ -129,7 +129,7 @@ describe('Links Notation store edges', () => {
       expect(await store.loadSources()).toEqual([{ id: 'one', type: 'web' }]);
       await store.saveOffers([
         {
-          collectedAt: '2026-09-21T00:00:00Z',
+          collectedAt: '2020-09-21T00:00:00Z',
           id: 'one',
           priceVnd: 1,
           sourceId: 'web',

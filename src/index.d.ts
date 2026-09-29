@@ -573,6 +573,7 @@ export declare class LinksStore {
     binaryMirror?: boolean;
     directory?: string;
     maxBytes?: number;
+    maxOfferShardBytes?: number;
     mirror?: Pick<LinkCliMirror, 'stage'> &
       Partial<Pick<LinkCliMirror, 'ensure'>>;
   });

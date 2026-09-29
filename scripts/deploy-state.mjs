@@ -24,8 +24,12 @@ const RETAINED_SNAPSHOTS = 2;
 const PROJECT_NAME = /^[a-z0-9][a-z0-9_-]*$/u;
 
 function excluded(relative) {
-  const [root] = relative.split(sep);
-  return EXCLUDED_ROOTS.has(root) || TRANSIENT.test(root);
+  const segments = relative.split(sep);
+  return (
+    EXCLUDED_ROOTS.has(segments[0]) ||
+    segments.includes('.binary') ||
+    TRANSIENT.test(segments.at(-1))
+  );
 }
 
 async function listFiles(directory, prefix = '') {

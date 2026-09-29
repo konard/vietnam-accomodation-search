@@ -8,6 +8,11 @@ import {
   durableWrite,
   parseNotation,
 } from './link-cli-mirror.js';
+import {
+  DEFAULT_OFFER_SHARD_BYTES,
+  readOfferCollection,
+  writeOfferCollection,
+} from './offer-chunks.js';
 import { deduplicateOffers, removeOfferMessageVariants } from './offers.js';
 
 function decodeJson(value) {
@@ -74,8 +79,8 @@ function normalized(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function flatten(value, path = '', output = []) {
-  output.push([path, scalar(value)]);
+function* flatten(value, path = '') {
+  yield [path, scalar(value)];
   if (value && typeof value === 'object') {
     const entries = Array.isArray(value)
       ? value.map((item, index) => [index, item])
@@ -83,10 +88,9 @@ function flatten(value, path = '', output = []) {
           left.localeCompare(right)
         );
     for (const [key, child] of entries) {
-      flatten(child, `${path}/${pointerSegment(key)}`, output);
+      yield* flatten(child, `${path}/${pointerSegment(key)}`);
     }
   }
-  return output;
 }
 
 function assignPath(root, path, value) {
@@ -152,28 +156,64 @@ function schemaHeader(kind) {
   return nameLink(kind, [nameLink(RECORDS_SCHEMA), nameLink(`kind:${kind}`)]);
 }
 
+function* recordLinks(kind, input, index) {
+  const record = normalized(input);
+  const id = record.id ?? String(index);
+  const reference = `record:${kind}:${id}`;
+  yield nameLink(reference, [nameLink(`kind:${kind}`), nameLink(scalar(id))]);
+  for (const [path, value] of flatten(record)) {
+    const field = `${reference}:field:${path || '/'}`;
+    const valueNode = `${field}:value`;
+    yield nameLink(field, [nameLink(reference), nameLink(valueNode)]);
+    yield nameLink(valueNode, [nameLink(valueNode), nameLink(value)]);
+  }
+}
+
 export function serializeRecords(kind, records) {
   if (!records.length) {
     return '';
   }
   const links = [schemaHeader(kind)];
   for (const [index, input] of records.entries()) {
-    const record = normalized(input);
-    const id = record.id ?? String(index);
-    const reference = `record:${kind}:${id}`;
-    links.push(
-      nameLink(reference, [nameLink(`kind:${kind}`), nameLink(scalar(id))])
-    );
-    for (const [path, value] of flatten(record)) {
-      const field = `${reference}:field:${path || '/'}`;
-      const valueNode = `${field}:value`;
-      links.push(
-        nameLink(field, [nameLink(reference), nameLink(valueNode)]),
-        nameLink(valueNode, [nameLink(valueNode), nameLink(value)])
-      );
+    for (const link of recordLinks(kind, input, index)) {
+      links.push(link);
     }
   }
   return formatLinks(links);
+}
+
+// Format one record link at a time so the offer limit is checked before a
+// large document or even a large link list can be materialized.
+export function serializeOfferBounded(offer, maxBytes) {
+  const lines = [];
+  let bytes = 0;
+  const append = (link) => {
+    const rawCharacters =
+      link.id.length +
+      link.values.reduce((sum, value) => sum + value.id.length, 0);
+    if (rawCharacters > maxBytes) {
+      const error = new Error(
+        'One offer exceeds the maximum canonical LiNo shard size.'
+      );
+      error.code = 'offer-shard-too-large';
+      throw error;
+    }
+    const line = formatLinks([link]);
+    bytes += Buffer.byteLength(line) + Number(lines.length > 0);
+    if (bytes > maxBytes) {
+      const error = new Error(
+        'One offer exceeds the maximum canonical LiNo shard size.'
+      );
+      error.code = 'offer-shard-too-large';
+      throw error;
+    }
+    lines.push(line);
+  };
+  append(schemaHeader('offer'));
+  for (const link of recordLinks('offer', offer, 0)) {
+    append(link);
+  }
+  return lines.join('\n');
 }
 
 // True when the text already uses the current schema. The schema header is
@@ -367,6 +407,7 @@ export class LinksStore {
     binaryMirror = false,
     directory = '.vietnam-accomodation-search',
     maxBytes = 10 * 1024 ** 3,
+    maxOfferShardBytes = DEFAULT_OFFER_SHARD_BYTES,
     mirror,
   } = {}) {
     this.directory = directory;
@@ -374,6 +415,7 @@ export class LinksStore {
     this.searchStatePath = join(directory, 'search-state.lino');
     this.sourcesPath = join(directory, 'sources.lino');
     this.maxBytes = maxBytes;
+    this.maxOfferShardBytes = maxOfferShardBytes;
     this.mirror = mirror || (binaryMirror ? new LinkCliMirror() : undefined);
     this.pending = Promise.resolve();
   }
@@ -429,12 +471,25 @@ export class LinksStore {
 
   async loadRecords(kind) {
     const collection = validKind(kind);
+    if (collection === 'offers') {
+      return this.listOffers();
+    }
     const notation = await this.#loadNotation(collection);
     return deserializeRecords(singular(collection), notation);
   }
 
   async queryRecords(kind, query) {
     const collection = validKind(kind);
+    if (collection === 'offers') {
+      const segments = query.path.split('/');
+      return (await this.listOffers()).filter((offer) => {
+        let value = offer;
+        for (const segment of segments) {
+          value = value?.[segment];
+        }
+        return value !== undefined && scalar(value) === scalar(query.value);
+      });
+    }
     return queryRecords(
       singular(collection),
       await this.#loadNotation(collection),
@@ -492,10 +547,16 @@ export class LinksStore {
       throw new TypeError('A record update function is required.');
     }
     return this.#locked(async () => {
-      const current = deserializeRecords(
-        singular(collection),
-        await readOrEmpty(this.pathFor(collection))
-      );
+      const current =
+        collection === 'offers'
+          ? await readOfferCollection({
+              directory: this.directory,
+              offersPath: this.offersPath,
+            })
+          : deserializeRecords(
+              singular(collection),
+              await readOrEmpty(this.pathFor(collection))
+            );
       const next = await update(current);
       if (!Array.isArray(next)) {
         throw new TypeError('A record update must return an array.');
@@ -506,6 +567,9 @@ export class LinksStore {
   }
 
   #saveRecords(collection, records) {
+    if (collection === 'offers') {
+      return this.#saveOffers(records);
+    }
     return this.#commit(
       collection,
       this.pathFor(collection),
@@ -513,36 +577,47 @@ export class LinksStore {
     );
   }
 
-  async listOffers() {
-    const notation = await this.#loadNotation('offers');
-    return deserializeOffers(notation);
+  listOffers() {
+    const load = () =>
+      readOfferCollection({
+        directory: this.directory,
+        mirror: this.mirror,
+        offersPath: this.offersPath,
+      });
+    return this.mirror ? this.#locked(load) : load();
+  }
+
+  #saveOffers(offers) {
+    return writeOfferCollection({
+      directory: this.directory,
+      maxBytes: this.maxBytes,
+      maxShardBytes: this.maxOfferShardBytes,
+      mirror: this.mirror,
+      offers,
+      offersPath: this.offersPath,
+    });
   }
 
   saveOffers(incoming) {
     return this.#locked(async () => {
       const offers = deduplicateOffers([
-        ...deserializeOffers(await readOrEmpty(this.offersPath)),
+        ...(await readOfferCollection({
+          directory: this.directory,
+          offersPath: this.offersPath,
+        })),
         ...incoming,
-      ]).sort(
-        (left, right) =>
-          new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
-      );
-      let notation = serializeOffers(offers);
-      while (
-        offers.length &&
-        new globalThis.TextEncoder().encode(notation).length > this.maxBytes
-      ) {
-        offers.pop();
-        notation = serializeOffers(offers);
-      }
-      await this.#commit('offers', this.offersPath, notation);
+      ]);
+      await this.#saveOffers(offers);
     });
   }
 
   deleteOffersByMessages(sourceId, messageIds) {
     const identifiers = new Set(messageIds.map(String));
     return this.#locked(async () => {
-      const offers = deserializeOffers(await readOrEmpty(this.offersPath));
+      const offers = await readOfferCollection({
+        directory: this.directory,
+        offersPath: this.offersPath,
+      });
       let changed = false;
       const remaining = offers
         .map((offer) => {
@@ -558,7 +633,7 @@ export class LinksStore {
       if (!changed) {
         return;
       }
-      await this.#commit('offers', this.offersPath, serializeOffers(remaining));
+      await this.#saveOffers(remaining);
     });
   }
 

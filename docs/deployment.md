@@ -87,9 +87,10 @@ stops the candidate, removes files it created, restores every snapshot file
 and verifies its digest, and restarts the exact prior image ID; the deploy
 exits non-zero.
 
-The data schema marker is version 2 from the release that writes collections
-as schema v3 (#55); an image built for version 1 would read the escaped names
-of that text literally. `rollback` therefore compares the previous image's
+The data schema marker is version 3 from the release that writes large offer
+collections through an atomic chunk index (#61). An older image would ignore
+the index and read stale `offers.lino` data. The previous version 2 marker
+introduced escaped schema-v3 collection names (#55). `rollback` therefore compares the previous image's
 recorded data schema with the directory's marker. For an older schema it
 refuses unless `--restore-snapshot` is passed, which restores the state
 captured before the last cutover and discards changes written since. A

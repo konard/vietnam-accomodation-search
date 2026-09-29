@@ -237,7 +237,7 @@ describe('deploy cutover drill (#57)', () => {
       expect(before.collections.presets.records).toBe(2);
       expect(before.mediaFiles).toBe(1);
       expect(before.binaryFiles).toBe(0);
-      expect(before.dataSchema).toBe(2);
+      expect(before.dataSchema).toBe(3);
       expect(Object.keys(before.collections)).toEqual([
         'journal',
         'presets',

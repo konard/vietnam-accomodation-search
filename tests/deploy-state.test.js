@@ -135,7 +135,7 @@ describe('deployment state snapshots (#57)', () => {
       const empty = join(root, 'empty');
       expect(await readDataSchemaVersion(root)).toBe(0);
       await validateDataDirectory(empty);
-      expect(await readDataSchemaVersion(empty)).toBe(2);
+      expect(await readDataSchemaVersion(empty)).toBe(3);
       const legacy = join(root, 'legacy');
       await mkdir(legacy, { mode: 0o700 });
       await writeFile(join(legacy, 'offers.lino'), 'v2\n');

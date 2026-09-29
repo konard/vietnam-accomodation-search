@@ -12,11 +12,10 @@ import {
 import { homedir } from 'node:os';
 import { dirname, join, parse, resolve, sep } from 'node:path';
 
+import { DATA_SCHEMA_VERSION } from '../src/data-schema.js';
 import { syncDirectory } from '../src/link-cli-mirror.js';
 
-// Version 2: canonical collections are written as schema v3 (#55), whose
-// escaped names an image built for version 1 would read back unescaped.
-export const DATA_SCHEMA_VERSION = 2;
+export { DATA_SCHEMA_VERSION };
 export const SCHEMA_FILE = '.state-schema.json';
 const SENSITIVE_SEGMENTS = new Set([
   '.aws',
@@ -81,7 +80,7 @@ async function validateSchema(directory) {
     if (error.code !== 'ENOENT') {
       throw new Error(`Data schema marker is unreadable: ${error.message}`);
     }
-    // Unmarked existing data predates the marker and therefore version 2.
+    // Unmarked existing data predates the marker and uses schema version 1.
     const existing = (await readdir(directory)).some(
       (name) => !name.startsWith('.write-probe-')
     );
