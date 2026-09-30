@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 import { Api, TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
+import { runClink } from '../src/link-cli-mirror.js';
 
 import {
   GRAMJS_SESSION_FORMAT,
@@ -739,10 +740,14 @@ export async function runAudit(options) {
     binaryMirror: false,
     directory: join(options.stateDirectory, 'checkpoints'),
   });
+  const measurePhase =
+    options.measurePhase || ((_event, operation) => operation());
   const auditStore = new LinksStore({
     binaryMirror: true,
     directory: join(options.stateDirectory, 'typed-results'),
     mirror: new LinkCliMirror({
+      run: (...args) =>
+        measurePhase({ phase: 'projection' }, () => runClink(...args)),
       onProgress: (event) => process.stderr.write(`${JSON.stringify(event)}\n`),
     }),
   });
@@ -840,14 +845,18 @@ export async function runAudit(options) {
       if (!source.public) {
         privateIndex += 1;
       }
-      const result = await auditSource(
-        client,
-        source,
-        options,
-        report,
-        privateIndex,
-        checkpointStore,
-        auditStore
+      const result = await measurePhase(
+        { phase: 'source', ordinal: audits.length + 1 },
+        () =>
+          auditSource(
+            client,
+            source,
+            options,
+            report,
+            privateIndex,
+            checkpointStore,
+            auditStore
+          )
       );
       audits.push(result.audit);
       domainRecords.push(...result.domainRecords);
