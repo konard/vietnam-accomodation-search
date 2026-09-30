@@ -273,6 +273,10 @@ export function publicSourceRecord(entity, discoveredBy = []) {
   };
 }
 
+export function selectPublicAuditSources(sources, maximum) {
+  return sources.filter((source) => source.public).slice(0, maximum);
+}
+
 export function sourceScore(source) {
   const identity = `${source.title} ${source.username}`;
   return (
