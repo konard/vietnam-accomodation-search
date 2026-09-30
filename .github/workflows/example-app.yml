@@ -10,6 +10,7 @@ on:
       - 'package-lock.json'
       - 'scripts/update-preview-images.mjs'
       - 'scripts/pages-policy.mjs'
+      - 'experiments/issue75-desktop-smoke.mjs'
       - '.github/workflows/example-app.yml'
   push:
     branches:
@@ -21,6 +22,7 @@ on:
       - 'package-lock.json'
       - 'scripts/update-preview-images.mjs'
       - 'scripts/pages-policy.mjs'
+      - 'experiments/issue75-desktop-smoke.mjs'
       - '.github/workflows/example-app.yml'
   workflow_dispatch:
 
@@ -182,6 +184,19 @@ jobs:
           exit 1
         env:
           VITE_REPOSITORY_URL: https://github.com/${{ github.repository }}
+
+      - name: Smoke packaged Linux app with Chromium sandbox enabled
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          npm ci --no-audit --no-fund
+          sudo chown root:root examples/universal-app/out/linux-unpacked/chrome-sandbox &
+          helper_owner_pid=$!
+          wait "$helper_owner_pid"
+          sudo chmod 4755 examples/universal-app/out/linux-unpacked/chrome-sandbox &
+          helper_mode_pid=$!
+          wait "$helper_mode_pid"
+          xvfb-run -a node experiments/issue75-desktop-smoke.mjs
 
       - name: Upload desktop package
         uses: actions/upload-artifact@v7
