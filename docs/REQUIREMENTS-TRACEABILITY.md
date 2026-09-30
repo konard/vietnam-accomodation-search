@@ -88,7 +88,14 @@ advisory and three high plus one moderate advisory in the desktop example;
 the shipped root runtime dependency audit was clear. Four high-severity
 Electron Dependabot alerts remain open for the example's pinned `43.4.0`.
 PR #67 auto-closed #61–#66 despite its own pending-gate ledger; new successor
-issues, not reopened historical issues, track the current blockers.
+issues, not reopened historical issues, track the current blockers:
+[#68 offer order and mandatory real-clink CI](https://github.com/konard/vietnam-accomodation-search/issues/68),
+[#69 bounded complete Telegram audit](https://github.com/konard/vietnam-accomodation-search/issues/69),
+[#70 immutable publication](https://github.com/konard/vietnam-accomodation-search/issues/70),
+[#71 native Telegram E2E](https://github.com/konard/vietnam-accomodation-search/issues/71),
+[#72 message-level Docker cutover](https://github.com/konard/vietnam-accomodation-search/issues/72),
+[#73 exact-release acceptance](https://github.com/konard/vietnam-accomodation-search/issues/73),
+and [#74 dependency advisories](https://github.com/konard/vietnam-accomodation-search/issues/74).
 
 ## Latest acceptance delta — Issue #66 candidate
 

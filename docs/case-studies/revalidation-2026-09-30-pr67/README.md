@@ -22,6 +22,18 @@ The production Dockerfile built locally for this exact commit and version `0.12.
 
 The live conversation harness failed closed before network because no independent numeric bot identity pin is provided in the protected bot environment. The driver and native runtime-user identity/session gates are also unaccepted; no test message was sent or left behind by this attempt. The previously exposed bot credential still needs rotation before production.
 
+## New open issue map
+
+| Issue                                                                  | Required result                                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [#68](https://github.com/konard/vietnam-accomodation-search/issues/68) | Reconcile indexed-offer ordering and require real-clink regression in CI.                        |
+| [#69](https://github.com/konard/vietnam-accomodation-search/issues/69) | Bound the private audit's resource use, fix the timer, and complete/repeat the 40-source corpus. |
+| [#70](https://github.com/konard/vietnam-accomodation-search/issues/70) | Publish one verifiable npm/Git/dual-architecture OCI release identity.                           |
+| [#71](https://github.com/konard/vietnam-accomodation-search/issues/71) | Finish pinned native Telegram bot/user/both/degraded live E2E and cleanup.                       |
+| [#72](https://github.com/konard/vietnam-accomodation-search/issues/72) | Prove message-level immutable cutover/rollback and host-bind recovery.                           |
+| [#73](https://github.com/konard/vietnam-accomodation-search/issues/73) | Pass the twice-run exact-release acceptance matrix.                                              |
+| [#74](https://github.com/konard/vietnam-accomodation-search/issues/74) | Clear high-severity development/desktop dependency advisories.                                   |
+
 ## Acceptance verdict
 
 **Not production ready.** The candidate browser pass, focused storage regressions, local image, and synthetic host-bind check are positive evidence. The real-`clink` full-suite failure, unfinished private 40-source proof and timeout warning, unresolved development/desktop dependency advisories, missing credentialed native Telegram matrix, absent published release artifacts, and unrun message-level immutable cutover remain blockers. A green CI job or auto-closed issue is not a substitute for those gates.
