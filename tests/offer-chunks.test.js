@@ -206,6 +206,12 @@ describe('bounded offer persistence', () => {
       );
       await writeFile(path, `${JSON.stringify({ ...index, count: 31 })}\n`);
       expect((await failureOf(() => store.listOffers())).message).toBe(
+        'Invalid canonical offer index.'
+      );
+      const legacyWrongCount = { ...index, count: 31 };
+      delete legacyWrongCount.order;
+      await writeFile(path, JSON.stringify(legacyWrongCount));
+      expect((await failureOf(() => store.listOffers())).message).toBe(
         'Canonical offer totals do not match the index.'
       );
       const duplicates = [
