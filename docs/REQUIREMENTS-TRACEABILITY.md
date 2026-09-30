@@ -74,6 +74,18 @@ Telegram, immutable Docker, and exact-release gates open until live evidence
 exists. The deployment data schema is now version 3 to prevent old images
 from ignoring an indexed offer collection.
 
+[The 2026-09-30 post-PR #67 revalidation](case-studies/revalidation-2026-09-30-pr67/README.md)
+supersedes the Issue #66 candidate-only status. The bounded-offer focused suite
+passes, and a new local Docker image preserves synthetic data after container
+removal. The current polite browser cohort passes 10/10 routes and accounts for
+all 1,617 observed segments. However, the full suite with the real `clink`
+binary fails an indexed-offer order regression (860/861 tests), the protected
+40-source Telegram audit is not yet complete and emits a negative-timeout
+warning, Release Preflight still fails two missing credential groups, and the
+native Telegram and immutable message-level cutover gates remain unaccepted.
+PR #67 auto-closed #61–#66 despite its own pending-gate ledger; new successor
+issues, not reopened historical issues, track the current blockers.
+
 ## Latest acceptance delta — Issue #66 candidate
 
 | Requirement group                     | Current observation                                                                                                                                             | Remaining gate                                                                                                                                              |

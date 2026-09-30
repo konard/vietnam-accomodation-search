@@ -1,0 +1,25 @@
+# Post-PR #67 candidate revalidation — 2026-09-30
+
+## Scope and privacy
+
+This pass checked main commit [`b9d0ef1`](https://github.com/konard/vietnam-accomodation-search/commit/b9d0ef1b9fb89d39c2b036b4979ac6decbdeba24), after PR [#67](https://github.com/konard/vietnam-accomodation-search/pull/67) closed #61–#66 even though its description and [Issue #66 ledger](../issue-66/README.md) explicitly leave the live acceptance gates open. Per the operator's instruction, closed issues were not reopened. Real Telegram state was copied into an ignored mode-`0700` directory; raw posts, source identities, credentials, sessions, browser traces, and diagnostics stay out of Git. The two manual browser/Telegram runs were initiated separately. No Telegram message was created by the identity-preflight attempt.
+
+## Deterministic and release gates
+
+With Node 24.18.0 and the real Rust `clink` 0.2.10 on `PATH`, the local full suite passed **860/861** tests. The failure is a newly observable indexed-offer order regression in [`tests/clink-name-encoding.test.js`](../../../tests/clink-name-encoding.test.js): after `saveRecords('offers', records)`, `loadRecords('offers')` differs from insertion order. The safe, synthetic [`experiments/diagnose-offer-order.mjs`](../../../experiments/diagnose-offer-order.mjs) reduces this to 60 records: the first mismatch is at index 2, with `offer-10` returned where `offer-2` was saved. The new focused chunk suite passes **12/12**; `npm run check` passes. CI's Node job passed because the real-`clink` test is conditional on that executable being present; its success does not override this local failure.
+
+[Checks and release run 36616766112](https://github.com/konard/vietnam-accomodation-search/actions/runs/36616766112) is red at Release Preflight. It reports that the unpublished npm package needs bootstrap `NPM_TOKEN`, and the required `linux/amd64`/`linux/arm64` OCI policy needs `DOCKERHUB_IMAGE`, `DOCKERHUB_USERNAME`, and `DOCKERHUB_TOKEN`. There is still no GitHub release or tag, so no immutable npm/OCI identity can be accepted.
+
+## Live-source and Docker checks
+
+The polite Browser Commander audit passed **10/10** committed Vietnamese, English, and Russian routes: **224 cards**, **1,617/1,617 consumed segments**, zero incomplete cards, and zero missing semantic checks. Mode-`0600` traces and persisted per-domain pacing remain local. This is a single candidate pass, not the required twice-run audit of a published immutable release or a claim to parse every future page.
+
+The retained Telegram audit was resumed from a protected copy with the new bounded-offer code and exact binary projection. Its safe progress probe found **two source checkpoints, only one complete**, and no active indexed-offer collection. The protected copy grew from about **421 MiB to 2.3 GiB** while repeatedly projecting shards; the run was stopped intentionally before the host's free space fell below about **7.4 GiB**. The copied journal/state remain intact for continuation. Thus it has **not** proved the previous 398-offer failure fixed, reached a complete 40-source/two-month report, or produced repeat/cache proof. It also reproduced a `TimeoutNegativeWarning`. The negative timer needs a redacted stack/timing investigation; an apparent continuation alone does not establish safe pacing. [`experiments/summarize-private-audit-state.mjs`](../../../experiments/summarize-private-audit-state.mjs) prints only aggregate progress.
+
+The production Dockerfile built locally for this exact commit and version `0.12.3`. The image has matching OCI labels, runs as `node`, includes `clink 0.2.10`, and answers the CLI version command. The synthetic [`experiments/docker-bind-persistence-smoke.sh`](../../../experiments/docker-bind-persistence-smoke.sh) wrote one canonical offer from a short-lived container, removed that container, and read the offer from a second container through the same isolated host bind. This proves basic local persistence, not a real message-level handoff, failed-candidate rollback, Docker-daemon restart, or multi-architecture published digest.
+
+The live conversation harness failed closed before network because no independent numeric bot identity pin is provided in the protected bot environment. The driver and native runtime-user identity/session gates are also unaccepted; no test message was sent or left behind by this attempt. The previously exposed bot credential still needs rotation before production.
+
+## Acceptance verdict
+
+**Not production ready.** The candidate browser pass, focused storage regressions, local image, and synthetic host-bind check are positive evidence. The real-`clink` full-suite failure, unfinished private 40-source proof and timeout warning, missing credentialed native Telegram matrix, absent published release artifacts, and unrun message-level immutable cutover remain blockers. A green CI job or auto-closed issue is not a substitute for those gates.
