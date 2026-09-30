@@ -10,6 +10,8 @@ With Node 24.18.0 and the real Rust `clink` 0.2.10 on `PATH`, the local full sui
 
 [Checks and release run 36616766112](https://github.com/konard/vietnam-accomodation-search/actions/runs/36616766112) is red at Release Preflight. It reports that the unpublished npm package needs bootstrap `NPM_TOKEN`, and the required `linux/amd64`/`linux/arm64` OCI policy needs `DOCKERHUB_IMAGE`, `DOCKERHUB_USERNAME`, and `DOCKERHUB_TOKEN`. There is still no GitHub release or tag, so no immutable npm/OCI identity can be accepted.
 
+The widened dependency check found **zero shipped root-runtime advisories** with `npm audit --omit=dev`. Full root `npm audit` reports one high-severity development dependency (`brace-expansion`); the universal-app example reports three high (`electron`, `brace-expansion`, `undici`) and one moderate (`fast-uri`). Separately, GitHub Dependabot lists four open high-severity Electron alerts. The example lock pins Electron `43.4.0`; the newest of those [Electron advisories](https://github.com/advisories/GHSA-qmv3-fv6v-rmhq) says the 43.x fix is `43.5.0`. These are not evidence that the container runtime is vulnerable, but the desktop/example release surface cannot be called clean. The main security workflow's success did not close those alerts.
+
 ## Live-source and Docker checks
 
 The polite Browser Commander audit passed **10/10** committed Vietnamese, English, and Russian routes: **224 cards**, **1,617/1,617 consumed segments**, zero incomplete cards, and zero missing semantic checks. Mode-`0600` traces and persisted per-domain pacing remain local. This is a single candidate pass, not the required twice-run audit of a published immutable release or a claim to parse every future page.
@@ -22,4 +24,4 @@ The live conversation harness failed closed before network because no independen
 
 ## Acceptance verdict
 
-**Not production ready.** The candidate browser pass, focused storage regressions, local image, and synthetic host-bind check are positive evidence. The real-`clink` full-suite failure, unfinished private 40-source proof and timeout warning, missing credentialed native Telegram matrix, absent published release artifacts, and unrun message-level immutable cutover remain blockers. A green CI job or auto-closed issue is not a substitute for those gates.
+**Not production ready.** The candidate browser pass, focused storage regressions, local image, and synthetic host-bind check are positive evidence. The real-`clink` full-suite failure, unfinished private 40-source proof and timeout warning, unresolved development/desktop dependency advisories, missing credentialed native Telegram matrix, absent published release artifacts, and unrun message-level immutable cutover remain blockers. A green CI job or auto-closed issue is not a substitute for those gates.

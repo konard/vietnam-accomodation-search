@@ -83,6 +83,10 @@ binary fails an indexed-offer order regression (860/861 tests), the protected
 40-source Telegram audit is not yet complete and emits a negative-timeout
 warning, Release Preflight still fails two missing credential groups, and the
 native Telegram and immutable message-level cutover gates remain unaccepted.
+The expanded dependency audit also found one high-severity root development
+advisory and three high plus one moderate advisory in the desktop example;
+the shipped root runtime dependency audit was clear. Four high-severity
+Electron Dependabot alerts remain open for the example's pinned `43.4.0`.
 PR #67 auto-closed #61–#66 despite its own pending-gate ledger; new successor
 issues, not reopened historical issues, track the current blockers.
 
