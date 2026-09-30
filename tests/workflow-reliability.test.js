@@ -478,6 +478,7 @@ describe('manual release quality gates', () => {
     releaseMode,
     lintResult = 'success',
     testResult = 'success',
+    clinkResult = 'success',
     cancelled = false,
   }) {
     const context = createTestJobContext({
@@ -489,6 +490,7 @@ describe('manual release quality gates', () => {
     context.cancelled = cancelled;
     context.needs.lint.result = lintResult;
     context.needs.test = { result: testResult };
+    context.needs['real-clink'] = { result: clinkResult };
     return context;
   }
 
@@ -506,7 +508,7 @@ describe('manual release quality gates', () => {
       true
     );
     expect(instantReleaseJob).toContain(
-      '    needs: [lint, test, release-preflight]'
+      '    needs: [lint, test, real-clink, release-preflight]'
     );
     expect(
       evaluateWorkflowIf(getMultilineIfExpression(instantReleaseJob), context)
@@ -537,6 +539,23 @@ describe('manual release quality gates', () => {
         })
       )
     ).toBe(false);
+  });
+
+  it('blocks both publication paths after real-clink fails or is skipped', () => {
+    const workflow = readWorkflow('.github/workflows/release.yml');
+    for (const jobName of ['release', 'instant-release']) {
+      const condition = getMultilineIfExpression(
+        getJobBlock(workflow, jobName)
+      );
+      for (const clinkResult of ['failure', 'skipped', 'cancelled']) {
+        expect(
+          evaluateWorkflowIf(
+            condition,
+            getManualReleaseContext({ releaseMode: 'resume', clinkResult })
+          )
+        ).toBe(false);
+      }
+    }
   });
 
   it('waits for successful lint before creating a manual changeset PR', () => {

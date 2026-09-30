@@ -378,6 +378,42 @@ jobs:
         shell: bash
         run: bash scripts/run-with-budget-warning.sh 100 "Deno test suite" deno test --allow-read
 
+  # This gate runs independently of change detection, including resume-release
+  # dispatches. A missing or different binary is a failure, never a skip.
+  real-clink:
+    name: Required real clink 0.2.10 integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}-real-clink
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+
+      - name: Install locked production clink
+        run: |
+          bash scripts/run-with-budget-warning.sh 420 "Build pinned clink" cargo install link-cli --version 0.2.10 --locked --root "$RUNNER_TEMP/clink"
+          echo "$RUNNER_TEMP/clink/bin" >> "$GITHUB_PATH"
+
+      - name: Install exact npm dependency graph
+        run: npm ci
+
+      - name: Run complete suite with mandatory real clink
+        env:
+          REQUIRE_REAL_CLINK: '1'
+        run: bash scripts/run-with-budget-warning.sh 300 "Real clink Node suite" npm test
+
+      - name: Verify complete product coverage with real clink
+        env:
+          REQUIRE_REAL_CLINK: '1'
+        run: bash scripts/run-with-budget-warning.sh 300 "Real clink coverage suite" npm run test:coverage
+
   # === DOCKER IMAGE BUILD CHECK (pull requests) ===
   # Builds the Dockerfile without pushing so a broken image fails the pull
   # request instead of surfacing only after publish (issue #106).
@@ -586,7 +622,7 @@ jobs:
   # Release - a main push or a resume on its exact version commit.
   release:
     name: Release
-    needs: [lint, test, release-preflight]
+    needs: [lint, test, real-clink, release-preflight]
     # Typical run is well under 10min. 30min gives npm and GitHub
     # release APIs room for retries without allowing a 6h hang.
     timeout-minutes: 30
@@ -600,6 +636,7 @@ jobs:
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_mode == 'resume')) &&
       needs.release-preflight.result == 'success' &&
+      needs.real-clink.result == 'success' &&
       needs.lint.result == 'success' &&
       needs.test.result == 'success'
     runs-on: ubuntu-24.04
@@ -779,13 +816,14 @@ jobs:
   instant-release:
     name: Instant Release
     # Versioning must wait for both quality gates and require explicit success.
-    needs: [lint, test, release-preflight]
+    needs: [lint, test, real-clink, release-preflight]
     if: |
       !cancelled() &&
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
       github.event.inputs.release_mode == 'instant' &&
       needs.release-preflight.result == 'success' &&
+      needs.real-clink.result == 'success' &&
       needs.lint.result == 'success' &&
       needs.test.result == 'success'
     runs-on: ubuntu-24.04
@@ -1206,6 +1244,7 @@ jobs:
       - changeset-check
       - lint
       - test
+      - real-clink
       - docker-build
       - docker-publish-config
       - docker-publish-build

@@ -302,6 +302,16 @@ describe('clink-safe associative names (#55)', () => {
   });
 
   const command = realClink();
+  const required = !isDeno && process.env.REQUIRE_REAL_CLINK === '1';
+  if (required && !command) {
+    throw new Error('Required real-clink integration cannot find clink.');
+  }
+  if (required) {
+    const version = spawnSync(command, ['--version'], { encoding: 'utf8' });
+    if (version.stdout?.trim() !== 'clink 0.2.10') {
+      throw new Error('Required real-clink integration needs clink 0.2.10.');
+    }
+  }
   if (command) {
     it('matches the real clink binary on the fixture and on schema v3', async () => {
       const directory = await mkdtemp(join(tmpdir(), 'clink-names-'));
