@@ -288,7 +288,8 @@ export class TelegramAuthService {
       if (failure) {
         throw new AggregateError(
           [failure, cleanupError],
-          'Telegram operation and client cleanup both failed.'
+          'Telegram operation and client cleanup both failed.',
+          { cause: cleanupError }
         );
       }
       throw cleanupError;

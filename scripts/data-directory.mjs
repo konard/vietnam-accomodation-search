@@ -78,7 +78,9 @@ async function validateSchema(directory) {
     marker = JSON.parse(await readFile(path, 'utf8'));
   } catch (error) {
     if (error.code !== 'ENOENT') {
-      throw new Error(`Data schema marker is unreadable: ${error.message}`);
+      throw new Error(`Data schema marker is unreadable: ${error.message}`, {
+        cause: error,
+      });
     }
     // Unmarked existing data predates the marker and uses schema version 1.
     const existing = (await readdir(directory)).some(

@@ -46,7 +46,7 @@ function takeOption(tokens, index, message) {
 
 function extractFilters(tokens) {
   const filters = {};
-  for (let index = 0; index < tokens.length; ) {
+  for (let index = 0; index < tokens.length;) {
     if (tokens[index] !== '--filter') {
       index += 1;
       continue;
@@ -69,7 +69,7 @@ function extractFilters(tokens) {
 
 function extractTypes(tokens) {
   const types = [];
-  for (let index = 0; index < tokens.length; ) {
+  for (let index = 0; index < tokens.length;) {
     if (tokens[index] !== '--type' && tokens[index] !== '--types') {
       index += 1;
       continue;
@@ -92,7 +92,7 @@ function extractTypes(tokens) {
 
 function extractRanges(tokens) {
   const ranges = {};
-  for (let index = 0; index < tokens.length; ) {
+  for (let index = 0; index < tokens.length;) {
     const field = RANGE_OPTIONS.get(tokens[index]);
     if (!field) {
       index += 1;

@@ -63,11 +63,10 @@ export async function collectTelegramWindow({
   retry = {},
 }) {
   const messages = [];
-  let exhausted = false;
   let hitCap = false;
   let offsetId = initialOffsetId;
   let reachedCutoff = false;
-  exhausted = await retryTelegramFloodWait(async () => {
+  const exhausted = await retryTelegramFloodWait(async () => {
     let endedNaturally = true;
     for await (const message of iterate({
       ...(offsetId === undefined ? {} : { offsetId }),

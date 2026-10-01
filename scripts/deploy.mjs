@@ -274,7 +274,8 @@ export async function deploymentStateMachine({
     } catch (error) {
       await restore(previous);
       throw new Error(
-        `State snapshot failed; previous image restored: ${error.message}`
+        `State snapshot failed; previous image restored: ${error.message}`,
+        { cause: error }
       );
     }
   }
@@ -286,7 +287,8 @@ export async function deploymentStateMachine({
       await restore(previous, snapshot);
     }
     throw new Error(
-      `Candidate readiness failed; previous image and state restored: ${error.message}`
+      `Candidate readiness failed; previous image and state restored: ${error.message}`,
+      { cause: error }
     );
   }
   await record({ candidate, previous, snapshot });
@@ -391,7 +393,9 @@ export async function runDeployCli(argv = process.argv.slice(2)) {
     await mkdir(lockPath);
   } catch (error) {
     if (error.code === 'EEXIST') {
-      throw new Error('Another deployment operation is already running.');
+      throw new Error('Another deployment operation is already running.', {
+        cause: error,
+      });
     }
     throw error;
   }

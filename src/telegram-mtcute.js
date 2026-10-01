@@ -219,7 +219,8 @@ export class MtcuteTelegramProvider {
       } catch (cleanupError) {
         throw new AggregateError(
           [error, cleanupError],
-          'Telegram connection and cleanup both failed.'
+          'Telegram connection and cleanup both failed.',
+          { cause: cleanupError }
         );
       }
       throw error;
@@ -1123,7 +1124,8 @@ export class TelegramIngestionService {
       } catch (cleanupError) {
         throw new AggregateError(
           [error, cleanupError],
-          'Telegram ingestion startup and cleanup both failed.'
+          'Telegram ingestion startup and cleanup both failed.',
+          { cause: cleanupError }
         );
       }
       throw error;
