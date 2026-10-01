@@ -1,11 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Link, formatLinks } from 'links-notation';
-import { describe, expect, it } from 'test-anywhere';
+import { afterEach, describe, expect, it } from 'test-anywhere';
 
 import { LinkCliMirror, LinksStore } from '../src/index.js';
 import {
@@ -149,14 +149,29 @@ const v2Offer = (text) =>
     ['/text', `value:string:${text}`],
   ]);
 
+const directories = [];
+const temporaryDirectory = async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'clink-names-'));
+  directories.push(directory);
+  return directory;
+};
+
 describe('clink-safe associative names (#55)', () => {
+  afterEach(async () => {
+    await Promise.all(
+      directories
+        .splice(0)
+        .map((directory) => rm(directory, { force: true, recursive: true }))
+    );
+  });
+
   it('reproduces the retained failure shape from the schema v2 fixture', async () => {
     // Deno runs the suite with read-only permissions.
     if (isDeno) {
       return;
     }
     const notation = await readFile(fixture, 'utf8');
-    const directory = await mkdtemp(join(tmpdir(), 'clink-names-'));
+    const directory = await temporaryDirectory();
     const error = await failedStage(
       new LinkCliMirror(normalizingClink()),
       directory,
@@ -194,7 +209,7 @@ describe('clink-safe associative names (#55)', () => {
     const records = sensitiveOffers(80);
     const notation = serializeRecords('offer', records);
     expect(parseNotation(notation).length > 128).toBe(true);
-    const directory = await mkdtemp(join(tmpdir(), 'clink-names-'));
+    const directory = await temporaryDirectory();
     await new LinkCliMirror(normalizingClink()).ensure({
       directory,
       kind: 'offers',
@@ -210,7 +225,7 @@ describe('clink-safe associative names (#55)', () => {
       return;
     }
     const notation = serializeRecords('offer', sensitiveOffers(3));
-    const directory = await mkdtemp(join(tmpdir(), 'clink-names-'));
+    const directory = await temporaryDirectory();
     const error = await failedStage(
       new LinkCliMirror(
         normalizingClink({ drop: (link) => link.id.endsWith('/text:value') })
@@ -250,7 +265,7 @@ describe('clink-safe associative names (#55)', () => {
     if (isDeno) {
       return;
     }
-    const directory = await mkdtemp(join(tmpdir(), 'clink-names-'));
+    const directory = await temporaryDirectory();
     const legacy = v2Offer('Room near the beach\n');
     const path = join(directory, 'offers.lino');
     await writeFile(path, legacy);
@@ -314,7 +329,7 @@ describe('clink-safe associative names (#55)', () => {
   }
   if (command) {
     it('matches the real clink binary on the fixture and on schema v3', async () => {
-      const directory = await mkdtemp(join(tmpdir(), 'clink-names-'));
+      const directory = await temporaryDirectory();
       const mirror = new LinkCliMirror({ command });
       const error = await failedStage(
         mirror,
