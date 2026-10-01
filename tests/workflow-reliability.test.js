@@ -284,7 +284,7 @@ describe('workflow reliability policy', () => {
         'workflow_dispatch:',
         gitDefaultBranchEnv,
         'jobs:',
-        '- uses: actions/checkout@v6',
+        '- uses: actions/checkout@v7',
       ]);
     }
   });
@@ -337,7 +337,7 @@ describe('workflow reliability policy', () => {
     const packageVersion = previewRegenJob.match(/playwright@([0-9.]+)/)?.[1];
 
     expect(previewRegenJob).toContain('container:');
-    expect(imageVersion).toBe('1.59.1');
+    expect(imageVersion).toBe('1.63.0');
     expect(packageVersion).toBe(imageVersion);
     expect(previewRegenJob).toContain("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'");
     expect(previewRegenJob).not.toContain('npx playwright install');
@@ -620,7 +620,7 @@ describe('npm user config cleanup', () => {
       const job = getJobBlock(workflow, jobName);
 
       expectOrdered(job, [
-        'uses: actions/setup-node@v6',
+        'uses: actions/setup-node@v7',
         '- name: Remove deprecated npm auth config',
         '- name: Install dependencies',
       ]);

@@ -65,7 +65,7 @@ describe('workflow linting job', () => {
 
   // zizmor-action resolves the version from a static table shipped inside
   // the action, and `latest` there is frozen at the version current when
-  // the action was tagged (v0.6.2 -> zizmor 1.29.0). Naming the version
+  // the action was tagged (v0.6.4 -> zizmor 1.30.1). Naming the version
   // keeps the analyser that reproduces a CI finding pinned in the diff.
   it('pins the zizmor version the action installs', () => {
     const zizmorStep = workflowsWorkflow.slice(

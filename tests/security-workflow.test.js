@@ -62,7 +62,7 @@ describe('security workflow', () => {
     );
     expect(codeql).toContain('      actions: read');
     expect(codeql).toContain('      security-events: write');
-    expect(codeql).toContain('uses: actions/checkout@v6');
+    expect(codeql).toContain('uses: actions/checkout@v7');
     expect(codeql).toContain('uses: github/codeql-action/init@v4');
     expect(codeql).toContain('languages: ${{ matrix.language }}');
     expect(codeql).toContain('uses: github/codeql-action/autobuild@v4');
@@ -105,7 +105,7 @@ describe('security workflow', () => {
 
     expect(auditedLocks).toEqual(listPackageLocks());
     expect(audit).toContain('    timeout-minutes: 10');
-    expect(audit).toContain('uses: actions/setup-node@v6');
+    expect(audit).toContain('uses: actions/setup-node@v7');
     expect(audit).toContain('node-version: 24');
     expect(audit).toContain('working-directory: ${{ matrix.directory }}');
     expect(audit).toContain(
