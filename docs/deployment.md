@@ -4,7 +4,7 @@
 
 The multi-stage image pins native multi-architecture Rust and Node 22 base
 manifests, installs the exact Playwright Chromium runtime dependencies and
-`link-cli` 0.2.10, and runs as the unprivileged `node` user under `tini`.
+`link-cli` 0.2.11, and runs as the unprivileged `node` user under `tini`.
 Credentials enter only at runtime. `/data` is the sole persistent writable
 path; the root filesystem is read-only in Compose. Compose maps `/data` to one
 explicit host directory with long bind syntax and

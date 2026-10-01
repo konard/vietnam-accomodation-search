@@ -33,7 +33,7 @@ describe('container runtime contract', () => {
     expect(dockerfile).toContain('FROM rust@sha256:');
     expect(dockerfile).toContain('FROM node@sha256:');
     expect(dockerfile).toContain(
-      'cargo install link-cli --version 0.2.10 --locked'
+      'cargo install link-cli --version 0.2.11 --locked'
     );
     expect(dockerfile).toContain('USER node');
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini"');

@@ -134,7 +134,7 @@ value was already read back on the first load and cannot be recovered.
 Install the supported CLI:
 
 ```bash
-cargo install link-cli --version 0.2.10 --locked
+cargo install link-cli --version 0.2.11 --locked
 clink --help
 LINKS_BINARY_MIRROR=1 node bin/vietnam-accomodation-search.js search Nha Trang
 ```
@@ -180,7 +180,7 @@ next write adds it. Previously discarded insertion order cannot be reconstructed
 The additive v1 metadata is readable by older readers, which continue their old
 sorting behavior; use the current reader when insertion order matters.
 
-The `Required real clink 0.2.10 integration` CI job builds the production binary
+The `Required real clink 0.2.11 integration` CI job builds the production binary
 with Cargo's locked dependency graph and runs the complete Node suite and line
 coverage with `REQUIRE_REAL_CLINK=1`. Missing or mismatched binaries fail the job;
 both publication paths and the terminal pipeline gate depend on its success.

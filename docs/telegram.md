@@ -159,7 +159,7 @@ Stop every other poller for the same bot token, use Node.js 22 or newer, and
 run explicitly from a local terminal (never CI):
 
 ```bash
-cargo install --root .deploy/e2e-tools link-cli --version 0.2.10 --locked
+cargo install --root .deploy/e2e-tools link-cli --version 0.2.11 --locked
 PATH="$PWD/.deploy/e2e-tools/bin:$PATH" \
 TELEGRAM_CONVERSATION_E2E=1 node \
   experiments/telegram-bot-conversation-e2e.mjs \
@@ -168,7 +168,7 @@ TELEGRAM_CONVERSATION_E2E=1 node \
 ```
 
 The `PATH` prefix is intentional: another unrelated executable also uses the
-name `clink`. `clink --version` for this test must report `clink 0.2.10`, the
+name `clink`. `clink --version` for this test must report `clink 0.2.11`, the
 same Rust `link-cli` version pinned in the production image.
 
 The bot environment needs `TELEGRAM_BOT_TOKEN` and must pin
