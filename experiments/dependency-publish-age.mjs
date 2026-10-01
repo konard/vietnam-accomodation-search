@@ -15,7 +15,7 @@ const names = Object.keys({
 for (const name of names.sort()) {
   const version = lock.packages[`node_modules/${name}`]?.version;
   const response = await fetch(
-    `https://registry.npmjs.org/${name.replace('/', '%2f')}`
+    `https://registry.npmjs.org/${encodeURIComponent(name)}`
   );
   const time = (await response.json()).time?.[version];
   const hours = time
