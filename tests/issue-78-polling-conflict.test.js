@@ -97,6 +97,9 @@ function pollingBot(hub) {
   return bot;
 }
 
+// Deno runs the suite without net access, so it cannot bind the health server.
+const isDeno = typeof globalThis.Deno !== 'undefined';
+
 function runtimeFor(bot, logs) {
   return new TelegramRuntime({
     bot,
@@ -129,6 +132,9 @@ async function ready(runtime) {
 
 describe('polling conflict: two pollers on one bot token', () => {
   it('marks the evicted instance unready and keeps it running with backoff', async () => {
+    if (isDeno) {
+      return;
+    }
     const hub = new TokenHub();
     const firstLogs = [];
     const secondLogs = [];
@@ -176,6 +182,9 @@ describe('polling conflict: two pollers on one bot token', () => {
   });
 
   it('becomes ready again after a successful getUpdates call', async () => {
+    if (isDeno) {
+      return;
+    }
     const hub = new TokenHub();
     const logs = [];
     const bot = pollingBot(hub);
@@ -273,7 +282,6 @@ describe('polling conflict: policy', () => {
   });
 });
 
-const isDeno = typeof globalThis.Deno !== 'undefined';
 const execute = promisify(execFile);
 
 async function rejection(action) {
@@ -287,6 +295,9 @@ async function rejection(action) {
 
 describe('polling conflict: deploy settle window', () => {
   it('fails the deploy and restores the previous image when the candidate meets another poller', async () => {
+    if (isDeno) {
+      return;
+    }
     const hub = new TokenHub();
     // The other Compose project already polls with the same token.
     const other = runtimeFor(pollingBot(hub), []);

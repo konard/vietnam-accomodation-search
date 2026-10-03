@@ -145,7 +145,10 @@ describe('deploy failure output', () => {
       await writeFile(path, '', { mode: 0o644 });
       await appendDeployLog(path, { step: 'a' });
       await appendDeployLog(path, { step: 'b' });
-      expect((await stat(path)).mode & 0o777).toBe(0o600);
+      // Windows has no POSIX permission bits.
+      if (process.platform !== 'win32') {
+        expect((await stat(path)).mode & 0o777).toBe(0o600);
+      }
       expect(
         (await readFile(path, 'utf8'))
           .trim()
