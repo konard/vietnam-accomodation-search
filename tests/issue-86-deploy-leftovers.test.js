@@ -329,7 +329,9 @@ describe('runtime data in the working tree', () => {
   it('is ignored by Prettier and jscpd', async () => {
     const prettier = (
       await readFile(new globalThis.URL('.prettierignore', repository), 'utf8')
-    ).split('\n');
+    )
+      .replaceAll('\r\n', '\n')
+      .split('\n');
     const jscpd = JSON.parse(
       await readFile(new globalThis.URL('.jscpd.json', repository), 'utf8')
     ).ignore;
