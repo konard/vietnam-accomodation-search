@@ -1015,14 +1015,31 @@ export declare class TelegramIngestionService {
   destroy(): Promise<void>;
 }
 
+/** Backoff after a 409 polling conflict: another poller holds the token. */
+export declare const CONFLICT_BACKOFF: Readonly<{
+  baseMs: number;
+  maxMs: number;
+}>;
+export declare const CONFLICT_MESSAGE: string;
+export declare function conflictDelay(
+  attempt: number,
+  backoff?: { baseMs: number; maxMs: number },
+  random?: () => number
+): number;
+
 export declare class TelegramRuntime {
   constructor(options?: Record<string, unknown>);
+  conflicts: number;
   exitCode: number;
   polling?: Promise<unknown>;
   start(): Promise<this>;
   stop(reason?: string): Promise<void>;
   middleware(context: unknown, next: () => Promise<unknown>): Promise<unknown>;
-  health(kind?: 'live' | 'ready'): { status: string };
+  health(kind?: 'live' | 'ready'): {
+    conflicts?: number;
+    reason?: 'polling-conflict';
+    status: string;
+  };
   installSignalHandlers(processLike?: {
     exitCode?: number;
     off(event: string, listener: () => void): unknown;

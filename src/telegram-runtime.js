@@ -11,6 +11,27 @@ function exitCode(error) {
   return category === 'auth' ? 20 : category === 'conflict' ? 21 : 1;
 }
 
+export const CONFLICT_BACKOFF = Object.freeze({
+  baseMs: 5_000,
+  maxMs: 5 * 60_000,
+});
+export const CONFLICT_MESSAGE =
+  'telegram polling conflict: another poller holds this bot token';
+
+/**
+ * Delay before polling again after the nth consecutive conflict: exponential
+ * from `baseMs`, capped at `maxMs`, with jitter in its upper half so two
+ * instances sharing a token do not stay in lockstep.
+ */
+export function conflictDelay(
+  attempt,
+  { baseMs, maxMs } = CONFLICT_BACKOFF,
+  random = Math.random
+) {
+  const ceiling = Math.min(maxMs, baseMs * 2 ** Math.max(0, attempt - 1));
+  return Math.round(ceiling / 2 + (ceiling / 2) * random());
+}
+
 function closeServer(server) {
   return new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
@@ -57,23 +78,30 @@ async function captureFailure(operation, failures) {
 export class TelegramRuntime {
   constructor({
     bot,
+    conflictBackoff = CONFLICT_BACKOFF,
     drainDeadlineMs = 15_000,
     healthHost = '127.0.0.1',
     healthPort = 8080,
     logger = console,
+    random = Math.random,
     resources = [],
     scheduler,
     userAuth,
     userAuthOptional = false,
   } = {}) {
     this.accepting = false;
+    this.backoff = new AbortController();
     this.bot = bot;
+    this.conflictBackoff = conflictBackoff;
+    this.conflicts = 0;
+    this.conflicted = false;
     this.drainDeadlineMs = drainDeadlineMs;
     this.healthHost = healthHost;
     this.healthPort = healthPort;
     this.inFlight = 0;
     this.live = false;
     this.logger = logger;
+    this.random = random;
     this.ready = false;
     this.resources = resources;
     this.scheduler = scheduler;
@@ -82,12 +110,39 @@ export class TelegramRuntime {
     this.exitCode = 0;
     this.stopping = undefined;
     this.bot?.catch?.((failure) => this.#botError(failure?.error || failure));
+    this.observesPolling = this.#observePolling();
+  }
+
+  // A successful getUpdates proves this instance owns polling again.
+  #observePolling() {
+    const config = this.bot?.api?.config;
+    if (typeof config?.use !== 'function') {
+      return false;
+    }
+    config.use(async (previous, method, ...rest) => {
+      const result = await previous(method, ...rest);
+      if (method === 'getUpdates' && result?.ok) {
+        this.#pollingSucceeded();
+      }
+      return result;
+    });
+    return true;
   }
 
   health(kind = 'ready') {
-    return kind === 'live'
-      ? { status: this.live ? 'live' : 'stopped' }
-      : { status: this.ready ? 'ready' : 'not-ready' };
+    if (kind === 'live') {
+      return { status: this.live ? 'live' : 'stopped' };
+    }
+    if (this.ready) {
+      return { status: 'ready' };
+    }
+    return this.conflicted
+      ? {
+          conflicts: this.conflicts,
+          reason: 'polling-conflict',
+          status: 'not-ready',
+        }
+      : { status: 'not-ready' };
   }
 
   async #listen() {
@@ -144,11 +199,7 @@ export class TelegramRuntime {
         }
       });
       await Promise.race([pollingInitialized, pollingEnded]);
-      this.polling = this.startPromise.catch(async (error) => {
-        await this.#fatal(error);
-        error.exitCode = this.exitCode;
-        throw error;
-      });
+      this.polling = this.#supervise(this.startPromise);
       this.scheduler?.start?.();
       this.ready = true;
       return this;
@@ -157,6 +208,68 @@ export class TelegramRuntime {
       error.exitCode = this.exitCode;
       throw error;
     }
+  }
+
+  // Polling conflicts after readiness are retried with backoff while the
+  // instance reports not-ready; every other polling failure is fatal.
+  async #supervise(polling) {
+    for (let current = polling; ;) {
+      try {
+        return await current;
+      } catch (error) {
+        if (classifyTelegramError(error).category !== 'conflict') {
+          await this.#fatal(error);
+          error.exitCode = this.exitCode;
+          throw error;
+        }
+        if (this.stopping) {
+          return undefined;
+        }
+        await this.#conflictBackoff();
+        if (this.stopping) {
+          return undefined;
+        }
+        current = Promise.resolve(
+          this.bot.start({
+            onStart: () => {
+              if (!this.observesPolling) {
+                this.#pollingSucceeded();
+              }
+            },
+          })
+        );
+        this.startPromise = current;
+      }
+    }
+  }
+
+  async #conflictBackoff() {
+    this.conflicts += 1;
+    this.conflicted = true;
+    this.ready = false;
+    const retryInMs = conflictDelay(
+      this.conflicts,
+      this.conflictBackoff,
+      this.random
+    );
+    this.logger.error?.(CONFLICT_MESSAGE, {
+      conflicts: this.conflicts,
+      retryInMs,
+    });
+    await delay(retryInMs, undefined, { signal: this.backoff.signal }).catch(
+      () => {}
+    );
+  }
+
+  #pollingSucceeded() {
+    if (!this.conflicted || this.stopping) {
+      return;
+    }
+    this.conflicted = false;
+    this.ready = true;
+    this.logger.info?.('telegram polling resumed', {
+      conflicts: this.conflicts,
+    });
   }
 
   async middleware(_context, next) {
@@ -208,6 +321,7 @@ export class TelegramRuntime {
   async #stop(reason) {
     this.ready = false;
     this.accepting = false;
+    this.backoff.abort();
     const failures = [];
     const deadline = Date.now() + this.drainDeadlineMs;
     const stopOperations = [
@@ -231,7 +345,11 @@ export class TelegramRuntime {
           'Timed out waiting for Telegram polling to stop.'
         );
       } catch (error) {
-        if (reason !== 'fatal') {
+        // A poll evicted by another poller has already ended.
+        if (
+          reason !== 'fatal' &&
+          classifyTelegramError(error).category !== 'conflict'
+        ) {
           failures.push(error);
         }
       }

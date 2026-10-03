@@ -137,7 +137,13 @@ export {
   TelegramIngestionService,
   normalizeMtcuteMessage,
 } from './telegram-mtcute.js';
-export { TelegramRuntime, UpdateDeduplicator } from './telegram-runtime.js';
+export {
+  CONFLICT_BACKOFF,
+  CONFLICT_MESSAGE,
+  conflictDelay,
+  TelegramRuntime,
+  UpdateDeduplicator,
+} from './telegram-runtime.js';
 export {
   TelegramAvailabilityService,
   createAvailabilityMessage,
