@@ -116,7 +116,8 @@ export class TelegramAvailabilityService {
       if (failure) {
         throw new AggregateError(
           [failure, cleanupError],
-          'Telegram availability send and client cleanup both failed.'
+          'Telegram availability send and client cleanup both failed.',
+          { cause: cleanupError }
         );
       }
       throw cleanupError;

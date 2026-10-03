@@ -8,11 +8,12 @@
 //   VAC_AUDIT_USER_ENV=PATH VAC_AUDIT_BOT_ENV=PATH \
 //     node experiments/diagnose-telegram-audit.mjs STATE_DIRECTORY
 
-import { writeFile } from 'node:fs/promises';
+import { appendFile, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 
 import { runAudit } from './audit-telegram-accommodations.mjs';
 import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
+import { createAuditDiagnostics, timerWarning } from './audit-diagnostics.mjs';
 
 assertManualLocalRun(process.env);
 if (!process.argv[2] || !process.env.VAC_AUDIT_USER_ENV) {
@@ -20,7 +21,45 @@ if (!process.argv[2] || !process.env.VAC_AUDIT_USER_ENV) {
 }
 
 const stateDirectory = resolve(process.argv[2]);
+const metricsPath = join(
+  stateDirectory,
+  `resource-diagnostic-${Date.now()}.jsonl`
+);
+const emit = (event) =>
+  appendFile(metricsPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+const diagnostics = createAuditDiagnostics({
+  directory: stateDirectory,
+  emit,
+  ...(process.env.VAC_AUDIT_MIN_FREE_BYTES
+    ? { minFreeBytes: Number(process.env.VAC_AUDIT_MIN_FREE_BYTES) }
+    : {}),
+  ...(process.env.VAC_AUDIT_MAX_ALLOCATED_BYTES
+    ? { maxAllocatedBytes: Number(process.env.VAC_AUDIT_MAX_ALLOCATED_BYTES) }
+    : {}),
+});
+let warningWrite = Promise.resolve();
+let warningCount = 0;
+const onWarning = (warning) => {
+  const event = timerWarning(warning);
+  if (event) {
+    warningCount += 1;
+    if (warningCount <= 10) {
+      warningWrite = warningWrite.then(() => emit(event)).catch(() => {});
+    }
+  }
+};
+process.on('warning', onWarning);
+let sampling;
+const monitor = globalThis.setInterval(() => {
+  sampling ||= diagnostics
+    .sample()
+    .catch(() => {})
+    .finally(() => {
+      sampling = undefined;
+    });
+}, 5_000);
 const options = {
+  measurePhase: diagnostics.measure,
   botEnv: process.env.VAC_AUDIT_BOT_ENV,
   folder: 'Нячанг жильё',
   maxMessages: 3_000,
@@ -85,4 +124,11 @@ try {
   );
   console.error(JSON.stringify(diagnostic));
   process.exitCode = 1;
+} finally {
+  globalThis.clearInterval(monitor);
+  process.off('warning', onWarning);
+  await sampling;
+  await diagnostics.sample().catch(() => {});
+  await warningWrite;
+  await emit({ type: 'negative-timer-summary', count: warningCount });
 }

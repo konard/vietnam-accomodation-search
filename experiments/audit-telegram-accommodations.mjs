@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 import { Api, TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
+import { runClink } from '../src/link-cli-mirror.js';
 
 import {
   GRAMJS_SESSION_FORMAT,
@@ -46,6 +47,7 @@ import {
   normalized,
   publicSourceRecord,
   publicUsername,
+  selectPublicAuditSources,
   sourceScore,
   telegramCredentials,
   textValue,
@@ -405,25 +407,24 @@ function combineSources(folderEntities, publicCandidates, maximum) {
       });
     }
   }
-  return [...combined.values()]
-    .sort((left, right) => {
-      const leftFolder = [...left.discoveredBy].some((item) =>
-        item.startsWith('folder')
-      );
-      const rightFolder = [...right.discoveredBy].some((item) =>
-        item.startsWith('folder')
-      );
-      return (
-        Number(rightFolder) - Number(leftFolder) ||
+  const ranked = [...combined.values()].sort((left, right) => {
+    const leftFolder = [...left.discoveredBy].some((item) =>
+      item.startsWith('folder')
+    );
+    const rightFolder = [...right.discoveredBy].some((item) =>
+      item.startsWith('folder')
+    );
+    return (
+      Number(rightFolder) - Number(leftFolder) ||
+      sourceScore(
+        right.public || { discoveredBy: [], title: '', username: '' }
+      ) -
         sourceScore(
-          right.public || { discoveredBy: [], title: '', username: '' }
-        ) -
-          sourceScore(
-            left.public || { discoveredBy: [], title: '', username: '' }
-          )
-      );
-    })
-    .slice(0, maximum);
+          left.public || { discoveredBy: [], title: '', username: '' }
+        )
+    );
+  });
+  return selectPublicAuditSources(ranked, maximum);
 }
 
 function emptySourceAudit(alias) {
@@ -739,10 +740,14 @@ export async function runAudit(options) {
     binaryMirror: false,
     directory: join(options.stateDirectory, 'checkpoints'),
   });
+  const measurePhase =
+    options.measurePhase || ((_event, operation) => operation());
   const auditStore = new LinksStore({
     binaryMirror: true,
     directory: join(options.stateDirectory, 'typed-results'),
     mirror: new LinkCliMirror({
+      run: (...args) =>
+        measurePhase({ phase: 'projection' }, () => runClink(...args)),
       onProgress: (event) => process.stderr.write(`${JSON.stringify(event)}\n`),
     }),
   });
@@ -825,6 +830,9 @@ export async function runAudit(options) {
     report.discovery.privateFolderSources = sources.filter(
       (source) => !source.public
     ).length;
+    report.discovery.excludedPrivateFolderSources = [
+      ...folderEntities.values(),
+    ].filter((source) => !source.public).length;
     report.discovery.recall = {
       reviewedGroundTruth: false,
       value: null,
@@ -840,14 +848,18 @@ export async function runAudit(options) {
       if (!source.public) {
         privateIndex += 1;
       }
-      const result = await auditSource(
-        client,
-        source,
-        options,
-        report,
-        privateIndex,
-        checkpointStore,
-        auditStore
+      const result = await measurePhase(
+        { phase: 'source', ordinal: audits.length + 1 },
+        () =>
+          auditSource(
+            client,
+            source,
+            options,
+            report,
+            privateIndex,
+            checkpointStore,
+            auditStore
+          )
       );
       audits.push(result.audit);
       domainRecords.push(...result.domainRecords);
@@ -949,7 +961,10 @@ export async function runAudit(options) {
         botIdentity: report.bot.active === true,
         canonicalTypedStorage: Object.values(report.storage).every(Boolean),
         completeFortySourceCohort:
-          options.maxSources === 40 && sources.length === 40,
+          options.maxSources === 40 &&
+          sources.length === 40 &&
+          sources.every((source) => Boolean(source.public)),
+        rollingTwoMonthWindow: options.months === 2,
         correlatedTerminalTraces:
           Object.values(report.parser.traces).reduce(
             (total, count) => total + count,

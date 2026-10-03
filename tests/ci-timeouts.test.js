@@ -276,6 +276,7 @@ describe('CI timeout policy', () => {
       'changeset-check': 10,
       lint: 10,
       test: 15,
+      'real-clink': 25,
       'validate-docs': 5,
       release: 30,
       'instant-release': 30,
@@ -356,6 +357,7 @@ describe('CI execution budgets', () => {
     expect(jobsWithBudgets.map((job) => job.jobName).sort()).toEqual([
       'docker-build',
       'docker-publish-build',
+      'real-clink',
       'release',
       'test',
     ]);

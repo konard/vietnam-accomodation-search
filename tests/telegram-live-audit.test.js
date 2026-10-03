@@ -7,7 +7,10 @@ import assert from 'node:assert/strict';
 
 import { LinksStore } from '../src/links-store.js';
 import { reconcileTelegramMaterials } from '../src/telegram-pipeline.js';
-import { botStatus } from '../experiments/telegram-accommodation-audit-lib.mjs';
+import {
+  botStatus,
+  selectPublicAuditSources,
+} from '../experiments/telegram-accommodation-audit-lib.mjs';
 import {
   auditTelegramBatch,
   collectTelegramWindow,
@@ -37,6 +40,26 @@ afterEach(async () => {
 });
 
 describe('Telegram live-audit runtime', () => {
+  it('fills the forty-source cohort from public communities without collecting private folder groups', () => {
+    const privateSources = Array.from({ length: 40 }, (_, id) => ({
+      entity: { id, className: 'Chat' },
+    }));
+    const publicSources = Array.from({ length: 41 }, (_, id) => ({
+      public: { username: `public_${id}` },
+    }));
+    assert.deepEqual(
+      selectPublicAuditSources([...privateSources, ...publicSources], 40),
+      publicSources.slice(0, 40)
+    );
+    assert.deepEqual(
+      selectPublicAuditSources(
+        [...privateSources, ...publicSources.slice(0, 2)],
+        40
+      ),
+      publicSources.slice(0, 2)
+    );
+  });
+
   it('reports bot readiness without serializing its private identity', async () => {
     const status = await botStatus('private-token', async () => ({
       json: async () => ({

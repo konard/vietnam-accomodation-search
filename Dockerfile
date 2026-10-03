@@ -1,10 +1,11 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.27
 
-# Both manifests are pinned and publish native linux/amd64 and linux/arm64 images.
-FROM rust@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS clink
-RUN cargo install link-cli --version 0.2.10 --locked
+# Both manifests are pinned and publish native linux/amd64 and linux/arm64 images:
+# rust:1.98.1-trixie and node:24.21.0-trixie (Node.js Active LTS).
+FROM rust@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546 AS clink
+RUN cargo install link-cli --version 0.2.11 --locked
 
-FROM node@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94 AS runtime
+FROM node@sha256:be40f6a87b9b22215ddb20da0a2320a5c6d583fe3ee3b0024d9fa4f05b40c8fd AS runtime
 
 ARG BUILD_DATE
 ARG NPM_PACKAGE_VERSION

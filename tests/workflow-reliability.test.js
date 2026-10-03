@@ -284,7 +284,7 @@ describe('workflow reliability policy', () => {
         'workflow_dispatch:',
         gitDefaultBranchEnv,
         'jobs:',
-        '- uses: actions/checkout@v6',
+        '- uses: actions/checkout@v7',
       ]);
     }
   });
@@ -337,7 +337,7 @@ describe('workflow reliability policy', () => {
     const packageVersion = previewRegenJob.match(/playwright@([0-9.]+)/)?.[1];
 
     expect(previewRegenJob).toContain('container:');
-    expect(imageVersion).toBe('1.59.1');
+    expect(imageVersion).toBe('1.63.0');
     expect(packageVersion).toBe(imageVersion);
     expect(previewRegenJob).toContain("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'");
     expect(previewRegenJob).not.toContain('npx playwright install');
@@ -478,6 +478,7 @@ describe('manual release quality gates', () => {
     releaseMode,
     lintResult = 'success',
     testResult = 'success',
+    clinkResult = 'success',
     cancelled = false,
   }) {
     const context = createTestJobContext({
@@ -489,6 +490,7 @@ describe('manual release quality gates', () => {
     context.cancelled = cancelled;
     context.needs.lint.result = lintResult;
     context.needs.test = { result: testResult };
+    context.needs['real-clink'] = { result: clinkResult };
     return context;
   }
 
@@ -506,7 +508,7 @@ describe('manual release quality gates', () => {
       true
     );
     expect(instantReleaseJob).toContain(
-      '    needs: [lint, test, release-preflight]'
+      '    needs: [lint, test, real-clink, release-preflight]'
     );
     expect(
       evaluateWorkflowIf(getMultilineIfExpression(instantReleaseJob), context)
@@ -537,6 +539,23 @@ describe('manual release quality gates', () => {
         })
       )
     ).toBe(false);
+  });
+
+  it('blocks both publication paths after real-clink fails or is skipped', () => {
+    const workflow = readWorkflow('.github/workflows/release.yml');
+    for (const jobName of ['release', 'instant-release']) {
+      const condition = getMultilineIfExpression(
+        getJobBlock(workflow, jobName)
+      );
+      for (const clinkResult of ['failure', 'skipped', 'cancelled']) {
+        expect(
+          evaluateWorkflowIf(
+            condition,
+            getManualReleaseContext({ releaseMode: 'resume', clinkResult })
+          )
+        ).toBe(false);
+      }
+    }
   });
 
   it('waits for successful lint before creating a manual changeset PR', () => {
@@ -601,7 +620,7 @@ describe('npm user config cleanup', () => {
       const job = getJobBlock(workflow, jobName);
 
       expectOrdered(job, [
-        'uses: actions/setup-node@v6',
+        'uses: actions/setup-node@v7',
         '- name: Remove deprecated npm auth config',
         '- name: Install dependencies',
       ]);

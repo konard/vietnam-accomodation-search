@@ -30,7 +30,7 @@ function readOrEmpty(path) {
   });
 }
 
-function ordered(offers) {
+export function orderOffersByRecency(offers) {
   return [...offers].sort(
     (left, right) =>
       new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0) ||
@@ -49,21 +49,26 @@ function preparedOffers(offers, maxBytes, maxShardBytes) {
   if (new Set(offers.map(({ id }) => String(id))).size !== offers.length) {
     throw new Error('Canonical offer collection contains duplicate offer IDs.');
   }
-  const prepared = ordered(offers).map((offer) => ({
+  let prepared = offers.map((offer) => ({
     bytes: Buffer.byteLength(serializeOfferBounded(offer, maxShardBytes)),
     offer,
   }));
   let total = prepared.reduce((sum, entry) => sum + entry.bytes, 0);
   const now = Date.now();
-  for (
-    let index = prepared.length - 1;
-    total > maxBytes && index >= 0;
-    index--
-  ) {
-    if (!protectedOffer(prepared[index].offer, now)) {
-      total -= prepared[index].bytes;
-      prepared.splice(index, 1);
+  if (total > maxBytes) {
+    const sizes = new Map(prepared.map(({ offer, bytes }) => [offer, bytes]));
+    const evicted = new Set();
+    // Budget eviction uses oldest-first policy without changing public order.
+    for (const offer of orderOffersByRecency(offers).reverse()) {
+      if (total <= maxBytes) {
+        break;
+      }
+      if (!protectedOffer(offer, now)) {
+        total -= sizes.get(offer);
+        evicted.add(offer);
+      }
     }
+    prepared = prepared.filter(({ offer }) => !evicted.has(offer));
   }
   if (total > maxBytes) {
     const error = new Error(
@@ -122,7 +127,12 @@ function validateIndex(index) {
         !Number.isSafeInteger(shard.count)
     ) ||
     new Set(index.shards.map(({ sha256 }) => sha256)).size !==
-      index.shards.length
+      index.shards.length ||
+    (index.order !== undefined &&
+      (!Array.isArray(index.order) ||
+        index.order.length !== index.count ||
+        index.order.some((id) => typeof id !== 'string') ||
+        new Set(index.order).size !== index.count))
   ) {
     throw new Error('Invalid canonical offer index.');
   }
@@ -192,7 +202,16 @@ async function readIndexedOffers(index, { directory, mirror }) {
   if (new Set(offers.map(({ id }) => String(id))).size !== offers.length) {
     throw new Error('Canonical offer index contains duplicate offer IDs.');
   }
-  return ordered(offers);
+  if (index.order === undefined) {
+    // Existing v1 indexes discarded input order. Keep their historical read
+    // order; the next write records the order supplied by its caller.
+    return orderOffersByRecency(offers);
+  }
+  const byId = new Map(offers.map((offer) => [String(offer.id), offer]));
+  if (index.order.some((id) => !byId.has(id))) {
+    throw new Error('Canonical offer order does not match its index.');
+  }
+  return index.order.map((id) => byId.get(id));
 }
 
 export async function readOfferCollection(options) {
@@ -233,7 +252,11 @@ export async function writeOfferCollection({
     await staged?.activate();
     return;
   }
-  const groups = partitionOfferEntries(prepared, maxShardBytes);
+  // Canonical chunk layout is independent of the public collection order.
+  const canonical = [...prepared].sort((left, right) =>
+    String(left.offer.id).localeCompare(String(right.offer.id))
+  );
+  const groups = partitionOfferEntries(canonical, maxShardBytes);
   const shards = [];
   for (const { entries } of groups) {
     if (!entries.length) {
@@ -256,6 +279,7 @@ export async function writeOfferCollection({
   const index = {
     bytes: shards.reduce((sum, shard) => sum + shard.bytes, 0),
     count: prepared.length,
+    order: prepared.map(({ offer }) => String(offer.id)),
     shards,
     version: 1,
   };

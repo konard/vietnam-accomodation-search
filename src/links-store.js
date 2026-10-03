@@ -10,6 +10,7 @@ import {
 } from './link-cli-mirror.js';
 import {
   DEFAULT_OFFER_SHARD_BYTES,
+  orderOffersByRecency,
   readOfferCollection,
   writeOfferCollection,
 } from './offer-chunks.js';
@@ -600,13 +601,15 @@ export class LinksStore {
 
   saveOffers(incoming) {
     return this.#locked(async () => {
-      const offers = deduplicateOffers([
-        ...(await readOfferCollection({
-          directory: this.directory,
-          offersPath: this.offersPath,
-        })),
-        ...incoming,
-      ]);
+      const offers = orderOffersByRecency(
+        deduplicateOffers([
+          ...(await readOfferCollection({
+            directory: this.directory,
+            offersPath: this.offersPath,
+          })),
+          ...incoming,
+        ])
+      );
       await this.#saveOffers(offers);
     });
   }

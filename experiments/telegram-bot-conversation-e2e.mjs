@@ -757,10 +757,14 @@ async function prepareDataDirectory(path) {
     }
     const details = await lstat(selected);
     if (!details.isDirectory() || details.isSymbolicLink()) {
-      throw new Error('The explicit E2E data path must be a real directory.');
+      throw new Error('The explicit E2E data path must be a real directory.', {
+        cause: error,
+      });
     }
     if ((await readdir(selected)).length > 0) {
-      throw new Error('The explicit E2E data directory must be empty.');
+      throw new Error('The explicit E2E data directory must be empty.', {
+        cause: error,
+      });
     }
   }
   await chmod(selected, 0o700);

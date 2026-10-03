@@ -98,8 +98,15 @@ describe('release-preflight workflow wiring (issues #176, #181)', () => {
     const instantBlock = getJobBlock(WORKFLOW, 'instant-release');
     const dockerConfigBlock = getJobBlock(WORKFLOW, 'docker-publish-config');
 
-    expect(releaseBlock).toContain('needs: [lint, test, release-preflight]');
-    expect(instantBlock).toContain('needs: [lint, test, release-preflight]');
+    expect(releaseBlock).toContain(
+      'needs: [lint, test, real-clink, release-preflight]'
+    );
+    expect(instantBlock).toContain(
+      'needs: [lint, test, real-clink, release-preflight]'
+    );
+    for (const block of [releaseBlock, instantBlock]) {
+      expect(block).toContain("needs.real-clink.result == 'success'");
+    }
     expect(dockerConfigBlock).toContain('needs: [release, release-preflight]');
 
     for (const block of [releaseBlock, instantBlock, dockerConfigBlock]) {

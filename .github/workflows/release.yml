@@ -74,7 +74,7 @@ jobs:
       pending-changeset: ${{ steps.changes.outputs.pending-changeset }}
       any-code-changed: ${{ steps.changes.outputs.any-code-changed }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -105,7 +105,7 @@ jobs:
     if: |
       needs.detect-changes.outputs.js-changed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -126,7 +126,7 @@ jobs:
       needs.detect-changes.outputs.docs-changed == 'true' ||
       needs.detect-changes.outputs.any-code-changed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -155,7 +155,7 @@ jobs:
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -179,13 +179,13 @@ jobs:
     needs: [detect-changes]
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.any-code-changed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
 
@@ -234,7 +234,7 @@ jobs:
         needs.detect-changes.outputs.any-code-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # For PRs, fetch enough history to merge with base branch
           fetch-depth: 0
@@ -247,7 +247,7 @@ jobs:
         run: bash scripts/simulate-fresh-merge.sh
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
 
@@ -314,7 +314,7 @@ jobs:
         os: [ubuntu-24.04, macos-latest, windows-latest]
         runtime: [node, bun, deno]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # For PRs, fetch enough history to merge with base branch
           fetch-depth: 0
@@ -329,7 +329,7 @@ jobs:
 
       - name: Setup Node.js
         if: matrix.runtime == 'node'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
 
@@ -378,6 +378,42 @@ jobs:
         shell: bash
         run: bash scripts/run-with-budget-warning.sh 100 "Deno test suite" deno test --allow-read
 
+  # This gate runs independently of change detection, including resume-release
+  # dispatches. A missing or different binary is a failure, never a skip.
+  real-clink:
+    name: Required real clink 0.2.11 integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}-real-clink
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+
+      - name: Install locked production clink
+        run: |
+          bash scripts/run-with-budget-warning.sh 420 "Build pinned clink" cargo install link-cli --version 0.2.11 --locked --root "$RUNNER_TEMP/clink"
+          echo "$RUNNER_TEMP/clink/bin" >> "$GITHUB_PATH"
+
+      - name: Install exact npm dependency graph
+        run: npm ci
+
+      - name: Run complete suite with mandatory real clink
+        env:
+          REQUIRE_REAL_CLINK: '1'
+        run: bash scripts/run-with-budget-warning.sh 300 "Real clink Node suite" npm test
+
+      - name: Verify complete product coverage with real clink
+        env:
+          REQUIRE_REAL_CLINK: '1'
+        run: bash scripts/run-with-budget-warning.sh 300 "Real clink coverage suite" npm run test:coverage
+
   # === DOCKER IMAGE BUILD CHECK (pull requests) ===
   # Builds the Dockerfile without pushing so a broken image fails the pull
   # request instead of surfacing only after publish (issue #106).
@@ -400,7 +436,7 @@ jobs:
       DOCKER_CONTEXT: ${{ vars.DOCKER_CONTEXT }}
       DOCKERFILE: ${{ vars.DOCKERFILE }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -526,7 +562,7 @@ jobs:
     if: |
       needs.detect-changes.outputs.docs-changed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -560,7 +596,7 @@ jobs:
       # finding.
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -586,7 +622,7 @@ jobs:
   # Release - a main push or a resume on its exact version commit.
   release:
     name: Release
-    needs: [lint, test, release-preflight]
+    needs: [lint, test, real-clink, release-preflight]
     # Typical run is well under 10min. 30min gives npm and GitHub
     # release APIs room for retries without allowing a 6h hang.
     timeout-minutes: 30
@@ -600,6 +636,7 @@ jobs:
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_mode == 'resume')) &&
       needs.release-preflight.result == 'success' &&
+      needs.real-clink.result == 'success' &&
       needs.lint.result == 'success' &&
       needs.test.result == 'success'
     runs-on: ubuntu-24.04
@@ -617,7 +654,7 @@ jobs:
       # `git push origin main` to publish the version bump, which needs the
       # token wired into the remote. Every other checkout in this
       # repository sets persist-credentials: false.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: true
           fetch-depth: 0
@@ -632,7 +669,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
@@ -779,13 +816,14 @@ jobs:
   instant-release:
     name: Instant Release
     # Versioning must wait for both quality gates and require explicit success.
-    needs: [lint, test, release-preflight]
+    needs: [lint, test, real-clink, release-preflight]
     if: |
       !cancelled() &&
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
       github.event.inputs.release_mode == 'instant' &&
       needs.release-preflight.result == 'success' &&
+      needs.real-clink.result == 'success' &&
       needs.lint.result == 'success' &&
       needs.test.result == 'success'
     runs-on: ubuntu-24.04
@@ -803,13 +841,13 @@ jobs:
       # commit to main, which needs the token wired into the remote.
       # Every other checkout in this repository sets
       # persist-credentials: false.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: true
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
@@ -888,7 +926,7 @@ jobs:
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
       RELEASE_VERSION: ${{ needs.release.outputs.published_version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -927,7 +965,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: v${{ needs.docker-publish-config.outputs.version }}
           persist-credentials: false
@@ -974,7 +1012,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -1054,12 +1092,12 @@ jobs:
       IMAGE: ${{ needs.docker-publish-config.outputs.image }}
       VERSION: ${{ needs.docker-publish-config.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
 
@@ -1125,7 +1163,7 @@ jobs:
     steps:
       # peter-evans/create-pull-request receives the dedicated token directly;
       # dependency installation does not need a credential in .git/config.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -1140,7 +1178,7 @@ jobs:
           fi
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
 
@@ -1206,6 +1244,7 @@ jobs:
       - changeset-check
       - lint
       - test
+      - real-clink
       - docker-build
       - docker-publish-config
       - docker-publish-build
@@ -1217,12 +1256,12 @@ jobs:
       - release-identity
       - changeset-pr
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
 

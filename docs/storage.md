@@ -134,7 +134,7 @@ value was already read back on the first load and cannot be recovered.
 Install the supported CLI:
 
 ```bash
-cargo install link-cli --version 0.2.10 --locked
+cargo install link-cli --version 0.2.11 --locked
 clink --help
 LINKS_BINARY_MIRROR=1 node bin/vietnam-accomodation-search.js search Nha Trang
 ```
@@ -157,6 +157,33 @@ into an empty stopped `0700` directory. On first read, content hashes and verifi
 `clink` export repair the binary projection. Corrupt canonical text is not
 guessed around: restore the last archive, retain the damaged file for
 forensics, and run the test/query preflight before restart.
+
+### Offer order contract
+
+`saveRecords('offers', records)` replaces the collection in the supplied order.
+`updateRecords('offers', update)` preserves the returned array's order. Both
+`listOffers()` and `loadRecords('offers')` return that order, including after a
+restart, and `queryRecords` retains the relative order of matching records.
+Budget eviction removes only eligible old offers and preserves survivor order.
+
+`saveOffers(incoming)` is the merging API: it deduplicates existing and incoming
+offers and retains its established newest-collection-first order, breaking ties
+by offer ID. Search applies its requested recency/price ranking explicitly;
+subscriptions retain their existing freshness checks and delivered-ID ledger.
+
+Single-file canonical LiNo retains record order directly. Indexed collections
+record an explicit `order` array of unique offer IDs alongside deterministic
+hash-partitioned chunks; chunks sort by ID independently of public order.
+Readers reject duplicate, missing, extra, or malformed order entries. Existing
+v1 indexes without `order` retain their historical time/ID read order until the
+next write adds it. Previously discarded insertion order cannot be reconstructed.
+The additive v1 metadata is readable by older readers, which continue their old
+sorting behavior; use the current reader when insertion order matters.
+
+The `Required real clink 0.2.11 integration` CI job builds the production binary
+with Cargo's locked dependency graph and runs the complete Node suite and line
+coverage with `REQUIRE_REAL_CLINK=1`. Missing or mismatched binaries fail the job;
+both publication paths and the terminal pipeline gate depend on its success.
 
 The offer collection also has its own configured byte ceiling. Its conservative
 preflight sum includes one schema header per offer, so it can reject a tight

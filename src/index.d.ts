@@ -434,11 +434,7 @@ export declare function inspectSessionEnvelope(value?: unknown): {
   schemaVersion?: number;
   sessionId?: string;
   state:
-    | 'absent'
-    | 'active-unverified'
-    | 'malformed'
-    | 'partial'
-    | 'unsupported';
+    'absent' | 'active-unverified' | 'malformed' | 'partial' | 'unsupported';
 };
 export declare function sessionPayload(value: unknown): string;
 export declare function nativeSessionPayload(
