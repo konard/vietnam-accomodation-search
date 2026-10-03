@@ -112,6 +112,14 @@ successor issues are
 and [#82 raw media objects persisted per offer](https://github.com/konard/vietnam-accomodation-search/issues/82).
 #82 is the root cause of the unfinished 40-source audit.
 
+[The post-PR #84 revalidation](case-studies/revalidation-2026-10-03-pr84/README.md)
+confirms the fixes for #77, #78, and #79 (927/927 tests with real `clink`,
+Security green, deploy guards verified with a real token) and partial fixes for
+#81 and #82. Successors are
+[#85 bound offers on write and audit throughput](https://github.com/konard/vietnam-accomodation-search/issues/85),
+[#86 deploy and tooling leftovers](https://github.com/konard/vietnam-accomodation-search/issues/86),
+and [#87 owner inputs](https://github.com/konard/vietnam-accomodation-search/issues/87).
+
 [Issue #83](case-studies/issue-83/README.md) addresses #77–#82 in PR #84.
 Deploy now refuses an unrecorded data-directory change, a bot token another
 project deploys, and a taken host port. It also watches a 30 s settle window
