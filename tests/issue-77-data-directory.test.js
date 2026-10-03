@@ -1,6 +1,7 @@
 import {
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
   rm,
   stat,
@@ -249,5 +250,25 @@ describe('data directory inspection on disk', () => {
     } finally {
       await rm(root, { force: true, recursive: true });
     }
+  });
+});
+
+describe('cutover drill record', () => {
+  it('is removed with the drill project, so the next run is a first deploy', async () => {
+    const source = await readFile(
+      new globalThis.URL(
+        '../experiments/deploy-cutover-drill.mjs',
+        import.meta.url
+      ),
+      'utf8'
+    );
+    const order = [
+      "'-p', options.projectName, 'down']",
+      'if (result.project) {',
+      "await rm(join(record, 'state.json')",
+      "await rm(join(record, 'snapshots')",
+    ].map((marker) => source.indexOf(marker));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 });
