@@ -447,13 +447,7 @@ describe('bounded offers: stored offer migration', () => {
       const store = new LinksStore({ directory });
       const legacy = [legacyOffer('legacy-1'), legacyOffer('legacy-2')];
       // Write the legacy shape directly, as releases before #82 did.
-      await writeOfferCollection({
-        directory,
-        maxBytes: store.maxBytes,
-        maxShardBytes: store.maxOfferShardBytes,
-        offers: legacy,
-        offersPath: store.offersPath,
-      });
+      await writeFile(store.offersPath, serializeOffers(legacy));
       const before = Buffer.byteLength(await readFile(store.offersPath));
       const listed = await store.listOffers();
       expect(binaryPaths(listed)).toEqual([]);
@@ -483,13 +477,7 @@ describe('bounded offers: stored offer migration', () => {
         },
       };
       const store = new LinksStore({ directory, mirror });
-      await writeOfferCollection({
-        directory,
-        maxBytes: store.maxBytes,
-        maxShardBytes: store.maxOfferShardBytes,
-        offers: [legacyOffer()],
-        offersPath: store.offersPath,
-      });
+      await writeFile(store.offersPath, serializeOffers([legacyOffer()]));
       await store.listOffers();
       expect(staged.length).toBe(1);
       expect(staged[0].includes('fileReference')).toBe(false);
@@ -504,13 +492,7 @@ describe('bounded offers: stored offer migration', () => {
     }
     await withDirectory('issue-82-delete-', async (directory) => {
       const store = new LinksStore({ directory });
-      await writeOfferCollection({
-        directory,
-        maxBytes: store.maxBytes,
-        maxShardBytes: store.maxOfferShardBytes,
-        offers: [legacyOffer()],
-        offersPath: store.offersPath,
-      });
+      await writeFile(store.offersPath, serializeOffers([legacyOffer()]));
       await store.deleteOffersByMessages('telegram:unrelated', [1]);
       const notation = await readFile(store.offersPath, 'utf8');
       expect(notation.includes('fileReference')).toBe(false);

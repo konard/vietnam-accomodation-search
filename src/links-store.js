@@ -577,7 +577,8 @@ export class LinksStore {
   }
 
   // Offers written before #82 may hold provider media objects and their
-  // bytes. Every read returns the bounded shape; writes persist it.
+  // bytes. Every read returns the bounded shape, and every write persists
+  // only the bounded shape.
   async #readOffers(mirror) {
     const stored = await readOfferCollection({
       directory: this.directory,
@@ -626,7 +627,10 @@ export class LinksStore {
   saveOffers(incoming) {
     return this.#locked(async () => {
       const offers = orderOffersByRecency(
-        deduplicateOffers([...(await this.#readOffers()).offers, ...incoming])
+        deduplicateOffers([
+          ...(await this.#readOffers()).offers,
+          ...incoming.map(boundStoredOffer),
+        ])
       );
       await this.#saveOffers(offers);
     });
