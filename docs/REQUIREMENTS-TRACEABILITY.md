@@ -97,6 +97,21 @@ issues, not reopened historical issues, track the current blockers:
 [#73 exact-release acceptance](https://github.com/konard/vietnam-accomodation-search/issues/73),
 and [#74 dependency advisories](https://github.com/konard/vietnam-accomodation-search/issues/74).
 
+[The 2026-10-03 post-PR #76 revalidation](case-studies/revalidation-2026-10-03-pr76/README.md)
+supersedes the post-PR #67 status. With real `clink` 0.2.11 the suite passes
+868/868, so the #68 order regression is fixed. The root audit is clean and the
+browser cohort passes 10/10. A local deploy drill measured a 2.8 s readiness
+handoff and verified failed-candidate restore, rollback, and host-bind
+persistence. PR #76 closed #68–#75 without live evidence for #69–#73. The new
+successor issues are
+[#77 data-directory change on redeploy](https://github.com/konard/vietnam-accomodation-search/issues/77),
+[#78 duplicate-poller crash loop](https://github.com/konard/vietnam-accomodation-search/issues/78),
+[#79 unpatched example advisory](https://github.com/konard/vietnam-accomodation-search/issues/79),
+[#80 owner inputs for release and live Telegram](https://github.com/konard/vietnam-accomodation-search/issues/80),
+[#81 deploy UX and docs](https://github.com/konard/vietnam-accomodation-search/issues/81),
+and [#82 raw media objects persisted per offer](https://github.com/konard/vietnam-accomodation-search/issues/82).
+#82 is the root cause of the unfinished 40-source audit.
+
 ## Latest acceptance delta — Issue #66 candidate
 
 | Requirement group                     | Current observation                                                                                                                                             | Remaining gate                                                                                                                                              |
