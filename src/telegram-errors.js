@@ -32,8 +32,10 @@ export function classifyTelegramError(error) {
       retryable: true,
     };
   }
+  // Another poller holds the bot token. The runtime backs off and stays
+  // unready until polling succeeds again; it is not a crash.
   if (status === 409) {
-    return { category: 'conflict', fatal: true, retryable: false };
+    return { category: 'conflict', fatal: false, retryable: false };
   }
   if (
     status === 401 ||

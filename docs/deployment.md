@@ -2,8 +2,9 @@
 
 ## Runtime contract
 
-The multi-stage image pins native multi-architecture Rust and Node 22 base
-manifests, installs the exact Playwright Chromium runtime dependencies and
+The multi-stage image pins native multi-architecture `rust:1.98.1-trixie` and
+`node:24.21.0-trixie-slim` (Node.js 24 Active LTS) base manifests by digest,
+installs the exact Playwright Chromium runtime dependencies and
 `link-cli` 0.2.11, and runs as the unprivileged `node` user under `tini`.
 Credentials enter only at runtime. `/data` is the sole persistent writable
 path; the root filesystem is read-only in Compose. Compose maps `/data` to one
@@ -13,7 +14,19 @@ volume.
 
 Readiness is local-only by default. `/live` reports whether the process and
 health server are alive. `/ready` returns success only after Bot API `getMe`,
-optional MTProto `getMe`, and grammY's polling `onStart`. Shutdown marks the
+optional MTProto `getMe`, and grammY's polling `onStart`.
+
+Telegram allows one `getUpdates` poller per bot token. When another poller
+takes over (`409 Conflict: terminated by other getUpdates request`), the
+instance stays alive but `/ready` returns 503 with
+`{"status":"not-ready","reason":"polling-conflict","conflicts":N}`, so the
+Docker health check fails for as long as the conflict lasts. It logs
+`telegram polling conflict: another poller holds this bot token` with the
+conflict count and the next delay, and polls again after a jittered backoff
+that doubles from 5 s up to 5 min. The first successful `getUpdates` makes
+it ready again and logs `telegram polling resumed`. A conflict before the
+first readiness still exits with code 21, and an invalid token (401) exits
+with code 20 at any time. Shutdown marks the
 service unready before stopping subscriptions and polling, draining active
 middleware, closing resources, and closing the health server.
 
@@ -73,6 +86,38 @@ container's unprivileged service UID. Any failure happens before the old
 container stops. Use the same option for deploy, status, logs, stop, and
 rollback.
 
+`.deploy/PROJECT/state.json` records the data directory of the last deploy,
+and every later `deploy` of that project must use it:
+
+- Only the first deploy of a project creates a missing data directory, and
+  it prints `Created data directory PATH`. With a recorded deployment a
+  missing directory is an error for every mutating action, so a mistyped
+  path never becomes a new, empty directory.
+- A different path fails before anything is built or stopped, naming both
+  paths. Pass `--move-data-directory` to move the deployment deliberately.
+  If the candidate then fails, the previous image starts again on the
+  previous directory.
+- A directory without the `.state-schema.json` marker, or with no data, is
+  refused while the recorded directory may still hold data. This covers the
+  project's own directory after it was wiped or replaced. Pass
+  `--allow-empty-data-directory` to start from it anyway.
+
+Before the image is built or pulled, the helper also checks that every host
+port the app publishes (`HEALTH_PORT`, default `127.0.0.1:8080`) is free,
+except a port this project's running container already holds. A taken port
+fails with `Host port HOST:PORT is already in use; set HEALTH_PORT to a free
+port.`
+
+Telegram allows one poller per bot token, so a second Compose project with
+the same token makes both bots fail with 409. After the build the helper runs
+a short script in the candidate container that prints only
+`sha256("telegram-bot-token:" + token)`; the token itself never reaches the
+host process or `.deploy/`. The fingerprint is recorded in the project's
+`state.json`, and a deploy whose token fingerprint another project already
+recorded is refused unless `--allow-shared-token` is passed. Drills and test
+projects started with `--project-name` therefore need a separate bot; remove
+`.deploy/OTHER-PROJECT/` after removing a project that is gone for good.
+
 Pass `--image OWNER/IMAGE:IMMUTABLE_TAG` to pull rather than build. A deploy
 creates a unique candidate tag, smoke-tests the CLI and `clink`, validates
 credentials without `getUpdates`, and checks the data mount while the old
@@ -86,6 +131,23 @@ data schema marker raised to the candidate's version. A readiness failure
 stops the candidate, removes files it created, restores every snapshot file
 and verifies its digest, and restarts the exact prior image ID; the deploy
 exits non-zero.
+
+A candidate that became ready is then watched for a settle window
+(`--settle-seconds`, default 30; `0` disables it). Every 2 s the helper reads
+the container's restart count, running state, and health status, and counts
+polling-conflict lines in its logs since it started. Any restart, stop,
+`unhealthy` status, or polling conflict fails the deploy, which restores the
+previous image and state as above. `Deployment healthy` is printed only after
+the window passes. A failed first deploy has no previous image; it removes
+the containers it created with `docker compose down` (volumes and the bind
+directory are kept) and exits non-zero.
+
+A failure prints one line naming the step and the cause, for example
+`Deploy failed during pulling the image: Error response from daemon: pull
+access denied for vac-local`, followed by `Full details:
+.deploy/PROJECT/deploy.log`. That `0600` log gets one JSON line per failure
+with the step, the last command, its exit code, the stack, and the last 8 KiB
+of the command's stdout and stderr, with Telegram tokens redacted.
 
 The data schema marker is version 3 from the release that writes large offer
 collections through an atomic chunk index (#61). An older image would ignore
@@ -141,7 +203,9 @@ ID. The report contains counts, digests, image IDs, the longest `/ready`
 outage, and the longest marker reply latency by Telegram server time. Deploy
 output stays in `.deploy/PROJECT/drill-RUN.log`. Cleanup unsubscribes,
 deletes the preset and every drill message, re-reads the conversation to
-count leftovers, and removes the drill project.
+count leftovers, and removes the drill project together with its
+`.deploy/PROJECT/state.json` record and snapshots, so the next run can start
+with `first-deploy` on a new data directory. The drill logs stay.
 
 ## Backup, restore, and disaster recovery
 
@@ -168,8 +232,12 @@ DATA_DIRECTORY_HOST=/srv/vietnam-search/data node scripts/deploy.mjs stop
 install -d -m 0700 /srv/vietnam-search/restored
 sha256sum --check backups/SHA256SUMS
 tar -C /srv/vietnam-search/restored -xzf backups/data-YYYYMMDDTHHMMSSZ.tgz
-DATA_DIRECTORY_HOST=/srv/vietnam-search/restored node scripts/deploy.mjs deploy
+DATA_DIRECTORY_HOST=/srv/vietnam-search/restored node scripts/deploy.mjs deploy --move-data-directory
 ```
+
+The restored directory is a different path from the recorded one, so the
+deploy needs `--move-data-directory`. The archive contains the
+`.state-schema.json` marker and the data, so no other flag is needed.
 
 Mount session secret files outside `/data` (for example under `/run/secrets`)
 so the ordinary data-volume backup above excludes them.
@@ -204,10 +272,28 @@ diff -u /tmp/volume.manifest /tmp/host.manifest
 DATA_DIRECTORY_HOST=/srv/vietnam-search/data node scripts/deploy.mjs deploy
 ```
 
+If the project already has a deploy record for another directory, add
+`--move-data-directory`; a copied volume without `.state-schema.json` also
+needs `--allow-empty-data-directory`, and the first validation then marks it
+as schema 1.
+
 Do not delete the old volume until a redeploy, search, restart, and rollback
 drill all succeed against the bind. If the migration is interrupted, discard
 the incomplete destination, recreate it as `0700`, and repeat; never overlay a
 partial copy.
+
+## Image size
+
+The runtime image is about 1.4 GiB unpacked (`du -sxm /` inside the image:
+1415 MiB on `0.12.3`; about 640 MB gzip-compressed, which is what a redeploy
+pulls). Most of it is Playwright's Chromium (about 660 MiB) and its system
+libraries. The `-slim` Node base keeps the rest small; the full
+`node:24.21.0-trixie` base adds about 1 GiB of build tools and libraries the
+runtime never uses (2412 MiB unpacked, about 1 GB compressed).
+
+The budget is **1600 MiB** unpacked. The pull-request Docker build check
+measures the image with `du -sxm /` and fails above it. Raise the budget only
+with a recorded reason in the pull request that needs it.
 
 ## Registry configuration
 

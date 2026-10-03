@@ -7,8 +7,25 @@ import { syncDirectory } from '../src/link-cli-mirror.js';
 import { bootstrapDependencies } from './bootstrap-dependencies.mjs';
 import {
   DATA_SCHEMA_VERSION,
+  resolveDataDirectory,
   validateDataDirectory,
 } from './data-directory.mjs';
+import {
+  appendDeployLog,
+  assertPortsAvailable,
+  assertTokenNotShared,
+  describeDeployFailure,
+  inspectDataDirectory,
+  observeSettle,
+  parsePortBinding,
+  parseSettleSample,
+  planDataDirectory,
+  publishedPorts,
+  readTokenFingerprints,
+  SETTLE_INSPECT_FORMAT,
+  TOKEN_FINGERPRINT_SCRIPT,
+  trackCommands,
+} from './deploy-guards.mjs';
 import {
   planRollback,
   projectStateDirectory,
@@ -22,6 +39,12 @@ import { loadCommandStream, loadLinoArguments } from './use-module.mjs';
 
 let command;
 let makeConfig;
+// The step and command in progress, reported when a deploy fails.
+const progress = {};
+const ACTIONS = new Set(['deploy', 'logs', 'rollback', 'status', 'stop']);
+const USAGE =
+  'Usage: deploy.mjs deploy|status|logs|stop|rollback [--restore-snapshot] [options]';
+const STATE_ROOT = '.deploy';
 
 async function loadDependencies() {
   if (command && makeConfig) {
@@ -31,7 +54,7 @@ async function loadDependencies() {
     loadCommandStream,
     loadLinoArguments,
   ]);
-  command = commandStream.$;
+  command = trackCommands(commandStream.$, progress);
   makeConfig = argumentsModule.makeConfig;
 }
 
@@ -54,6 +77,13 @@ function configuration(argv) {
           type: 'string',
         })
         .option('image', { type: 'string' })
+        .option('move-data-directory', { default: false, type: 'boolean' })
+        .option('allow-empty-data-directory', {
+          default: false,
+          type: 'boolean',
+        })
+        .option('allow-shared-token', { default: false, type: 'boolean' })
+        .option('settle-seconds', { default: 30, type: 'number' })
         .option('restore-snapshot', { default: false, type: 'boolean' })
         .option('project-name', {
           default: getenv('COMPOSE_PROJECT_NAME', DEFAULT_PROJECT),
@@ -217,11 +247,32 @@ async function prepareCandidate(config) {
     )
   );
   assertComposeDataMount(renderedCompose, config.dataDirectory);
+  progress.step = 'checking the health port';
+  const ports = publishedPorts(renderedCompose);
+  await assertPortsAvailable({
+    owned: await ownedPorts(config, ports),
+    ports,
+  });
+  progress.step = config.image ? 'pulling the image' : 'building the image';
   if (config.image) {
     await run`docker pull ${image}`;
   } else {
     await run`docker compose -f ${config.composeFile} -p ${config.projectName} build app`;
   }
+  progress.step = 'checking the bot token';
+  const fingerprint = await text(
+    await renderedRun`docker compose -f ${config.composeFile} -p ${config.projectName} run --rm --no-deps --entrypoint node app --input-type=module -e ${TOKEN_FINGERPRINT_SCRIPT}`
+  );
+  config.tokenFingerprint = /^[a-f0-9]{64}$/u.test(fingerprint)
+    ? fingerprint
+    : undefined;
+  assertTokenNotShared({
+    allowSharedToken: config.allowSharedToken,
+    fingerprint: config.tokenFingerprint,
+    projectName: config.projectName,
+    records: await readTokenFingerprints(STATE_ROOT),
+  });
+  progress.step = 'smoke-testing the image';
   const labels = await inspectImageLabels(renderedRun, image);
   assertImageIdentity(labels, config.buildIdentity);
   const cliVersion = await text(
@@ -237,6 +288,7 @@ async function prepareCandidate(config) {
   const browserSmoke =
     "import { chromium } from 'playwright'; const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] }); await browser.close();";
   await run`docker run --rm --entrypoint node ${image} --input-type=module -e ${browserSmoke}`;
+  progress.step = 'checking storage and Telegram credentials';
   const storagePreflight =
     "import { open, rename, rm } from 'node:fs/promises'; const a='/data/.container-write-probe'; const b=a+'.renamed'; const f=await open(a,'wx',0o600); await f.writeFile('probe'); await f.sync(); await f.close(); await rename(a,b); await rm(b);";
   await run`docker compose -f ${config.composeFile} -p ${config.projectName} run --rm --no-deps --entrypoint node app --input-type=module -e ${storagePreflight}`;
@@ -244,31 +296,88 @@ async function prepareCandidate(config) {
   return image;
 }
 
-async function rollbackTo(config, image, snapshot) {
+// Ports this project's running container already publishes are not taken by
+// someone else: the cutover releases them.
+async function ownedPorts(config, ports) {
+  const run = runner(config, undefined, { capture: true });
+  const owned = [];
+  for (const { target } of ports) {
+    try {
+      owned.push(
+        ...parsePortBinding(
+          await text(
+            await run`docker compose -f ${config.composeFile} -p ${config.projectName} port app ${target}`
+          )
+        )
+      );
+    } catch {
+      // No running container publishes this port.
+    }
+  }
+  return owned;
+}
+
+async function settleCandidate(config, image, since) {
+  if (!(config.settleSeconds > 0)) {
+    return;
+  }
+  const container = await currentContainer(config, image);
+  const inspect = command({ capture: true, mirror: false });
+  await observeSettle({
+    durationMs: config.settleSeconds * 1000,
+    sample: async () =>
+      parseSettleSample(
+        await text(
+          await inspect`docker inspect --format=${SETTLE_INSPECT_FORMAT} ${container}`
+        ),
+        await text(
+          await inspect`docker logs --since ${since} ${container} 2>&1`
+        )
+      ),
+  });
+}
+
+// After a failed move to a new data directory, the previous image starts
+// again on the directory it used before.
+async function rollbackTo(
+  config,
+  image,
+  snapshot,
+  dataDirectory = config.dataDirectory
+) {
   const run = runner(config, image);
   await run`docker compose -f ${config.composeFile} -p ${config.projectName} stop -t 30 app`;
   if (snapshot) {
     await restoreState(config.dataDirectory, snapshot);
   }
-  await run`docker compose -f ${config.composeFile} -p ${config.projectName} up -d --no-build --pull never app`;
+  await runner(
+    { ...config, dataDirectory },
+    image
+  )`docker compose -f ${config.composeFile} -p ${config.projectName} up -d --no-build --pull never app`;
   await waitHealthy(config, image);
 }
 
 export async function deploymentStateMachine({
   capture = () => Promise.resolve(undefined),
+  discard = () => Promise.resolve(),
   inspectPrevious,
   prepare,
   record,
   restore,
+  settle = () => Promise.resolve(),
   start,
   stop,
   wait,
 }) {
+  progress.step = 'preparing the candidate';
   const candidate = await prepare();
+  progress.step = 'inspecting the running service';
   const previous = await inspectPrevious();
   let snapshot;
   if (previous) {
+    progress.step = 'stopping the previous service';
     await stop();
+    progress.step = 'snapshotting state';
     try {
       snapshot = await capture();
     } catch (error) {
@@ -280,17 +389,29 @@ export async function deploymentStateMachine({
     }
   }
   try {
+    progress.step = 'starting the candidate';
     await start(candidate);
+    progress.step = 'waiting for readiness';
     await wait(candidate);
+    progress.step = 'observing the settle window';
+    await settle(candidate);
   } catch (error) {
-    if (previous) {
-      await restore(previous, snapshot);
+    if (!previous) {
+      progress.step = 'removing the failed first deployment';
+      await discard();
+      throw new Error(
+        `Candidate readiness failed; the new project's containers were removed: ${error.message}`,
+        { cause: error }
+      );
     }
+    progress.step = 'restoring the previous service';
+    await restore(previous, snapshot);
     throw new Error(
       `Candidate readiness failed; previous image and state restored: ${error.message}`,
       { cause: error }
     );
   }
+  progress.step = 'recording the deployment';
   await record({ candidate, previous, snapshot });
   return candidate;
 }
@@ -307,6 +428,7 @@ async function readDeployState(config, statePath) {
 async function deploy(config, statePath) {
   let existing;
   let run;
+  let startedAt;
   const snapshots = join(dirname(statePath), 'snapshots');
   const candidate = await deploymentStateMachine({
     capture: async () => {
@@ -317,6 +439,10 @@ async function deploy(config, statePath) {
       const manifest = await snapshotState(config.dataDirectory, directory);
       return { dataSchema: manifest.dataSchema, directory };
     },
+    discard: () =>
+      runner(
+        config
+      )`docker compose -f ${config.composeFile} -p ${config.projectName} down`,
     prepare: () => prepareCandidate(config),
     inspectPrevious: async () => {
       existing = await currentContainer(config);
@@ -345,12 +471,20 @@ async function deploy(config, statePath) {
         previousImage,
         projectName: config.projectName,
         snapshot: snapshot?.directory,
+        tokenFingerprint: config.tokenFingerprint,
       });
       await pruneSnapshots(snapshots);
     },
     restore: (previous, snapshot) =>
-      rollbackTo(config, previous, snapshot?.directory),
+      rollbackTo(
+        config,
+        previous,
+        snapshot?.directory,
+        config.previousDataDirectory
+      ),
+    settle: (image) => settleCandidate(config, image, startedAt),
     start: async (image) => {
+      startedAt = new Date().toISOString();
       await writeDataSchemaMarker(config.dataDirectory);
       run = runner(config, image);
       await run`docker compose -f ${config.composeFile} -p ${config.projectName} up -d --no-build --pull never app`;
@@ -365,19 +499,52 @@ async function deploy(config, statePath) {
   console.log(`Deployment healthy: ${candidate}`);
 }
 
+async function prepareDataDirectory(config, action, state) {
+  const requested = resolveDataDirectory(config.dataDirectory);
+  const plan = planDataDirectory({
+    action,
+    allowEmptyDataDirectory: config.allowEmptyDataDirectory,
+    moveDataDirectory: config.moveDataDirectory,
+    previous: state.dataDirectory
+      ? await inspectDataDirectory(state.dataDirectory)
+      : undefined,
+    requested,
+    state,
+    target: await inspectDataDirectory(requested),
+  });
+  if (!plan.validate) {
+    return requested;
+  }
+  const directory = await validateDataDirectory(requested, {
+    create: plan.create,
+  });
+  if (plan.create) {
+    console.log(`Created data directory ${directory}`);
+  }
+  return directory;
+}
+
 export async function runDeployCli(argv = process.argv.slice(2)) {
-  await loadDependencies();
+  progress.step = 'reading options';
   const [action = 'status'] = argv;
+  if (!ACTIONS.has(action)) {
+    throw new Error(USAGE);
+  }
+  await loadDependencies();
   const config = configuration(argv.slice(1));
   config.buildIdentity = await checkedOutBuildIdentity();
-  config.dataDirectory = await validateDataDirectory(config.dataDirectory);
-  const stateDirectory = '.deploy';
+  const stateDirectory = STATE_ROOT;
   const statePath = join(
     projectStateDirectory(config.projectName, stateDirectory),
     'state.json'
   );
   const lockPath = `${stateDirectory}/operation.lock`;
   await mkdir(dirname(statePath), { recursive: true, mode: 0o700 });
+  progress.logPath = join(dirname(statePath), 'deploy.log');
+  progress.step = 'validating the data directory';
+  const recorded = await readDeployState(config, statePath);
+  config.previousDataDirectory = recorded.dataDirectory;
+  config.dataDirectory = await prepareDataDirectory(config, action, recorded);
 
   if (action === 'status' || action === 'logs') {
     const run = runner(config);
@@ -418,20 +585,43 @@ export async function runDeployCli(argv = process.argv.slice(2)) {
         previousDataSchema: state.currentDataSchema ?? 1,
         previousImage: state.currentImage,
         projectName: config.projectName,
+        tokenFingerprint: state.tokenFingerprint,
       });
-    } else if (action === 'stop') {
+    } else {
       const run = runner(config);
       await run`docker compose -f ${config.composeFile} -p ${config.projectName} stop -t 30 app`;
-    } else {
-      throw new Error(
-        'Usage: deploy.mjs deploy|status|logs|stop|rollback [--restore-snapshot] [options]'
-      );
     }
   } finally {
     await rm(lockPath, { force: true, recursive: true });
   }
 }
 
+/**
+ * Run the CLI and turn any failure into one line naming the cause and the
+ * failing step. The full detail goes to the project's private deploy log.
+ */
+export async function main(
+  argv = process.argv.slice(2),
+  { log = console.error, logPath } = {}
+) {
+  try {
+    await runDeployCli(argv);
+    return 0;
+  } catch (error) {
+    const { detail, summary } = describeDeployFailure(error, progress);
+    log(summary);
+    const path = logPath || progress.logPath || join(STATE_ROOT, 'deploy.log');
+    try {
+      await mkdir(dirname(path), { mode: 0o700, recursive: true });
+      await appendDeployLog(path, detail);
+      log(`Full details: ${path}`);
+    } catch (logError) {
+      log(`The deploy log ${path} could not be written: ${logError.message}`);
+    }
+    return 1;
+  }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  await runDeployCli();
+  process.exitCode = await main();
 }

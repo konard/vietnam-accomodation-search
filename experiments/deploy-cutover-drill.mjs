@@ -10,7 +10,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
@@ -400,6 +400,13 @@ async function cleanup(state, options) {
     { env: composeEnvironment(options), log: options.log }
   );
   result.project = down.code === 0;
+  if (result.project) {
+    // The next drill starts with first-deploy on a new data directory, which
+    // a kept record would refuse as a data-directory move.
+    const record = join(ROOT, '.deploy', options.projectName);
+    await rm(join(record, 'state.json'), { force: true });
+    await rm(join(record, 'snapshots'), { force: true, recursive: true });
+  }
   return result;
 }
 

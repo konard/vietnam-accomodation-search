@@ -112,6 +112,15 @@ successor issues are
 and [#82 raw media objects persisted per offer](https://github.com/konard/vietnam-accomodation-search/issues/82).
 #82 is the root cause of the unfinished 40-source audit.
 
+[Issue #83](case-studies/issue-83/README.md) addresses #77–#82 in PR #84.
+Deploy now refuses an unrecorded data-directory change, a bot token another
+project deploys, and a taken host port. It also watches a 30 s settle window
+after cutover. A Telegram polling conflict makes the instance unready and
+starts a backoff instead of a crash loop. Offers persist only scalar media IDs
+and a bounded `raw`, and the example lock no longer contains
+`http-cache-semantics`. Two gates are still open: the protected 40-source audit
+rerun (82.5) and the owner inputs listed in #80.
+
 ## Latest acceptance delta — Issue #66 candidate
 
 | Requirement group                     | Current observation                                                                                                                                             | Remaining gate                                                                                                                                              |

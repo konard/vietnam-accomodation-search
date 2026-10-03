@@ -484,6 +484,22 @@ jobs:
           cache-from: type=gha,scope=docker-image
           cache-to: type=gha,mode=max,scope=docker-image
 
+      - name: Check image size budget
+        if: steps.docker_config.outputs.enabled == 'true'
+        timeout-minutes: 1
+        # The image filesystem size, measured inside the image so the figure
+        # does not depend on the runner's storage driver. Each redeploy pulls
+        # this much (about 45% of it compressed); see docs/deployment.md#image-size.
+        env:
+          IMAGE_SIZE_BUDGET_MIB: 1600
+        run: |
+          size=$(docker run --rm --user root --entrypoint sh "pr-check:${{ github.sha }}" -c 'du -sxm / | cut -f1')
+          echo "Image filesystem: ${size} MiB (budget ${IMAGE_SIZE_BUDGET_MIB} MiB)"
+          if [ "$size" -gt "$IMAGE_SIZE_BUDGET_MIB" ]; then
+            echo "::error::Docker image is ${size} MiB, over the ${IMAGE_SIZE_BUDGET_MIB} MiB budget in docs/deployment.md#image-size."
+            exit 1
+          fi
+
       - name: Smoke-test image tools and health contract
         if: steps.docker_config.outputs.enabled == 'true'
         timeout-minutes: 3

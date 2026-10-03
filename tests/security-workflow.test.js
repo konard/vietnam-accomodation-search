@@ -112,4 +112,30 @@ describe('security workflow', () => {
       'run: npm audit --package-lock-only --audit-level=high'
     );
   });
+
+  it('keeps the desktop packaging download chain off http-cache-semantics', () => {
+    // GHSA-ch52-4w7c-c8xp has no patched http-cache-semantics. The
+    // fetch-based @electron/get 5 drops got, cacheable-request, and it.
+    const directory = 'examples/universal-app';
+    const manifest = JSON.parse(
+      readFileSync(join(directory, 'package.json'), 'utf8')
+    );
+    const lock = JSON.parse(
+      readFileSync(join(directory, 'package-lock.json'), 'utf8')
+    );
+    const installed = Object.entries(lock.packages).filter(([path]) =>
+      path.includes('node_modules/')
+    );
+    const named = (name) =>
+      installed.filter(([path]) => path.endsWith(`node_modules/${name}`));
+
+    expect(manifest.overrides['@electron/get']).toBe('^5.1.0');
+    expect(named('@electron/get').length > 0).toBe(true);
+    for (const [, entry] of named('@electron/get')) {
+      expect(Number(entry.version.split('.')[0]) >= 5).toBe(true);
+    }
+    for (const name of ['got', 'cacheable-request', 'http-cache-semantics']) {
+      expect(named(name)).toEqual([]);
+    }
+  });
 });

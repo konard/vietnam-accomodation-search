@@ -1,4 +1,5 @@
 import { parseListingText } from './listing-parser.js';
+import { boundedPhotos, boundedRaw } from './offer-bounds.js';
 import { convertToVnd, parsePrice } from './pricing.js';
 import { canonicalizeUrl, firstPresent, stableHash } from './utils.js';
 
@@ -235,10 +236,10 @@ export function normalizeOffer(input, options = {}) {
     ...optional('url', url),
     ...optional('officialUrl', officialUrl),
     ...optional('searchQuery', compact(input.searchQuery)),
-    photos: unique(firstPresent(input.photos, [])).filter(Boolean).slice(0, 10),
+    photos: boundedPhotos(firstPresent(input.photos, [])),
     ...optional('postedAt', optionalDate(input.postedAt)),
     collectedAt: firstPresent(options.now, new Date()).toISOString(),
-    raw: firstPresent(input.raw, { ...input }),
+    raw: boundedRaw(firstPresent(input.raw, { ...input })),
   };
 }
 
@@ -263,12 +264,15 @@ function sourceVariant(offer) {
     ...optional('officialUrl', offer.officialUrl),
     price: offer.price,
     priceVnd: offer.priceVnd,
-    photos: offer.photos || [],
+    photos: boundedPhotos(offer.photos),
     ...optional('searchQuery', offer.searchQuery),
     ...optional('postedAt', offer.postedAt),
     collectedAt: offer.collectedAt,
     ...optional('provenance', offer.provenance),
-    raw: offer.raw,
+    ...optional(
+      'raw',
+      offer.raw === undefined ? undefined : boundedRaw(offer.raw)
+    ),
   };
 }
 
@@ -419,10 +423,7 @@ function mergeOfferGroup(group) {
       'searchQueries',
       searchQueries.length ? searchQueries : undefined
     ),
-    photos: mergeArrays(...offers.map((offer) => offer.photos || [])).slice(
-      0,
-      10
-    ),
+    photos: boundedPhotos(offers.flatMap((offer) => offer.photos || [])),
     price:
       current?.amount !== undefined && current.currency && current.period
         ? {

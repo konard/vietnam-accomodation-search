@@ -14,6 +14,7 @@ import {
   readOfferCollection,
   writeOfferCollection,
 } from './offer-chunks.js';
+import { boundStoredOffer } from './offer-bounds.js';
 import { deduplicateOffers, removeOfferMessageVariants } from './offers.js';
 
 function decodeJson(value) {
@@ -550,10 +551,7 @@ export class LinksStore {
     return this.#locked(async () => {
       const current =
         collection === 'offers'
-          ? await readOfferCollection({
-              directory: this.directory,
-              offersPath: this.offersPath,
-            })
+          ? (await this.#readOffers()).offers
           : deserializeRecords(
               singular(collection),
               await readOrEmpty(this.pathFor(collection))
@@ -578,14 +576,40 @@ export class LinksStore {
     );
   }
 
+  // Offers written before #82 may hold provider media objects and their
+  // bytes. Every read returns the bounded shape; writes persist it.
+  async #readOffers(mirror) {
+    const stored = await readOfferCollection({
+      directory: this.directory,
+      mirror,
+      offersPath: this.offersPath,
+    });
+    const offers = stored.map(boundStoredOffer);
+    const migrated = offers.filter((offer, index) => offer !== stored[index]);
+    return { migrated: migrated.length, offers };
+  }
+
   listOffers() {
-    const load = () =>
-      readOfferCollection({
-        directory: this.directory,
-        mirror: this.mirror,
-        offersPath: this.offersPath,
-      });
+    const load = async () => {
+      const { migrated, offers } = await this.#readOffers(this.mirror);
+      if (migrated && this.mirror) {
+        await this.#saveOffers(offers);
+      }
+      return offers;
+    };
     return this.mirror ? this.#locked(load) : load();
+  }
+
+  // Rewrites oversized stored offers to the bounded shape under the write
+  // lock and returns the number of rewritten offers.
+  migrateOffers() {
+    return this.#locked(async () => {
+      const { migrated, offers } = await this.#readOffers(this.mirror);
+      if (migrated) {
+        await this.#saveOffers(offers);
+      }
+      return migrated;
+    });
   }
 
   #saveOffers(offers) {
@@ -602,13 +626,7 @@ export class LinksStore {
   saveOffers(incoming) {
     return this.#locked(async () => {
       const offers = orderOffersByRecency(
-        deduplicateOffers([
-          ...(await readOfferCollection({
-            directory: this.directory,
-            offersPath: this.offersPath,
-          })),
-          ...incoming,
-        ])
+        deduplicateOffers([...(await this.#readOffers()).offers, ...incoming])
       );
       await this.#saveOffers(offers);
     });
@@ -617,11 +635,8 @@ export class LinksStore {
   deleteOffersByMessages(sourceId, messageIds) {
     const identifiers = new Set(messageIds.map(String));
     return this.#locked(async () => {
-      const offers = await readOfferCollection({
-        directory: this.directory,
-        offersPath: this.offersPath,
-      });
-      let changed = false;
+      const { migrated, offers } = await this.#readOffers();
+      let changed = migrated > 0;
       const remaining = offers
         .map((offer) => {
           const result = removeOfferMessageVariants(

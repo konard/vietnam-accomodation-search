@@ -786,7 +786,7 @@ describe('issue 10 Telegram lifecycle edges', () => {
     expect(warnings[0][0]).toBe('telegram update failed');
   });
 
-  it('maps polling conflicts and startup authentication failures to fatal exits', async () => {
+  it('maps polling conflicts before readiness and startup authentication failures to fatal exits', async () => {
     const errors = [];
     const conflict = new TelegramRuntime({
       bot: {
@@ -839,11 +839,11 @@ describe('issue 10 Telegram lifecycle edges', () => {
       logger: { error: (...values) => errors.push(values), info: () => {} },
     });
     await runtime.start();
-    const failure = Object.assign(new Error('poll conflict'), {
-      error_code: 409,
+    const failure = Object.assign(new Error('token revoked'), {
+      error_code: 401,
     });
     rejectPolling(failure);
-    expect((await capturedFailure(() => runtime.polling)).exitCode).toBe(21);
+    expect((await capturedFailure(() => runtime.polling)).exitCode).toBe(20);
     expect(errors.map(([message]) => message)).toContain(
       'telegram shutdown failed'
     );

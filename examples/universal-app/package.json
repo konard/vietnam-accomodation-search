@@ -64,6 +64,7 @@
     }
   },
   "overrides": {
+    "@electron/get": "^5.1.0",
     "xcode": {
       "uuid": "^14.0.2"
     }
