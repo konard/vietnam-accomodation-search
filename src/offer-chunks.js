@@ -257,6 +257,40 @@ export async function writeOfferCollection({
     String(left.offer.id).localeCompare(String(right.offer.id))
   );
   const groups = partitionOfferEntries(canonical, maxShardBytes);
+  const chunksPath = join(directory, CHUNK_DIRECTORY);
+  const committed = committedShards(existingIndex);
+  if (committed) {
+    // An interrupted earlier save may have left unindexed chunks (#82).
+    await pruneChunks(chunksPath, committed, removeStaleChunk);
+  }
+  const created = [];
+  let shards;
+  try {
+    shards = await writeShards({ created, directory, groups, mirror });
+    const index = {
+      bytes: shards.reduce((sum, shard) => sum + shard.bytes, 0),
+      count: prepared.length,
+      order: prepared.map(({ offer }) => String(offer.id)),
+      shards,
+      version: 1,
+    };
+    await mkdir(chunksPath, { recursive: true, mode: 0o700 });
+    await markIndexedSchema(directory);
+    await durableWrite(indexPath, `${JSON.stringify(index)}\n`);
+  } catch (error) {
+    // A failed save removes the chunks it created before any index used them.
+    await removeChunks(created, chunksPath, removeStaleChunk);
+    throw error;
+  }
+  // The new index is durable; stale chunks are safe to prune later.
+  await pruneChunks(
+    chunksPath,
+    new Set(shards.map(({ sha256 }) => sha256)),
+    removeStaleChunk
+  );
+}
+
+async function writeShards({ created, directory, groups, mirror }) {
   const shards = [];
   for (const { entries } of groups) {
     if (!entries.length) {
@@ -266,7 +300,10 @@ export async function writeOfferCollection({
     const bytes = Buffer.byteLength(notation);
     const sha256 = digest(notation);
     const chunkDirectory = join(directory, CHUNK_DIRECTORY, sha256);
-    await mkdir(chunkDirectory, { recursive: true, mode: 0o700 });
+    // `mkdir` returns undefined when the chunk exists; a retry reuses it.
+    if (await mkdir(chunkDirectory, { recursive: true, mode: 0o700 })) {
+      created.push(sha256);
+    }
     await durableWrite(join(chunkDirectory, 'offers.lino'), notation);
     const staged = await mirror?.stage?.({
       directory: chunkDirectory,
@@ -276,30 +313,45 @@ export async function writeOfferCollection({
     await staged?.activate();
     shards.push({ bytes, count: entries.length, sha256 });
   }
-  const index = {
-    bytes: shards.reduce((sum, shard) => sum + shard.bytes, 0),
-    count: prepared.length,
-    order: prepared.map(({ offer }) => String(offer.id)),
-    shards,
-    version: 1,
-  };
-  await mkdir(join(directory, CHUNK_DIRECTORY), {
-    recursive: true,
-    mode: 0o700,
-  });
-  await markIndexedSchema(directory);
-  await durableWrite(indexPath, `${JSON.stringify(index)}\n`);
-  const keep = new Set(shards.map(({ sha256 }) => sha256));
-  try {
-    for (const name of await readdir(join(directory, CHUNK_DIRECTORY))) {
-      if (!keep.has(name)) {
-        await removeStaleChunk(join(directory, CHUNK_DIRECTORY, name), {
-          recursive: true,
-          force: true,
-        });
-      }
-    }
-  } catch {
-    // The new index is already durable; stale chunks are safe to prune later.
+  return shards;
+}
+
+// Returns undefined for an unreadable index, whose chunks are left alone.
+function committedShards(notation) {
+  if (!notation) {
+    return new Set();
   }
+  try {
+    return new Set(JSON.parse(notation).shards.map(({ sha256 }) => sha256));
+  } catch {
+    return undefined;
+  }
+}
+
+async function removeChunks(names, chunksPath, removeChunk) {
+  for (const name of names) {
+    try {
+      await removeChunk(join(chunksPath, name), {
+        force: true,
+        recursive: true,
+      });
+    } catch {
+      // Cleanup is best effort; the next save prunes unindexed chunks again.
+      return;
+    }
+  }
+}
+
+async function pruneChunks(chunksPath, keep, removeChunk) {
+  let names;
+  try {
+    names = await readdir(chunksPath);
+  } catch {
+    return;
+  }
+  await removeChunks(
+    names.filter((name) => !keep.has(name)),
+    chunksPath,
+    removeChunk
+  );
 }

@@ -1,3 +1,7 @@
+import { mediaIdentity } from './offer-bounds.js';
+
+export { mediaIdentity };
+
 const REQUEST =
   /\b(?:looking\s+for|wanted|need(?:ed)?|seeking)\b|ищу|cần\s+(?:tìm|thuê)/iu;
 const SALE =
@@ -94,17 +98,6 @@ function chatId(message) {
   return message.chatId ?? message.chat?.id ?? message.sourceId ?? 'unknown';
 }
 
-function mediaIdentity(message) {
-  return (
-    message.mediaId ??
-    message.media?.id ??
-    message.media ??
-    message.photo?.id ??
-    message.document?.id ??
-    message.photos?.[0]
-  );
-}
-
 export function assembleTelegramAlbums(messages) {
   const latest = new Map();
   for (const message of messages) {
@@ -143,10 +136,14 @@ export function assembleTelegramAlbums(messages) {
           : `telegram-album:${chatId(first)}:${String(groupedId)}`,
       text: texts[0] || '',
       messageIds: members.map(messageId),
-      mediaIds: [...new Set(members.map(mediaIdentity).filter(Boolean))].slice(
-        0,
-        10
-      ),
+      // Scalar IDs only: provider media objects carry bytes (#82).
+      mediaIds: [
+        ...new Set(
+          members
+            .map(mediaIdentity)
+            .filter((identity) => identity !== undefined)
+        ),
+      ].slice(0, 10),
       members,
     };
   });

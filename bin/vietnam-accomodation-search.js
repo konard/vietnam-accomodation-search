@@ -188,6 +188,13 @@ export async function runCli(
           'Configure TELEGRAM_BOT_TOKEN, TELEGRAM_USER_SESSION, or both.'
         );
       }
+      // Rewrite offers stored before #82 to the bounded shape once at startup.
+      const migratedOffers = await application.store?.migrateOffers?.();
+      if (migratedOffers) {
+        stderr(
+          `Migrated ${migratedOffers} stored offers to the bounded shape.`
+        );
+      }
       const bot =
         !ingestOnly && effectiveCredentials.botToken
           ? await application.createBot(effectiveCredentials.botToken, {

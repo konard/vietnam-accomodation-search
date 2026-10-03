@@ -9,6 +9,8 @@ import { pathToFileURL } from 'node:url';
 import { Api, TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import { runClink } from '../src/link-cli-mirror.js';
+// Shared scalar media identity; GramJS media objects carry bytes (#82).
+import { mediaIdentity } from '../src/telegram-pipeline.js';
 
 import {
   GRAMJS_SESSION_FORMAT,
@@ -115,17 +117,6 @@ function cutoffDate(now, months) {
   const cutoff = new Date(now);
   cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
   return cutoff;
-}
-
-function mediaIdentity(message) {
-  return (
-    message.mediaId ??
-    message.media?.id ??
-    message.media ??
-    message.photo?.id ??
-    message.document?.id ??
-    message.photos?.[0]
-  );
 }
 
 function tesseract(command, bytes) {

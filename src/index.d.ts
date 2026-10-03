@@ -587,6 +587,8 @@ export declare class LinksStore {
     query: { path: string; value: unknown }
   ): Promise<T[]>;
   listOffers(): Promise<AccommodationOffer[]>;
+  /** Rewrites stored offers to the bounded shape; returns the rewritten count. */
+  migrateOffers(): Promise<number>;
   saveOffers(offers: AccommodationOffer[]): Promise<void>;
   deleteOffersByMessages(
     sourceId: string,
