@@ -121,19 +121,29 @@ async function probeDurability(directory) {
   }
 }
 
-/** Validate and prepare the one host root that owns all durable state. */
+/** The absolute data directory a user-supplied path names. */
+export function resolveDataDirectory(value, { cwd = process.cwd() } = {}) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('A non-empty data directory is required.');
+  }
+  return resolve(cwd, value.trim());
+}
+
+/**
+ * Validate and prepare the one host root that owns all durable state. With
+ * `create: false` a missing directory is an error, so a mistyped path of an
+ * existing deployment never becomes a new empty directory.
+ */
 export async function validateDataDirectory(
   value,
   {
+    create = true,
     cwd = process.cwd(),
     homeDirectory = homedir(),
     minimumFreeBytes = 16 * 1024 ** 2,
   } = {}
 ) {
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error('A non-empty data directory is required.');
-  }
-  const directory = resolve(cwd, value.trim());
+  const directory = resolveDataDirectory(value, { cwd });
   const filesystemRoot = parse(directory).root;
   if (directory === filesystemRoot) {
     throw new Error('The filesystem root is too broad for application data.');
@@ -153,8 +163,17 @@ export async function validateDataDirectory(
   }
 
   await rejectSymbolicLinkComponents(directory);
-  await mkdir(directory, { mode: 0o700, recursive: true });
-  const details = await lstat(directory);
+  if (create) {
+    await mkdir(directory, { mode: 0o700, recursive: true });
+  }
+  const details = await lstat(directory).catch((error) => {
+    if (error.code === 'ENOENT') {
+      throw new Error(`Data directory ${directory} does not exist.`, {
+        cause: error,
+      });
+    }
+    throw error;
+  });
   if (!details.isDirectory()) {
     throw new Error(`${directory} is not a directory.`);
   }

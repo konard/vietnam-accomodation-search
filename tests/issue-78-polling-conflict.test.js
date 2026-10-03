@@ -1,4 +1,20 @@
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+
 import { describe, expect, it } from 'test-anywhere';
+
+import {
+  assertTokenNotShared,
+  observeSettle,
+  parseSettleSample,
+  readTokenFingerprints,
+  TOKEN_FINGERPRINT_SCRIPT,
+} from '../scripts/deploy-guards.mjs';
+import { deploymentStateMachine } from '../scripts/deploy.mjs';
 
 import {
   classifyTelegramError,
@@ -254,5 +270,235 @@ describe('polling conflict: policy', () => {
     expect(conflictDelay(0, { baseMs: 8, maxMs: 100 }, () => 0)).toBe(4);
     // The default never polls again sooner than every few seconds.
     expect(conflictDelay(1) >= 2_500).toBe(true);
+  });
+});
+
+const isDeno = typeof globalThis.Deno !== 'undefined';
+const execute = promisify(execFile);
+
+async function rejection(action) {
+  try {
+    await action();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
+describe('polling conflict: deploy settle window', () => {
+  it('fails the deploy and restores the previous image when the candidate meets another poller', async () => {
+    const hub = new TokenHub();
+    // The other Compose project already polls with the same token.
+    const other = runtimeFor(pollingBot(hub), []);
+    const lines = [];
+    const candidate = new TelegramRuntime({
+      bot: pollingBot(hub),
+      conflictBackoff: { baseMs: 5, maxMs: 20 },
+      healthPort: 0,
+      logger: {
+        error: (message) => lines.push(message),
+        info: (message) => lines.push(message),
+      },
+      random: () => 0.5,
+    });
+    const calls = [];
+    try {
+      await other.start();
+      const error = await rejection(() =>
+        deploymentStateMachine({
+          capture: async () => 'snapshot',
+          inspectPrevious: async () => 'vac:previous',
+          prepare: async () => 'vac:candidate',
+          record: async () => calls.push('record'),
+          restore: async (image, snapshot) =>
+            calls.push(`restore ${image} ${snapshot}`),
+          // `docker inspect` and `docker logs` of the candidate container.
+          settle: () =>
+            observeSettle({
+              durationMs: 2_000,
+              intervalMs: 5,
+              sample: async () =>
+                parseSettleSample(
+                  `0 true ${(await ready(candidate)).status === 200 ? 'healthy' : 'unhealthy'}`,
+                  lines.join('\n')
+                ),
+            }),
+          start: async () => {
+            calls.push('start');
+            await candidate.start();
+          },
+          stop: async () => calls.push('stop'),
+          // The candidate passed getMe and started polling.
+          wait: async () => expect(candidate.live).toBe(true),
+        })
+      );
+      expect(error.message.startsWith('Candidate readiness failed;')).toBe(
+        true
+      );
+      expect(
+        /during the 2 s settle window: \d+ Telegram polling conflict\(s\): another poller holds this bot token\.$/u.test(
+          error.message
+        )
+      ).toBe(true);
+      expect(calls).toEqual(['stop', 'start', 'restore vac:previous snapshot']);
+      // The evicted candidate itself reports unready meanwhile.
+      await until(() => candidate.conflicts > 0);
+      expect((await ready(candidate)).body.reason).toBe('polling-conflict');
+    } finally {
+      await candidate.stop('test');
+      await other.stop('test');
+    }
+  });
+
+  it('fails on a restart, a stopped container, or an unhealthy status', async () => {
+    const cases = [
+      [
+        ['0 true healthy', '1 true healthy'],
+        'the container restarted 1 time(s)',
+      ],
+      [['2 true healthy', '2 false '], 'the container stopped'],
+      [
+        ['0 true healthy', '0 true unhealthy'],
+        'the container became unhealthy',
+      ],
+    ];
+    for (const [samples, reason] of cases) {
+      const queue = [...samples];
+      const error = await rejection(() =>
+        observeSettle({
+          durationMs: 30_000,
+          now: () => 0,
+          sample: async () =>
+            parseSettleSample(queue.shift() ?? samples.at(-1)),
+          sleep: async () => {},
+        })
+      );
+      expect(error.message).toBe(
+        `Candidate failed during the 30 s settle window: ${reason}.`
+      );
+    }
+  });
+
+  it('passes a candidate that stays healthy for the whole window', async () => {
+    let clock = 0;
+    const slept = [];
+    const result = await observeSettle({
+      durationMs: 5_000,
+      intervalMs: 2_000,
+      now: () => clock,
+      sample: async () => parseSettleSample('3 true healthy\n', 'started\n'),
+      sleep: async (ms) => {
+        slept.push(ms);
+        clock += ms;
+      },
+    });
+    expect(result).toEqual({
+      conflicts: 0,
+      health: 'healthy',
+      restarts: 3,
+      running: true,
+    });
+    expect(slept).toEqual([2_000, 2_000, 1_000]);
+    expect(parseSettleSample('0 true')).toEqual({
+      conflicts: 0,
+      health: '',
+      restarts: 0,
+      running: true,
+    });
+  });
+});
+
+describe('polling conflict: shared token guard', () => {
+  const records = [
+    { projectName: 'vac', tokenFingerprint: 'a'.repeat(64) },
+    { projectName: 'vac-drill', tokenFingerprint: 'b'.repeat(64) },
+  ];
+
+  it('refuses a second project with the same token fingerprint', () => {
+    expect(() =>
+      assertTokenNotShared({
+        fingerprint: 'a'.repeat(64),
+        projectName: 'vac-qa',
+        records,
+      })
+    ).toThrow(
+      "Compose project vac already deploys this bot token; Telegram allows one poller per token, so both bots would fail with 409 Conflict. Use a separate bot for vac-qa, remove the other project's .deploy record, or pass --allow-shared-token."
+    );
+  });
+
+  it('allows the same project, a different token, or the explicit flag', () => {
+    const fingerprint = 'a'.repeat(64);
+    for (const options of [
+      { fingerprint, projectName: 'vac' },
+      { fingerprint: 'c'.repeat(64), projectName: 'vac-qa' },
+      { allowSharedToken: true, fingerprint, projectName: 'vac-qa' },
+      { fingerprint: '', projectName: 'vac-qa' },
+    ]) {
+      expect(assertTokenNotShared({ ...options, records })).toBe(undefined);
+    }
+  });
+
+  it('prints only a salted digest of the token, read from the env or a file', async () => {
+    // Deno runs the suite without permission to spawn processes.
+    if (isDeno) {
+      return;
+    }
+    const token = '123456:SECRET-token-value';
+    const expected = createHash('sha256')
+      .update(`telegram-bot-token:${token}`)
+      .digest('hex');
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'issue-78-')));
+    try {
+      const file = join(root, 'token');
+      await writeFile(file, `${token}\n`);
+      for (const env of [
+        { TELEGRAM_BOT_TOKEN: token },
+        { TELEGRAM_BOT_TOKEN_FILE: file },
+      ]) {
+        const { stdout } = await execute(
+          process.execPath,
+          ['--input-type=module', '-e', TOKEN_FINGERPRINT_SCRIPT],
+          { env: { PATH: process.env.PATH, ...env } }
+        );
+        expect(stdout).toBe(`${expected}\n`);
+      }
+      const { stdout } = await execute(
+        process.execPath,
+        ['--input-type=module', '-e', TOKEN_FINGERPRINT_SCRIPT],
+        { env: { PATH: process.env.PATH } }
+      );
+      expect(stdout).toBe('');
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it('reads the fingerprints every project recorded under .deploy', async () => {
+    // Deno runs the suite with read-only permissions.
+    if (isDeno) {
+      return;
+    }
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'issue-78-')));
+    try {
+      expect(await readTokenFingerprints(join(root, 'missing'))).toEqual([]);
+      for (const [name, state] of [
+        ['vac', { tokenFingerprint: 'a'.repeat(64) }],
+        ['vac-old', { currentImage: 'vac:1' }],
+      ]) {
+        await mkdir(join(root, name));
+        await writeFile(join(root, name, 'state.json'), JSON.stringify(state));
+      }
+      await mkdir(join(root, 'vac-empty'));
+      await writeFile(join(root, 'operation.lock'), '');
+      expect(await readTokenFingerprints(root)).toEqual([
+        { projectName: 'vac', tokenFingerprint: 'a'.repeat(64) },
+      ]);
+      await writeFile(join(root, 'vac-old', 'state.json'), '{');
+      expect((await rejection(() => readTokenFingerprints(root))).name).toBe(
+        'SyntaxError'
+      );
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
   });
 });
