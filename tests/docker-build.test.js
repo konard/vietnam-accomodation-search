@@ -118,3 +118,31 @@ describe('Docker build configuration', () => {
     ]);
   });
 });
+
+describe('Docker image size budget', () => {
+  const dockerBuildJob = getWorkflowJob(releaseWorkflow, 'docker-build');
+  const deployment = readFileSync('docs/deployment.md', 'utf8');
+  const dockerfile = readFileSync('Dockerfile', 'utf8');
+
+  it('fails the pull-request build when the image outgrows the documented budget', () => {
+    const budget = /IMAGE_SIZE_BUDGET_MIB: (\d+)/u.exec(dockerBuildJob)?.[1];
+    expect(budget).toBe('1600');
+    expect(dockerBuildJob).toContain("-c 'du -sxm / | cut -f1'");
+    expect(dockerBuildJob).toContain(
+      'if [ "$size" -gt "$IMAGE_SIZE_BUDGET_MIB" ]; then'
+    );
+    expect(
+      dockerBuildJob.indexOf('name: Check image size budget') >
+        dockerBuildJob.indexOf('name: Build Docker image (no push)')
+    ).toBe(true);
+    expect(deployment).toContain('## Image size');
+    expect(deployment).toContain(`${budget} MiB`);
+  });
+
+  it('documents the Node.js base the runtime stage pins', () => {
+    const base = /node:(\d+\.\d+\.\d+-[a-z]+-slim)/u.exec(dockerfile)?.[1];
+    expect(base).toBe('24.21.0-trixie-slim');
+    expect(deployment).toContain(`node:${base}`);
+    expect(deployment).not.toContain('Node 22');
+  });
+});
