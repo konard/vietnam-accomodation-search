@@ -120,6 +120,12 @@ Security green, deploy guards verified with a real token) and partial fixes for
 [#86 deploy and tooling leftovers](https://github.com/konard/vietnam-accomodation-search/issues/86),
 and [#87 owner inputs](https://github.com/konard/vietnam-accomodation-search/issues/87).
 
+[The post-PR #89 revalidation](case-studies/revalidation-2026-10-04-pr89/README.md)
+confirms #85 and #86 fixed (951/951 tests with real `clink`). The real audit
+now crashes at source 8 of 40 on the monolithic `domain-records` collection,
+tracked by [#90](https://github.com/konard/vietnam-accomodation-search/issues/90).
+The owner inputs are carried over to [#91](https://github.com/konard/vietnam-accomodation-search/issues/91).
+
 [Issue #88](case-studies/issue-88/README.md) addresses #85–#87 in PR #89.
 Every offer write path persists bounded offers, so replayed pre-#82 batches no
 longer commit per-byte links. A small collection prunes orphan chunks. A save
