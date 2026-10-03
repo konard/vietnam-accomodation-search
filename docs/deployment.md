@@ -90,7 +90,10 @@ rollback.
 and every later `deploy` of that project must use it:
 
 - Only the first deploy of a project creates a missing data directory, and
-  it prints `Created data directory PATH`. With a recorded deployment a
+  it prints `Created data directory PATH`. If that deploy then fails, for
+  example on the port or shared-token check, it removes the directory again
+  while it holds no data, together with an empty `.deploy/PROJECT/`, and
+  prints `Removed PATH, which the failed attempt created.` With a recorded deployment a
   missing directory is an error for every mutating action, so a mistyped
   path never becomes a new, empty directory.
 - A different path fails before anything is built or stopped, naming both
@@ -145,9 +148,16 @@ directory are kept) and exits non-zero.
 A failure prints one line naming the step and the cause, for example
 `Deploy failed during pulling the image: Error response from daemon: pull
 access denied for vac-local`, followed by `Full details:
-.deploy/PROJECT/deploy.log`. That `0600` log gets one JSON line per failure
-with the step, the last command, its exit code, the stack, and the last 8 KiB
-of the command's stdout and stderr, with Telegram tokens redacted.
+.deploy/PROJECT/deploy.log`. Command output is shown on the terminal as it
+runs and is captured as well, so the cause is the last line of the failing
+command's stderr. When the deploy recovered, the step is still the one that
+failed (`waiting for readiness`, `observing the settle window`), and the
+recovery follows on its own line, for example `Recovered: previous image and
+state restored.` That `0600` log gets one JSON line per failure with the step,
+the recovery, the last command, its exit code, the stack, and the last 8 KiB
+of the command's stdout and stderr, with Telegram tokens redacted. When the
+failed attempt removed the `.deploy/PROJECT/` it created, the entry goes to
+`.deploy/deploy.log`.
 
 The data schema marker is version 3 from the release that writes large offer
 collections through an atomic chunk index (#61). An older image would ignore

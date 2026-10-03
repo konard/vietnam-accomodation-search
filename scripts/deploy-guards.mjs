@@ -1,4 +1,11 @@
-import { appendFile, chmod, readdir, readFile } from 'node:fs/promises';
+import {
+  appendFile,
+  chmod,
+  readdir,
+  readFile,
+  rm,
+  rmdir,
+} from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -294,13 +301,26 @@ export function trackCommands(run, progress) {
   return wrap(run);
 }
 
+/**
+ * command-stream options for a deploy command. A streamed command is mirrored
+ * to the terminal and captured as well, so its failure keeps the stderr the
+ * summary and the deploy log report.
+ */
+export function commandOptions({ env, quiet = false } = {}) {
+  return { capture: true, env, mirror: !quiet };
+}
+
 function commandFailure(error) {
   for (let current = error; current; current = current.cause) {
-    if (typeof current.stderr === 'string' && 'exitCode' in current) {
+    if (Number.isInteger(current.exitCode)) {
       return current;
     }
   }
   return undefined;
+}
+
+function output(text) {
+  return typeof text === 'string' ? tail(text) : undefined;
 }
 
 function lastLine(text) {
@@ -318,19 +338,30 @@ function tail(text) {
   );
 }
 
+function recoveryDetail(recovery) {
+  return recovery ? { recovery } : {};
+}
+
+function failureCause(error, failed) {
+  const message = String(error?.message ?? error).split('\n')[0];
+  const reason = failed && lastLine(failed.stderr);
+  return redactTelegramValue(
+    reason ? message.replace(failed.message, reason) : message
+  );
+}
+
 /**
  * Reduce a deploy failure to one readable line plus a private log entry.
  * Command-stream errors carry the child process as `result`; only the exit
  * code and bounded output tails are kept.
  */
 export function describeDeployFailure(error, progress = {}) {
-  const message = String(error?.message ?? error).split('\n')[0];
-  const failed = commandFailure(error);
-  const reason = failed && lastLine(failed.stderr);
-  const cause = redactTelegramValue(
-    reason ? message.replace(failed.message, reason) : message
-  );
-  const step = progress.step || 'setup';
+  // A recovered failure reports its cause; the recovery gets its own line.
+  const recovery = error?.recovery;
+  const reported = recovery ? error.cause : error;
+  const failed = commandFailure(reported);
+  const cause = failureCause(reported, failed);
+  const step = error?.step || progress.step || 'setup';
   return {
     detail: {
       at: new Date().toISOString(),
@@ -338,12 +369,56 @@ export function describeDeployFailure(error, progress = {}) {
       exitCode: failed?.exitCode,
       message: redactTelegramValue(String(error?.message ?? error)),
       stack: redactTelegramValue(String(error?.stack || '')),
-      stderr: failed ? tail(failed.stderr) : undefined,
-      stdout: failed ? tail(failed.stdout) : undefined,
+      ...recoveryDetail(recovery),
+      stderr: output(failed?.stderr),
+      stdout: output(failed?.stdout),
       step,
     },
+    recovery: recovery && `Recovered: ${recovery}.`,
     summary: `Deploy failed during ${step}: ${cause}`,
   };
+}
+
+/**
+ * A failure the deploy recovered from. `step` names the step that failed,
+ * not the recovery, and `recovery` says what the recovery restored.
+ */
+export function recoveredFailure(error, { prefix, recovery, step }) {
+  return Object.assign(
+    new Error(`${prefix}; ${recovery}: ${error.message}`, { cause: error }),
+    { recovery, step }
+  );
+}
+
+/**
+ * Remove what a failed attempt created: its data directory while that holds
+ * no data (only the schema marker or probe files), then each state directory
+ * while it is empty, innermost first. Returns the paths removed.
+ */
+export async function removeAttemptResidue({
+  dataDirectory,
+  stateDirectories = [],
+}) {
+  const removed = [];
+  if (dataDirectory) {
+    const contents = await inspectDataDirectory(dataDirectory);
+    if (contents.exists && !contents.hasData) {
+      await rm(dataDirectory, { recursive: true });
+      removed.push(dataDirectory);
+    }
+  }
+  for (const directory of stateDirectories) {
+    try {
+      await rmdir(directory);
+      removed.push(directory);
+    } catch (error) {
+      if (!['EEXIST', 'ENOENT', 'ENOTEMPTY'].includes(error.code)) {
+        throw error;
+      }
+      break;
+    }
+  }
+  return removed;
 }
 
 /** Append one JSON line to the private deploy log. */

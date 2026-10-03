@@ -14,6 +14,7 @@ import {
   appendDeployLog,
   assertPortsAvailable,
   assertTokenNotShared,
+  commandOptions,
   describeDeployFailure,
   inspectDataDirectory,
   observeSettle,
@@ -22,6 +23,8 @@ import {
   planDataDirectory,
   publishedPorts,
   readTokenFingerprints,
+  recoveredFailure,
+  removeAttemptResidue,
   SETTLE_INSPECT_FORMAT,
   TOKEN_FINGERPRINT_SCRIPT,
   trackCommands,
@@ -134,11 +137,7 @@ function runner(config, image, { capture = false } = {}) {
   if (image) {
     env.APP_IMAGE = image;
   }
-  return command({
-    capture,
-    env,
-    mirror: !capture,
-  });
+  return command(commandOptions({ env, quiet: capture }));
 }
 
 export function assertImageIdentity(labels, { buildDate, revision, version }) {
@@ -172,7 +171,7 @@ export async function inspectImageLabels(
 }
 
 async function checkedOutBuildIdentity() {
-  const run = command({ capture: true, mirror: false });
+  const run = command(commandOptions({ quiet: true }));
   const [packageContents, revision, buildDate] = await Promise.all([
     readFile('package.json', 'utf8'),
     text(await run`git rev-parse HEAD`),
@@ -322,7 +321,7 @@ async function settleCandidate(config, image, since) {
     return;
   }
   const container = await currentContainer(config, image);
-  const inspect = command({ capture: true, mirror: false });
+  const inspect = command(commandOptions({ quiet: true }));
   await observeSettle({
     durationMs: config.settleSeconds * 1000,
     sample: async () =>
@@ -357,6 +356,15 @@ async function rollbackTo(
   await waitHealthy(config, image);
 }
 
+// A recovery runs under its own step name. When it succeeds, the failure is
+// reported against the step that failed, with the recovery on its own line.
+async function recover(error, { action, prefix, recovery, step }) {
+  const failedStep = progress.step;
+  progress.step = step;
+  await action();
+  return recoveredFailure(error, { prefix, recovery, step: failedStep });
+}
+
 export async function deploymentStateMachine({
   capture = () => Promise.resolve(undefined),
   discard = () => Promise.resolve(),
@@ -381,11 +389,12 @@ export async function deploymentStateMachine({
     try {
       snapshot = await capture();
     } catch (error) {
-      await restore(previous);
-      throw new Error(
-        `State snapshot failed; previous image restored: ${error.message}`,
-        { cause: error }
-      );
+      throw await recover(error, {
+        action: () => restore(previous),
+        prefix: 'State snapshot failed',
+        recovery: 'previous image restored',
+        step: 'restoring the previous service',
+      });
     }
   }
   try {
@@ -396,19 +405,21 @@ export async function deploymentStateMachine({
     progress.step = 'observing the settle window';
     await settle(candidate);
   } catch (error) {
-    if (!previous) {
-      progress.step = 'removing the failed first deployment';
-      await discard();
-      throw new Error(
-        `Candidate readiness failed; the new project's containers were removed: ${error.message}`,
-        { cause: error }
-      );
-    }
-    progress.step = 'restoring the previous service';
-    await restore(previous, snapshot);
-    throw new Error(
-      `Candidate readiness failed; previous image and state restored: ${error.message}`,
-      { cause: error }
+    throw await recover(
+      error,
+      previous
+        ? {
+            action: () => restore(previous, snapshot),
+            prefix: 'Candidate readiness failed',
+            recovery: 'previous image and state restored',
+            step: 'restoring the previous service',
+          }
+        : {
+            action: discard,
+            prefix: 'Candidate readiness failed',
+            recovery: "the new project's containers were removed",
+            step: 'removing the failed first deployment',
+          }
     );
   }
   progress.step = 'recording the deployment';
@@ -449,7 +460,7 @@ async function deploy(config, statePath) {
       if (!existing) {
         return undefined;
       }
-      const inspect = command({ capture: true, mirror: false });
+      const inspect = command(commandOptions({ quiet: true }));
       const imageId = await text(
         await inspect`docker inspect --format={{.Image}} ${existing}`
       );
@@ -513,7 +524,7 @@ async function prepareDataDirectory(config, action, state) {
     target: await inspectDataDirectory(requested),
   });
   if (!plan.validate) {
-    return requested;
+    return { directory: requested };
   }
   const directory = await validateDataDirectory(requested, {
     create: plan.create,
@@ -521,11 +532,25 @@ async function prepareDataDirectory(config, action, state) {
   if (plan.create) {
     console.log(`Created data directory ${directory}`);
   }
-  return directory;
+  return { created: plan.create, directory };
+}
+
+// The state directories `mkdir -p` created, innermost first.
+function createdStateDirectories(projectDirectory, firstCreated) {
+  if (!firstCreated) {
+    return [];
+  }
+  const created = [projectDirectory];
+  for (let path = projectDirectory; path !== firstCreated;) {
+    path = dirname(path);
+    created.push(path);
+  }
+  return created;
 }
 
 export async function runDeployCli(argv = process.argv.slice(2)) {
   progress.step = 'reading options';
+  progress.removed = [];
   const [action = 'status'] = argv;
   if (!ACTIONS.has(action)) {
     throw new Error(USAGE);
@@ -539,12 +564,46 @@ export async function runDeployCli(argv = process.argv.slice(2)) {
     'state.json'
   );
   const lockPath = `${stateDirectory}/operation.lock`;
-  await mkdir(dirname(statePath), { recursive: true, mode: 0o700 });
+  const residue = {
+    stateDirectories: createdStateDirectories(
+      dirname(statePath),
+      await mkdir(dirname(statePath), { recursive: true, mode: 0o700 })
+    ),
+  };
   progress.logPath = join(dirname(statePath), 'deploy.log');
+  try {
+    await runAction(action, config, statePath, lockPath, residue);
+  } catch (error) {
+    await removeResidue(residue);
+    throw error;
+  }
+}
+
+// A failed attempt leaves nothing it created behind: not an empty data
+// directory, and not an empty `.deploy/PROJECT/`. Its log then goes to the
+// state root.
+async function removeResidue(residue) {
+  try {
+    progress.removed = await removeAttemptResidue(residue);
+  } catch {
+    progress.removed = [];
+  }
+  if (
+    residue.stateDirectories.some((path) => progress.removed.includes(path))
+  ) {
+    progress.logPath = join(STATE_ROOT, 'deploy.log');
+  }
+}
+
+async function runAction(action, config, statePath, lockPath, residue) {
   progress.step = 'validating the data directory';
   const recorded = await readDeployState(config, statePath);
   config.previousDataDirectory = recorded.dataDirectory;
-  config.dataDirectory = await prepareDataDirectory(config, action, recorded);
+  const prepared = await prepareDataDirectory(config, action, recorded);
+  config.dataDirectory = prepared.directory;
+  if (prepared.created) {
+    residue.dataDirectory = prepared.directory;
+  }
 
   if (action === 'status' || action === 'logs') {
     const run = runner(config);
@@ -608,8 +667,17 @@ export async function main(
     await runDeployCli(argv);
     return 0;
   } catch (error) {
-    const { detail, summary } = describeDeployFailure(error, progress);
+    const { detail, recovery, summary } = describeDeployFailure(
+      error,
+      progress
+    );
     log(summary);
+    if (recovery) {
+      log(recovery);
+    }
+    for (const path of progress.removed || []) {
+      log(`Removed ${path}, which the failed attempt created.`);
+    }
     const path = logPath || progress.logPath || join(STATE_ROOT, 'deploy.log');
     try {
       await mkdir(dirname(path), { mode: 0o700, recursive: true });

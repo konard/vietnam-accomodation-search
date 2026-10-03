@@ -155,9 +155,8 @@ describe('container runtime contract', () => {
     expect(deploy).toContain('chromium.launch');
     expect(deploy).toContain('await syncDirectory(dirname(path))');
     expect(deploy).toContain('docker image tag ${imageId} ${rollbackImage}');
-    expect(deploy).toContain(
-      'Candidate readiness failed; previous image and state restored'
-    );
+    expect(deploy).toContain("prefix: 'Candidate readiness failed'");
+    expect(deploy).toContain("recovery: 'previous image and state restored'");
     expect(deploy.indexOf('prepareCandidate(config)')).toBeLessThan(
       deploy.indexOf('stop -t 30 app')
     );

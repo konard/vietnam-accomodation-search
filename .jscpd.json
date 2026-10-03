@@ -12,6 +12,9 @@
     "**/.changeset/**",
     "**/docs/case-studies/**",
     "**/docs/case-studies/**/data/**",
+    "**/.vietnam-accomodation-search/**",
+    "**/.deploy/**",
+    "**/ci-logs/**",
     "**/package-lock.json",
     "**/pnpm-lock.yaml",
     "**/yarn.lock"
