@@ -48,6 +48,18 @@ all chunks, then atomically activates the index; any interrupted staging
 leaves the older file or index authoritative. An old `offers.lino` is retained
 as a migration backup after index activation but is no longer current.
 
+Every offer write persists the bounded offer shape: `saveOffers`, generic
+record saves, updates, and deletions of `offers`, and `writeOfferCollection`
+all pass each offer through `boundStoredOffer` before formatting, and reads
+apply the same bound to older text. `raw` keeps scalars and media IDs only
+(4,096 characters per text, 20 array items, depth 4, 8 KiB in total), so
+journaled GramJS `Photo` objects never reach storage as per-byte links. An
+offer keeps at most 10 photos, 32 variants, and 64 price observations; a source
+message collected again replaces its earlier variant, and the newest entries
+are kept. Writing the single-file layout also removes `offers.chunks/*`
+directories that no index references, so a collection that shrank below one
+chunk leaves no orphaned chunks behind.
+
 ## Binary projection and commit protocol
 
 Each canonical text snapshot has a SHA-256 content hash. `LinkCliMirror`
@@ -76,6 +88,18 @@ or interrupted projection keeps its verified shards, because only activation
 prunes, so the next attempt imports only the rest. A verification failure
 records only counts (canonical, exported, missing, rewritten, and unexpected
 links) in the candidate's `failure.json`, never names or values.
+
+Offer chunks are content-addressed, so editing one offer gives its chunk a
+new directory with an empty `.binary`. A save rewrites and restages only
+chunks whose text changed; unchanged chunks are left untouched. A changed
+chunk first adopts any shard whose hash already has a verified database in a
+previously committed chunk: the manifest and its files are hard-linked (or
+copied across file systems) into a staging directory, renamed into place, and
+verified again against the manifest before use; a source that fails
+verification is skipped. Only shards with new content run `clink`. Editing one
+listing in a 16-chunk collection of 600 listings imported 37 shards before and
+1 shard after this change with `clink` 0.2.11
+(`experiments/issue-85-real-clink-reuse.mjs`).
 
 The 10-minute `clink` deadline applies to each process, which now imports at
 most 128 links. On the reference host (6 vCPU, 11 GiB, four concurrent `clink`
