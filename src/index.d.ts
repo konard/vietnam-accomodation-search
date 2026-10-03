@@ -608,6 +608,8 @@ export declare class LinkCliMirror {
     /** Parallel clink imports for sharded projections (default up to 4). */
     concurrency?: number;
     heartbeatMs?: number;
+    /** Hard-links adopted projection files; falls back to a copy. */
+    linkFile?: (source: string, target: string) => Promise<void>;
     maxShardLinks?: number;
     minShardLinks?: number;
     onProgress?: (event: {
@@ -645,6 +647,8 @@ export declare class LinkCliMirror {
     directory: string;
     kind: string;
     notation: string;
+    /** Other shard roots whose verified sub-shard databases may be adopted. */
+    reuse?: string[];
   }): Promise<{ activate: () => Promise<void>; sha256: string }>;
 }
 

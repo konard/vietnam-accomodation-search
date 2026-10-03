@@ -136,6 +136,12 @@ export default [
       'reports/**',
       // Case study raw data files (downloaded from external sources)
       'docs/case-studies/*/data/**',
+      // Runtime data: the default data directory (which can hold a browser
+      // profile with extension JavaScript), deploy state, and CI logs
+      '.vietnam-accomodation-search/**',
+      '.deploy/**',
+      'ci-logs/**',
+      '.playwright-mcp/**',
     ],
   },
 ];

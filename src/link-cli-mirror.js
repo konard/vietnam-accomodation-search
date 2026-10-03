@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import {
+  copyFile,
+  link,
   mkdir,
   open,
   readFile,
@@ -42,6 +44,15 @@ export async function syncDirectory(
     }
   } finally {
     await directory.close();
+  }
+}
+
+async function linkOrCopy(source, target, linkFile) {
+  try {
+    await linkFile(source, target);
+  } catch {
+    // Hard links are unavailable across devices and on some file systems.
+    await copyFile(source, target);
   }
 }
 
@@ -396,6 +407,7 @@ export class LinkCliMirror {
     command = 'clink',
     concurrency = Math.max(1, Math.min(4, availableParallelism())),
     heartbeatMs,
+    linkFile = link,
     maxShardLinks,
     minShardLinks,
     onProgress,
@@ -407,6 +419,7 @@ export class LinkCliMirror {
     this.concurrency = concurrency;
     this.onProgress = onProgress;
     this.run = run;
+    this.linkFile = linkFile;
     this.statCandidate = statCandidate;
     this.runOptions = { heartbeatMs, onProgress, timeoutMs };
     this.heartbeatMs = heartbeatMs ?? 15_000;
@@ -523,7 +536,38 @@ export class LinkCliMirror {
     });
   }
 
-  async #buildShards(candidate, shardRoot, kind, shards, digest) {
+  // Adopts a verified database with the same digest from another shard root,
+  // so content that lands in a new collection chunk is not imported again.
+  // Projection files are never modified in place, so hard links are safe;
+  // the adopted copy is verified against its manifest before use.
+  async #adopt(directory, kind, digest, roots) {
+    for (const root of roots) {
+      const source = join(root, digest);
+      const staging = `${directory}.adopt-${process.pid}-${Date.now()}`;
+      try {
+        await verifyDatabase(source, kind, digest);
+        const { files } = await readManifest(source, kind, digest);
+        await this.#retire(directory);
+        await mkdir(staging, { recursive: true });
+        for (const name of ['manifest.json', ...Object.keys(files)]) {
+          await linkOrCopy(
+            join(source, name),
+            join(staging, name),
+            this.linkFile
+          );
+        }
+        await rename(staging, directory);
+        await verifyDatabase(directory, kind, digest);
+        return true;
+      } catch {
+        // Adoption only saves an import; any failure falls back to one.
+        await rm(staging, { force: true, recursive: true });
+      }
+    }
+    return false;
+  }
+
+  async #buildShards(candidate, shardRoot, kind, shards, digest, reuse) {
     const startedAt = Date.now();
     const digests = shards.map((shard) => sha256(shard));
     let completed = 0;
@@ -552,13 +596,17 @@ export class LinkCliMirror {
             if (!recoverableSnapshotError(error)) {
               throw error;
             }
-            await this.#buildDatabase(
-              directory,
-              kind,
-              shard,
-              digests[index],
-              runOptions
-            );
+            if (await this.#adopt(directory, kind, digests[index], reuse)) {
+              reused += 1;
+            } else {
+              await this.#buildDatabase(
+                directory,
+                kind,
+                shard,
+                digests[index],
+                runOptions
+              );
+            }
           }
           completed += 1;
           if (
@@ -579,7 +627,8 @@ export class LinkCliMirror {
     );
   }
 
-  async stage({ directory, kind, notation }) {
+  // `reuse` lists other shard roots whose verified databases may be adopted.
+  async stage({ directory, kind, notation, reuse = [] }) {
     const digest = sha256(notation);
     const root = join(directory, '.binary');
     const candidate = join(root, `${kind}-${digest}`);
@@ -629,7 +678,14 @@ export class LinkCliMirror {
         this.runOptions
       );
     } else {
-      await this.#buildShards(candidate, shardRoot, kind, shards, digest);
+      await this.#buildShards(
+        candidate,
+        shardRoot,
+        kind,
+        shards,
+        digest,
+        reuse
+      );
     }
     return { activate, sha256: digest };
   }

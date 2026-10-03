@@ -8,6 +8,10 @@ export const RAW_ARRAY_LIMIT = 20;
 export const RAW_DEPTH_LIMIT = 4;
 export const RAW_BYTE_LIMIT = 8 * 1024;
 export const PHOTO_LIMIT = 10;
+// Variants and price observations accumulate with every collection of a
+// listing; only the newest are kept, so a merged offer stays bounded.
+export const VARIANT_LIMIT = 32;
+export const PRICE_HISTORY_LIMIT = 64;
 // Photo entries are remote IDs or image URLs; longer strings are not IDs.
 const PHOTO_ID_LIMIT = 2048;
 // Fields duplicated elsewhere in the offer (`mediaIds` is `photos`), or
@@ -249,15 +253,36 @@ function boundedRecord(record) {
   };
 }
 
+// Keeps the newest `limit` entries of a list ordered oldest first.
+export function newestEntries(entries, limit) {
+  return entries.length > limit ? entries.slice(-limit) : entries;
+}
+
+function boundedLists(offer) {
+  const lists = {};
+  for (const [key, limit] of [
+    ['priceChanges', PRICE_HISTORY_LIMIT],
+    ['priceHistory', PRICE_HISTORY_LIMIT],
+    ['variants', VARIANT_LIMIT],
+  ]) {
+    if (Array.isArray(offer[key]) && offer[key].length > limit) {
+      lists[key] = newestEntries(offer[key], limit);
+    }
+  }
+  return lists;
+}
+
 // Rewrites a stored offer and its variants to the bounded shape. Returns the
 // same object when nothing changes, so callers can detect a needed migration.
 export function boundStoredOffer(offer) {
-  const bounded = boundedRecord(offer);
-  if (!Array.isArray(offer.variants)) {
+  const lists = boundedLists(offer);
+  const source = Object.keys(lists).length ? { ...offer, ...lists } : offer;
+  const bounded = boundedRecord(source);
+  if (!Array.isArray(source.variants)) {
     return bounded;
   }
-  const variants = offer.variants.map(boundedRecord);
-  if (variants.every((variant, index) => variant === offer.variants[index])) {
+  const variants = source.variants.map(boundedRecord);
+  if (variants.every((variant, index) => variant === source.variants[index])) {
     return bounded;
   }
   return { ...bounded, variants };

@@ -120,6 +120,17 @@ Security green, deploy guards verified with a real token) and partial fixes for
 [#86 deploy and tooling leftovers](https://github.com/konard/vietnam-accomodation-search/issues/86),
 and [#87 owner inputs](https://github.com/konard/vietnam-accomodation-search/issues/87).
 
+[Issue #88](case-studies/issue-88/README.md) addresses #85–#87 in PR #89.
+Every offer write path persists bounded offers, so replayed pre-#82 batches no
+longer commit per-byte links. A small collection prunes orphan chunks. A save
+restages only the chunks that changed, and those adopt verified sub-shard
+projections, so `clink` imports only new content: one edited listing took 37
+imports on main and takes 1 here. Variants and price history are capped per
+offer. Streamed deploy failures keep their cause, the failed step is named apart
+from the recovery, a failed first deploy removes what it created, and linters
+skip runtime data. Two gates are still open: the protected 40-source audit rerun
+(85.4) and the owner inputs in #87.
+
 [Issue #83](case-studies/issue-83/README.md) addresses #77–#82 in PR #84.
 Deploy now refuses an unrecorded data-directory change, a bot token another
 project deploys, and a taken host port. It also watches a 30 s settle window

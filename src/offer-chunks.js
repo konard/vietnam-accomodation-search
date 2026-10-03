@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { DATA_SCHEMA_VERSION } from './data-schema.js';
 import { durableWrite } from './link-cli-mirror.js';
+import { boundStoredOffer } from './offer-bounds.js';
 import {
   deserializeOffers,
   isCurrentSchema,
@@ -238,9 +239,15 @@ export async function writeOfferCollection({
   offersPath,
   removeStaleChunk = rm,
 }) {
-  const { prepared, total } = preparedOffers(offers, maxBytes, maxShardBytes);
+  // Every write persists the bounded shape, whatever its caller passed.
+  const { prepared, total } = preparedOffers(
+    offers.map(boundStoredOffer),
+    maxBytes,
+    maxShardBytes
+  );
   const indexPath = join(directory, INDEX_NAME);
   const existingIndex = await readOrEmpty(indexPath);
+  const chunksPath = join(directory, CHUNK_DIRECTORY);
   if (!existingIndex && total <= maxShardBytes) {
     const notation = serializeOffers(prepared.map(({ offer }) => offer));
     const staged = await mirror?.stage?.({
@@ -250,6 +257,9 @@ export async function writeOfferCollection({
     });
     await durableWrite(offersPath, notation);
     await staged?.activate();
+    // Without an index no chunk is referenced; interrupted saves may have
+    // left some behind.
+    await pruneChunks(chunksPath, new Set(), removeStaleChunk);
     return;
   }
   // Canonical chunk layout is independent of the public collection order.
@@ -257,7 +267,6 @@ export async function writeOfferCollection({
     String(left.offer.id).localeCompare(String(right.offer.id))
   );
   const groups = partitionOfferEntries(canonical, maxShardBytes);
-  const chunksPath = join(directory, CHUNK_DIRECTORY);
   const committed = committedShards(existingIndex);
   if (committed) {
     // An interrupted earlier save may have left unindexed chunks (#82).
@@ -266,7 +275,13 @@ export async function writeOfferCollection({
   const created = [];
   let shards;
   try {
-    shards = await writeShards({ created, directory, groups, mirror });
+    shards = await writeShards({
+      committed: committed || new Set(),
+      created,
+      directory,
+      groups,
+      mirror,
+    });
     const index = {
       bytes: shards.reduce((sum, shard) => sum + shard.bytes, 0),
       count: prepared.length,
@@ -290,8 +305,25 @@ export async function writeOfferCollection({
   );
 }
 
-async function writeShards({ created, directory, groups, mirror }) {
+// Projections of the committed chunks, and of a single-file collection that
+// becomes chunked, hold most sub-shards of a chunk that changed.
+function reusableShardRoots(directory, committed) {
+  return [
+    ...[...committed].map((sha256) =>
+      join(directory, CHUNK_DIRECTORY, sha256, '.binary', 'offers.shards')
+    ),
+    join(directory, '.binary', 'offers.shards'),
+  ];
+}
+
+async function unchangedChunk(chunkDirectory, sha256) {
+  const notation = await readOrEmpty(join(chunkDirectory, 'offers.lino'));
+  return digest(notation) === sha256;
+}
+
+async function writeShards({ committed, created, directory, groups, mirror }) {
   const shards = [];
+  const reuse = reusableShardRoots(directory, committed);
   for (const { entries } of groups) {
     if (!entries.length) {
       continue;
@@ -300,6 +332,15 @@ async function writeShards({ created, directory, groups, mirror }) {
     const bytes = Buffer.byteLength(notation);
     const sha256 = digest(notation);
     const chunkDirectory = join(directory, CHUNK_DIRECTORY, sha256);
+    // A committed chunk was written and projected by the save that indexed
+    // it; reads ensure its projection.
+    if (
+      committed.has(sha256) &&
+      (await unchangedChunk(chunkDirectory, sha256))
+    ) {
+      shards.push({ bytes, count: entries.length, sha256 });
+      continue;
+    }
     // `mkdir` returns undefined when the chunk exists; a retry reuses it.
     if (await mkdir(chunkDirectory, { recursive: true, mode: 0o700 })) {
       created.push(sha256);
@@ -309,6 +350,7 @@ async function writeShards({ created, directory, groups, mirror }) {
       directory: chunkDirectory,
       kind: 'offers',
       notation,
+      reuse,
     });
     await staged?.activate();
     shards.push({ bytes, count: entries.length, sha256 });

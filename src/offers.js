@@ -1,5 +1,11 @@
 import { parseListingText } from './listing-parser.js';
-import { boundedPhotos, boundedRaw } from './offer-bounds.js';
+import {
+  PRICE_HISTORY_LIMIT,
+  VARIANT_LIMIT,
+  boundedPhotos,
+  boundedRaw,
+  newestEntries,
+} from './offer-bounds.js';
 import { convertToVnd, parsePrice } from './pricing.js';
 import { canonicalizeUrl, firstPresent, stableHash } from './utils.js';
 
@@ -312,8 +318,11 @@ function priceHistory(offers, variants) {
     ].join('\n');
     uniqueObservations.set(key, observation);
   }
-  return [...uniqueObservations.values()].sort(
-    (left, right) => timestamp(left.observedAt) - timestamp(right.observedAt)
+  return newestEntries(
+    [...uniqueObservations.values()].sort(
+      (left, right) => timestamp(left.observedAt) - timestamp(right.observedAt)
+    ),
+    PRICE_HISTORY_LIMIT
   );
 }
 
@@ -363,14 +372,26 @@ function currentPrice(history) {
   )[0];
 }
 
-function deduplicateVariants(offers) {
+// A source message collected again replaces its earlier variant; its price
+// observations stay in the price history.
+function deduplicateVariants(collected) {
   const variants = new Map();
-  for (const variant of offers.flatMap(variantsFrom)) {
-    const key = [variant.id, variant.sourceId, variant.collectedAt].join('\n');
-    variants.set(key, variant);
+  for (const variant of collected) {
+    const key = [variant.id, variant.sourceId].join('\n');
+    const previous = variants.get(key);
+    if (
+      !previous ||
+      timestamp(variant.collectedAt) >= timestamp(previous.collectedAt)
+    ) {
+      variants.set(key, variant);
+    }
   }
-  return [...variants.values()].sort(
-    (left, right) => timestamp(left.collectedAt) - timestamp(right.collectedAt)
+  return newestEntries(
+    [...variants.values()].sort(
+      (left, right) =>
+        timestamp(left.collectedAt) - timestamp(right.collectedAt)
+    ),
+    VARIANT_LIMIT
   );
 }
 
@@ -384,8 +405,9 @@ function mergeOfferGroup(group) {
   );
   const oldest = offers[0];
   const newest = offers.at(-1);
-  const variants = deduplicateVariants(offers);
-  const history = priceHistory(offers, variants);
+  const collected = offers.flatMap(variantsFrom);
+  const variants = deduplicateVariants(collected);
+  const history = priceHistory(offers, collected);
   const changes = detectPriceChanges(history);
   const current = currentPrice(history);
   const sourceIds = unique(
