@@ -56,6 +56,9 @@ import {
 } from './telegram-accommodation-audit-lib.mjs';
 
 const DEFAULT_FOLDER = 'Нячанг жильё';
+// Storage CRUD is verified on a bounded sample in its own collection, so the
+// final step never holds or rewrites the whole domain-record collection.
+const STORAGE_SAMPLE_RECORDS = 200;
 
 function parseArguments(values) {
   const result = {
@@ -655,20 +658,8 @@ async function auditSource(
       audit.traces[status] = (audit.traces[status] || 0) + count;
     }
   }
-  await auditStore.updateRecords('domain-records', (current) => {
-    const byId = new Map(current.map((record) => [record.id, record]));
-    for (const record of batch.domainRecords) {
-      byId.set(record.id, record);
-    }
-    return [...byId.values()];
-  });
-  await auditStore.updateRecords('traces', (current) => {
-    const byId = new Map(current.map((record) => [record.id, record]));
-    for (const record of batch.traceRecords) {
-      byId.set(record.id, record);
-    }
-    return [...byId.values()];
-  });
+  await auditStore.appendRecords('domain-records', batch.domainRecords);
+  await auditStore.appendRecords('traces', batch.traceRecords);
   await auditStore.saveOffers(batch.offers);
   await saveAuditCheckpoint(checkpointStore, {
     batchId: journalKey.batchId,
@@ -832,7 +823,7 @@ export async function runAudit(options) {
     };
 
     const audits = [];
-    const domainRecords = [];
+    const storageSample = [];
     const offers = [];
     let privateIndex = 0;
     for (const source of sources) {
@@ -853,25 +844,32 @@ export async function runAudit(options) {
           )
       );
       audits.push(result.audit);
-      domainRecords.push(...result.domainRecords);
+      storageSample.push(
+        ...result.domainRecords.slice(
+          0,
+          STORAGE_SAMPLE_RECORDS - storageSample.length
+        )
+      );
       offers.push(...result.offers);
     }
     report.sources = audits;
-    const mergeById = (records) => [
-      ...new Map(records.map((record) => [record.id, record])).values(),
-    ];
-    const storedDomainRecords = await auditStore.loadRecords('domain-records');
-    const mergedDomainRecords = mergeById([
-      ...storedDomainRecords,
-      ...domainRecords,
-    ]);
-    report.storage = mergedDomainRecords.length
-      ? await verifyAuditStorage(
-          auditStore,
-          mergedDomainRecords,
-          'domain-records'
-        )
-      : { delete: false, edit: false, query: false, roundTrip: false };
+    report.storage = storageSample.length
+      ? {
+          ...(await verifyAuditStorage(auditStore, storageSample)),
+          persisted: (
+            await auditStore.queryRecords('domain-records', {
+              path: 'id',
+              value: storageSample[0].id,
+            })
+          ).some(({ id }) => id === storageSample[0].id),
+        }
+      : {
+          delete: false,
+          edit: false,
+          persisted: false,
+          query: false,
+          roundTrip: false,
+        };
     await auditStore.saveOffers(offers);
     report.classification = await corpusClassificationMetrics();
     const fieldProblems = countBy(
