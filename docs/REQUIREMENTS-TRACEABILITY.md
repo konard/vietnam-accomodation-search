@@ -126,6 +126,16 @@ now crashes at source 8 of 40 on the monolithic `domain-records` collection,
 tracked by [#90](https://github.com/konard/vietnam-accomodation-search/issues/90).
 The owner inputs are carried over to [#91](https://github.com/konard/vietnam-accomodation-search/issues/91).
 
+[Issue #92](case-studies/issue-92/README.md) addresses #90 and #91 in PR #93.
+Every non-offer collection that outgrows one chunk is stored as bounded,
+content-defined, indexed LiNo chunks, and an oversized single file is streamed
+into chunks one record at a time, so no text passed to `parseNotation` exceeds
+a quarter of its bound. `appendRecords` evicts by record count and bytes and
+rewrites only the chunks it changes; Telegram domain records, events, traces
+and the live audit use it, and the audit verifies storage on a bounded sample.
+Two gates are still open: the protected 40-source audit rerun (90.4) and the
+owner inputs in #91, which only the repository owner can provide.
+
 [Issue #88](case-studies/issue-88/README.md) addresses #85–#87 in PR #89.
 Every offer write path persists bounded offers, so replayed pre-#82 batches no
 longer commit per-byte links. A small collection prunes orphan chunks. A save
