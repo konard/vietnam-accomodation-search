@@ -126,6 +126,16 @@ now crashes at source 8 of 40 on the monolithic `domain-records` collection,
 tracked by [#90](https://github.com/konard/vietnam-accomodation-search/issues/90).
 The owner inputs are carried over to [#91](https://github.com/konard/vietnam-accomodation-search/issues/91).
 
+[The post-PR #93 revalidation](case-studies/revalidation-2026-10-04-pr93/README.md)
+confirms #90 fixed, but end-to-end product and field-accuracy checks found false
+negatives in search and false positives in acceptance:
+[#94 search returns nothing](https://github.com/konard/vietnam-accomodation-search/issues/94),
+[#95 Docker browser sandbox](https://github.com/konard/vietnam-accomodation-search/issues/95),
+[#96 serial, unpersisted, leaking search](https://github.com/konard/vietnam-accomodation-search/issues/96),
+[#97 live extraction accuracy](https://github.com/konard/vietnam-accomodation-search/issues/97),
+[#98 open warnings](https://github.com/konard/vietnam-accomodation-search/issues/98),
+and [#99 owner inputs](https://github.com/konard/vietnam-accomodation-search/issues/99).
+
 [Issue #92](case-studies/issue-92/README.md) addresses #90 and #91 in PR #93.
 Every non-offer collection that outgrows one chunk is stored as bounded,
 content-defined, indexed LiNo chunks, and an oversized single file is streamed
