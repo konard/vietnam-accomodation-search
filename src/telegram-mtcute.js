@@ -467,6 +467,7 @@ export class TelegramIngestionService {
   constructor({
     logger = console,
     maxEvents = 10_000,
+    maxRecordBytes,
     now = () => new Date(),
     provider,
     rateProvider,
@@ -476,6 +477,7 @@ export class TelegramIngestionService {
   } = {}) {
     this.logger = logger;
     this.maxEvents = maxEvents;
+    this.maxRecordBytes = maxRecordBytes;
     this.now = now;
     this.provider = provider;
     this.rateProvider = rateProvider;
@@ -498,12 +500,29 @@ export class TelegramIngestionService {
       }
       return [...byId.values()].slice(-this.maxEvents * 10);
     };
-    if (typeof this.store.updateRecords === 'function') {
+    if (typeof this.store.appendRecords === 'function') {
+      for (const record of records) {
+        validatePublicRecord(record);
+      }
+      await this.store.appendRecords(
+        kind,
+        records,
+        this.#appendBudget(this.maxEvents * 10)
+      );
+    } else if (typeof this.store.updateRecords === 'function') {
       await this.store.updateRecords(kind, merge);
     } else {
       const existing = (await this.store.loadRecords?.(kind)) || [];
       await this.store.saveRecords(kind, merge(existing));
     }
+  }
+
+  // Append-only collections keep their newest records within a record count
+  // and, when `maxRecordBytes` is set, a byte budget.
+  #appendBudget(maxRecords) {
+    return this.maxRecordBytes === undefined
+      ? { maxRecords }
+      : { maxBytes: this.maxRecordBytes, maxRecords };
   }
 
   async #removeGraphByMessages(sourceId, messageIds) {
@@ -779,7 +798,12 @@ export class TelegramIngestionService {
       }
       return [...byId.values()].slice(-this.maxEvents);
     };
-    if (typeof this.store.updateRecords === 'function') {
+    if (typeof this.store.appendRecords === 'function') {
+      await this.store.appendRecords('telegram-events', records, {
+        ...this.#appendBudget(this.maxEvents),
+        replace: false,
+      });
+    } else if (typeof this.store.updateRecords === 'function') {
       await this.store.updateRecords('telegram-events', merge);
     } else {
       await this.store.saveRecords(

@@ -48,6 +48,43 @@ all chunks, then atomically activates the index; any interrupted staging
 leaves the older file or index authoritative. An old `offers.lino` is retained
 as a migration backup after index activation but is no longer current.
 
+Every other record collection (`domain-records`, `traces`, `telegram-events`,
+sources, and the rest) uses the same commit protocol once it outgrows one
+chunk: `KIND.index.json` lists content-addressed canonical
+`KIND.chunks/SHA256/KIND.lino` files in collection order, each with its
+schema-v3 header, an `ids.json` sidecar derived from the chunk text, and its
+own binary projection. A chunk holds at most `maxRecordChunkBytes` (4 MiB by
+default) and never more than a quarter of the parse bound. Chunk boundaries
+are content defined: after a quarter of the chunk size, a record ends its chunk
+with a probability set by an FNV-1a hash of its id and its size, so chunks
+average half of the chunk size and an edit moves only the boundaries next to
+it. A save that changes a few records therefore rewrites and projects only
+their chunks; unchanged chunks are skipped and unindexed ones are pruned after
+the index is committed. A record larger than a quarter of the parse bound is
+refused with `record-too-large`, a collection beyond the byte budget with
+`record-budget-exhausted`, and a single file or search state above a quarter of
+the parse bound with `notation-too-large`; each leaves the prior index or file
+current.
+
+`appendRecords(kind, records, { maxRecords, maxBytes, replace })` merges records
+by id into an append-only collection with the semantics of the id map the
+callers used before: a known id keeps its position and takes the new record
+(`replace: false` keeps the stored one), new ids are appended, and the oldest
+records are evicted past `maxRecords` or `maxBytes`. On a chunked collection it
+finds known ids through the sidecars, rewrites only the chunks holding them,
+reopens a small tail chunk, and drops whole head chunks before trimming the
+first remaining one record by record. Telegram domain records, events and
+traces and the live audit write through it, so no write builds the whole
+collection as one text. `TelegramIngestionService({ maxRecordBytes })` adds a
+byte budget to its record-count caps.
+
+A single-file collection that is already larger than a quarter of the parse
+bound is migrated on first access by streaming it through `StreamParser` one
+top-level link at a time and writing the chunks; the old file stays as a
+migration backup, like `offers.lino`. Such a file must already use schema v3;
+an older oversized file fails with `legacy-collection-too-large`. Indexed
+collections raise the data directory schema to 4.
+
 Every offer write persists the bounded offer shape: `saveOffers`, generic
 record saves, updates, and deletions of `offers`, and `writeOfferCollection`
 all pass each offer through `boundStoredOffer` before formatting, and reads

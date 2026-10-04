@@ -157,8 +157,27 @@ function linkKey(link) {
 // they are parsed with an explicit, larger bound instead.
 export const MAX_NOTATION_LENGTH = 256 * 1024 * 1024;
 
+let notationLength = MAX_NOTATION_LENGTH;
+
+// The active parse bound. Storage sizes its single files and chunks from it,
+// so tests can exercise collections larger than the bound without writing
+// hundreds of mebibytes.
+export function notationLimit() {
+  return notationLength;
+}
+
+// Sets the parse bound and returns the one it replaced.
+export function setNotationLimit(length = MAX_NOTATION_LENGTH) {
+  if (!Number.isSafeInteger(length) || length < 1) {
+    throw new TypeError('The notation limit must be a positive integer.');
+  }
+  const replaced = notationLength;
+  notationLength = length;
+  return replaced;
+}
+
 export function parseNotation(notation) {
-  return new Parser({ maxInputSize: MAX_NOTATION_LENGTH }).parse(notation);
+  return new Parser({ maxInputSize: notationLength }).parse(notation);
 }
 
 // Compares a clink export with the canonical text it imported. The result
@@ -209,7 +228,7 @@ export function verifyExport(imported, exported) {
   return diagnostics;
 }
 
-function fnv1a(value) {
+export function fnv1a(value) {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);

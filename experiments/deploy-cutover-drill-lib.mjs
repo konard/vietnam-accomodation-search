@@ -250,20 +250,15 @@ async function countFiles(directory) {
   return count;
 }
 
-async function countOfferProjectionFiles(dataDirectory) {
-  const root = join(dataDirectory, 'offers.chunks');
-  let names;
-  try {
-    names = await readdir(root);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return 0;
-    }
-    throw error;
-  }
+// Counts the projections of every indexed collection's chunks.
+async function countChunkProjectionFiles(dataDirectory) {
   let count = 0;
-  for (const name of names) {
-    count += await countFiles(join(root, name, '.binary'));
+  for (const chunks of (await readdir(dataDirectory)).filter((name) =>
+    name.endsWith('.chunks')
+  )) {
+    for (const name of await readdir(join(dataDirectory, chunks))) {
+      count += await countFiles(join(dataDirectory, chunks, name, '.binary'));
+    }
   }
   return count;
 }
@@ -277,8 +272,11 @@ export async function stateFingerprint(dataDirectory) {
   const collections = {};
   const entries = await readdir(dataDirectory);
   const names = entries.filter((name) => name.endsWith('.lino'));
-  if (entries.includes('offers.index.json') && !names.includes('offers.lino')) {
-    names.push('offers.lino');
+  for (const index of entries.filter((name) => name.endsWith('.index.json'))) {
+    const name = `${index.slice(0, -'.index.json'.length)}.lino`;
+    if (!names.includes(name)) {
+      names.push(name);
+    }
   }
   names.sort();
   for (const name of names) {
@@ -318,7 +316,7 @@ export async function stateFingerprint(dataDirectory) {
   return {
     binaryFiles:
       (await countFiles(join(dataDirectory, '.binary'))) +
-      (await countOfferProjectionFiles(dataDirectory)),
+      (await countChunkProjectionFiles(dataDirectory)),
     collections,
     dataSchema: await readDataSchemaVersion(dataDirectory),
     mediaFiles: await countFiles(join(dataDirectory, 'media')),

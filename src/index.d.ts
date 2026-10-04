@@ -570,6 +570,8 @@ export declare class LinksStore {
     directory?: string;
     maxBytes?: number;
     maxOfferShardBytes?: number;
+    /** Largest canonical chunk of a non-offer collection (default 4 MiB). */
+    maxRecordChunkBytes?: number;
     mirror?: Pick<LinkCliMirror, 'stage'> &
       Partial<Pick<LinkCliMirror, 'ensure'>>;
   });
@@ -582,6 +584,16 @@ export declare class LinksStore {
     kind: string,
     update: (records: T[]) => T[] | Promise<T[]>
   ): Promise<T[]>;
+  /**
+   * Merges records by id into an append-only collection and evicts its oldest
+   * records past `maxRecords` or `maxBytes`. `replace: false` keeps the
+   * stored record for a known id.
+   */
+  appendRecords<T extends { id: unknown } = { id: string }>(
+    kind: string,
+    records: T[],
+    options?: { maxBytes?: number; maxRecords?: number; replace?: boolean }
+  ): Promise<void>;
   queryRecords<T = Record<string, unknown>>(
     kind: string,
     query: { path: string; value: unknown }

@@ -16,19 +16,20 @@ const directory = resolve(process.argv[2]);
 const checkpoints = await new LinksStore({
   directory: join(directory, 'checkpoints'),
 }).loadRecords('audit-checkpoints');
-let index;
-try {
-  index = JSON.parse(
-    await readFile(
-      join(directory, 'typed-results', 'offers.index.json'),
-      'utf8'
-    )
-  );
-} catch (error) {
-  if (error.code !== 'ENOENT') {
-    throw error;
+async function readIndex(name) {
+  try {
+    return JSON.parse(
+      await readFile(join(directory, 'typed-results', name), 'utf8')
+    );
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+    return undefined;
   }
 }
+const index = await readIndex('offers.index.json');
+const domainIndex = await readIndex('domain-records.index.json');
 console.log(
   JSON.stringify({
     checkpointCount: checkpoints.length,
@@ -36,5 +37,8 @@ console.log(
       .length,
     indexedOfferCount: index?.count ?? null,
     indexedShardCount: index?.shards?.length ?? null,
+    indexedDomainRecordBytes: domainIndex?.bytes ?? null,
+    indexedDomainRecordChunkCount: domainIndex?.chunks?.length ?? null,
+    indexedDomainRecordCount: domainIndex?.count ?? null,
   })
 );

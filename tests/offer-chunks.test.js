@@ -98,7 +98,7 @@ describe('bounded offer persistence', () => {
         JSON.parse(
           await readFile(join(directory, '.state-schema.json'), 'utf8')
         ).schemaVersion
-      ).toBe(3);
+      ).toBe(4);
       expect(index.version).toBe(1);
       expect(index.count).toBe(offers.length);
       expect(index.shards.length > 1).toBe(true);

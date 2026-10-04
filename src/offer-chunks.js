@@ -1,8 +1,14 @@
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { DATA_SCHEMA_VERSION } from './data-schema.js';
+import {
+  committedChunks,
+  digest,
+  markIndexedSchema,
+  pruneChunks,
+  readOrEmpty,
+  removeChunks,
+} from './chunk-files.js';
 import { durableWrite } from './link-cli-mirror.js';
 import { boundStoredOffer } from './offer-bounds.js';
 import {
@@ -16,20 +22,6 @@ export const DEFAULT_OFFER_SHARD_BYTES = 16 * 1024 * 1024;
 const INDEX_NAME = 'offers.index.json';
 const CHUNK_DIRECTORY = 'offers.chunks';
 const TWO_MONTHS_MS = 62 * 24 * 60 * 60 * 1000;
-const SCHEMA_FILE = '.state-schema.json';
-
-function digest(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function readOrEmpty(path) {
-  return readFile(path, 'utf8').catch((error) => {
-    if (error.code === 'ENOENT') {
-      return '';
-    }
-    throw error;
-  });
-}
 
 export function orderOffersByRecency(offers) {
   return [...offers].sort(
@@ -137,24 +129,6 @@ function validateIndex(index) {
   ) {
     throw new Error('Invalid canonical offer index.');
   }
-}
-
-async function markIndexedSchema(directory) {
-  const path = join(directory, SCHEMA_FILE);
-  const existing = await readOrEmpty(path);
-  if (existing) {
-    const version = JSON.parse(existing).schemaVersion;
-    if (!Number.isInteger(version) || version < 1) {
-      throw new Error('Data schema marker has an invalid version.');
-    }
-    if (version >= DATA_SCHEMA_VERSION) {
-      return;
-    }
-  }
-  await durableWrite(
-    path,
-    `${JSON.stringify({ schemaVersion: DATA_SCHEMA_VERSION })}\n`
-  );
 }
 
 async function readLegacyOffers({ directory, mirror, offersPath }) {
@@ -267,7 +241,7 @@ export async function writeOfferCollection({
     String(left.offer.id).localeCompare(String(right.offer.id))
   );
   const groups = partitionOfferEntries(canonical, maxShardBytes);
-  const committed = committedShards(existingIndex);
+  const committed = committedChunks(existingIndex, 'shards');
   if (committed) {
     // An interrupted earlier save may have left unindexed chunks (#82).
     await pruneChunks(chunksPath, committed, removeStaleChunk);
@@ -356,44 +330,4 @@ async function writeShards({ committed, created, directory, groups, mirror }) {
     shards.push({ bytes, count: entries.length, sha256 });
   }
   return shards;
-}
-
-// Returns undefined for an unreadable index, whose chunks are left alone.
-function committedShards(notation) {
-  if (!notation) {
-    return new Set();
-  }
-  try {
-    return new Set(JSON.parse(notation).shards.map(({ sha256 }) => sha256));
-  } catch {
-    return undefined;
-  }
-}
-
-async function removeChunks(names, chunksPath, removeChunk) {
-  for (const name of names) {
-    try {
-      await removeChunk(join(chunksPath, name), {
-        force: true,
-        recursive: true,
-      });
-    } catch {
-      // Cleanup is best effort; the next save prunes unindexed chunks again.
-      return;
-    }
-  }
-}
-
-async function pruneChunks(chunksPath, keep, removeChunk) {
-  let names;
-  try {
-    names = await readdir(chunksPath);
-  } catch {
-    return;
-  }
-  await removeChunks(
-    names.filter((name) => !keep.has(name)),
-    chunksPath,
-    removeChunk
-  );
 }
