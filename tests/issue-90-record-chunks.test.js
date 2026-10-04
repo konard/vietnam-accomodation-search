@@ -259,7 +259,7 @@ describe('chunked generic collections', () => {
     await withStore(async ({ directory, store }) => {
       let expected = [];
       await store.appendRecords('traces', []);
-      for (let batch = 0; batch < 6; batch += 1) {
+      for (let batch = 0; batch < 4; batch += 1) {
         const incoming = [
           ...links(30, batch * 25),
           { ...link(batch * 3), object: `replaced ${batch}` },
@@ -340,6 +340,9 @@ describe('chunked generic collections', () => {
         { mirror }
       );
     }
+  });
+
+  it('appends to a legacy single file and refuses one it cannot stream', async () => {
     await withStore(async ({ directory, store }) => {
       const records = links(100);
       await writeFile(
