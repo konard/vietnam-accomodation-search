@@ -66,9 +66,10 @@ The owner steps are unchanged from #91: add `NPM_TOKEN`, `DOCKERHUB_TOKEN`, `DOC
 
 ## Verification
 
-| Check                                                               | Result                                                                                                 |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `npm test` (Node, with the real `clink` 0.2.11 on `PATH`)           | 964/964 pass                                                                                           |
-| `npm run test:coverage`                                             | 100% of lines in `src/**`                                                                              |
-| `npm run lint`, `npm run format:check`, `npm run check:duplication` | pass                                                                                                   |
-| `experiments/issue-90-chunked-smoke.mjs`                            | a collection over a 64 KiB bound is written, appended, evicted and read without a parse over the bound |
+| Check                                                                         | Result                                                                                                 |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `npm test` (Node, with the real `clink` 0.2.11 on `PATH`)                     | 965/965 pass                                                                                           |
+| `npm run test:coverage`                                                       | 100% of lines in `src/**`                                                                              |
+| `bun test --timeout 30000` and `deno test --allow-read` on the issue-90 suite | 14/14 on Bun; on read-only Deno the 2 in-memory cases pass and the cases that write are skipped        |
+| `npm run lint`, `npm run format:check`, `npm run check:duplication`           | pass                                                                                                   |
+| `experiments/issue-90-chunked-smoke.mjs`                                      | a collection over a 64 KiB bound is written, appended, evicted and read without a parse over the bound |
