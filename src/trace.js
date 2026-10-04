@@ -190,7 +190,11 @@ export class TraceRecorder {
       }
       return [...byId.values()].slice(-this.maxEvents - 1);
     };
-    if (typeof this.store?.updateRecords === 'function') {
+    if (typeof this.store?.appendRecords === 'function') {
+      await this.store.appendRecords('traces', records, {
+        maxRecords: this.maxEvents + 1,
+      });
+    } else if (typeof this.store?.updateRecords === 'function') {
       await this.store.updateRecords('traces', merge);
     } else if (this.store?.saveRecords) {
       const existing = (await this.store.loadRecords?.('traces')) || [];

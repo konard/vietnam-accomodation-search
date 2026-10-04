@@ -15,6 +15,19 @@ import {
   writeOfferCollection,
 } from './offer-chunks.js';
 import { boundStoredOffer } from './offer-bounds.js';
+import {
+  DEFAULT_RECORD_CHUNK_BYTES,
+  appendIndexedRecords,
+  maxNotationBytes,
+  mergeRecords,
+  oversizedSingleFile,
+  queryIndexedRecords,
+  readIndexedRecords,
+  readRecordIndex,
+  retainNewest,
+  streamSingleFileRecords,
+  writeRecordCollection,
+} from './record-chunks.js';
 import { deduplicateOffers, removeOfferMessageVariants } from './offers.js';
 
 function decodeJson(value) {
@@ -171,6 +184,16 @@ function* recordLinks(kind, input, index) {
   }
 }
 
+// The schema header and each record format to whole lines, so a collection
+// can be written in chunks that each equal `serializeRecords` of their part.
+export function formatSchemaHeader(kind) {
+  return formatLinks([schemaHeader(kind)]);
+}
+
+export function formatRecord(kind, record, index) {
+  return formatLinks([...recordLinks(kind, record, index)]);
+}
+
 export function serializeRecords(kind, records) {
   if (!records.length) {
     return '';
@@ -223,7 +246,7 @@ export function serializeOfferBounded(offer, maxBytes) {
 export function isCurrentSchema(kind, notation) {
   const end = notation.indexOf('\n');
   const first = end === -1 ? notation : notation.slice(0, end);
-  return first === formatLinks([schemaHeader(kind)]);
+  return first === formatSchemaHeader(kind);
 }
 
 function parseRecordLinks(notation) {
@@ -272,6 +295,11 @@ export function deserializeRecords(kind, notation = '') {
     return [];
   }
   return recordsFromLinks(kind, parseRecordLinks(notation));
+}
+
+// Decodes the links of current-schema records parsed one link at a time.
+export function recordsFromSchemaLinks(kind, links) {
+  return recordsFromLinks(kind, links.map(decodeLink));
 }
 
 function recordsFromLinks(kind, links) {
@@ -410,6 +438,7 @@ export class LinksStore {
     directory = '.vietnam-accomodation-search',
     maxBytes = 10 * 1024 ** 3,
     maxOfferShardBytes = DEFAULT_OFFER_SHARD_BYTES,
+    maxRecordChunkBytes = DEFAULT_RECORD_CHUNK_BYTES,
     mirror,
   } = {}) {
     this.directory = directory;
@@ -418,6 +447,7 @@ export class LinksStore {
     this.sourcesPath = join(directory, 'sources.lino');
     this.maxBytes = maxBytes;
     this.maxOfferShardBytes = maxOfferShardBytes;
+    this.maxRecordChunkBytes = maxRecordChunkBytes;
     this.mirror = mirror || (binaryMirror ? new LinkCliMirror() : undefined);
     this.pending = Promise.resolve();
   }
@@ -436,30 +466,78 @@ export class LinksStore {
   // Reads canonical text and ensures its binary projection. Text written by an
   // earlier schema may hold names clink rewrites on import (#55), so with the
   // mirror enabled it is first rewritten as schema v3 under the write lock.
-  #loadNotation(collection, path = this.pathFor(collection)) {
+  async #readNotation(collection, path = this.pathFor(collection)) {
     const kind =
       collection === 'search-state' ? collection : singular(collection);
+    const notation = await readOrEmpty(path);
+    if (this.mirror && notation.trim() && !isCurrentSchema(kind, notation)) {
+      const migrated = serializeRecords(
+        kind,
+        deserializeRecords(kind, notation)
+      );
+      await this.#commit(collection, path, migrated);
+      return migrated;
+    }
+    await this.mirror?.ensure?.({
+      directory: this.directory,
+      kind: collection,
+      notation,
+    });
+    return notation;
+  }
+
+  #loadNotation(collection, path) {
+    const load = () => this.#readNotation(collection, path);
+    return this.mirror ? this.#locked(load) : load();
+  }
+
+  #chunkContext(collection) {
+    return {
+      collection,
+      directory: this.directory,
+      kind: singular(collection),
+      maxChunkBytes: this.maxRecordChunkBytes,
+      mirror: this.mirror,
+    };
+  }
+
+  // The index of a chunked collection. A single file too large to parse as
+  // one text is first rewritten as chunks, one record at a time; `locked`
+  // tells whether the caller already holds the write lock.
+  async #indexFor(collection, locked) {
+    const path = this.pathFor(collection);
+    const index = await readRecordIndex(this.directory, collection);
+    if (index || !(await oversizedSingleFile(path))) {
+      return index;
+    }
+    const migrate = async () =>
+      (await readRecordIndex(this.directory, collection)) ||
+      writeRecordCollection(
+        this.#chunkContext(collection),
+        streamSingleFileRecords(path, singular(collection)),
+        { maxBytes: this.maxBytes }
+      );
+    return locked ? migrate() : this.#locked(migrate);
+  }
+
+  #readRecords(collection, readIndexed, readSingle) {
     const load = async () => {
-      const notation = await readOrEmpty(path);
-      if (this.mirror && notation.trim() && !isCurrentSchema(kind, notation)) {
-        const migrated = serializeRecords(
-          kind,
-          deserializeRecords(kind, notation)
-        );
-        await this.#commit(collection, path, migrated);
-        return migrated;
-      }
-      await this.mirror?.ensure?.({
-        directory: this.directory,
-        kind: collection,
-        notation,
-      });
-      return notation;
+      const index = await this.#indexFor(collection, Boolean(this.mirror));
+      return index
+        ? readIndexed(this.#chunkContext(collection), index)
+        : readSingle(await this.#readNotation(collection));
     };
     return this.mirror ? this.#locked(load) : load();
   }
 
   async #commit(collection, path, notation) {
+    if (notation.length > maxNotationBytes()) {
+      const error = new Error(
+        `The ${collection} text exceeds the canonical single-file bound.`
+      );
+      error.code = 'notation-too-large';
+      throw error;
+    }
     const staged = this.mirror
       ? await this.mirror.stage({
           directory: this.directory,
@@ -476,8 +554,9 @@ export class LinksStore {
     if (collection === 'offers') {
       return this.listOffers();
     }
-    const notation = await this.#loadNotation(collection);
-    return deserializeRecords(singular(collection), notation);
+    return await this.#readRecords(collection, readIndexedRecords, (notation) =>
+      deserializeRecords(singular(collection), notation)
+    );
   }
 
   async queryRecords(kind, query) {
@@ -492,10 +571,10 @@ export class LinksStore {
         return value !== undefined && scalar(value) === scalar(query.value);
       });
     }
-    return queryRecords(
-      singular(collection),
-      await this.#loadNotation(collection),
-      query
+    return this.#readRecords(
+      collection,
+      (context, index) => queryIndexedRecords(context, index, query),
+      (notation) => queryRecords(singular(collection), notation, query)
     );
   }
 
@@ -552,10 +631,7 @@ export class LinksStore {
       const current =
         collection === 'offers'
           ? (await this.#readOffers()).offers
-          : deserializeRecords(
-              singular(collection),
-              await readOrEmpty(this.pathFor(collection))
-            );
+          : await this.#currentRecords(collection);
       const next = await update(current);
       if (!Array.isArray(next)) {
         throw new TypeError('A record update must return an array.');
@@ -565,15 +641,90 @@ export class LinksStore {
     });
   }
 
-  #saveRecords(collection, records) {
+  // Reads a collection for a rewrite under the write lock; projections are
+  // rebuilt by the write, so they are not ensured here.
+  async #currentRecords(collection) {
+    const index = await this.#indexFor(collection, true);
+    return index
+      ? readIndexedRecords(this.#chunkContext(collection), index, false)
+      : deserializeRecords(
+          singular(collection),
+          await readOrEmpty(this.pathFor(collection))
+        );
+  }
+
+  #saveRecords(collection, records, maxBytes = this.maxBytes) {
     if (collection === 'offers') {
       return this.#saveOffers(records);
     }
-    return this.#commit(
-      collection,
-      this.pathFor(collection),
-      serializeRecords(singular(collection), records)
-    );
+    return writeRecordCollection(this.#chunkContext(collection), records, {
+      maxBytes,
+      writeSingle: () =>
+        this.#commit(
+          collection,
+          this.pathFor(collection),
+          serializeRecords(singular(collection), records)
+        ),
+    });
+  }
+
+  // Merges records by id into an append-only collection and evicts its oldest
+  // records past `maxRecords` or `maxBytes`. A chunked collection rewrites
+  // only the chunks that hold a replaced id, its tail, and evicted head
+  // chunks. `replace: false` keeps the stored record for a known id.
+  appendRecords(
+    kind,
+    records,
+    { maxBytes = this.maxBytes, maxRecords = Infinity, replace = true } = {}
+  ) {
+    const collection = validKind(kind);
+    if (collection === 'offers') {
+      throw new TypeError('Offers are merged with saveOffers.');
+    }
+    if (
+      !Array.isArray(records) ||
+      records.some((record) => record?.id === undefined || record.id === null)
+    ) {
+      throw new TypeError('Appended records require an id.');
+    }
+    if (
+      !(
+        maxRecords === Infinity ||
+        (Number.isSafeInteger(maxRecords) && maxRecords > 0)
+      ) ||
+      !(maxBytes > 0)
+    ) {
+      throw new TypeError('Append budgets must be positive.');
+    }
+    const budget = {
+      maxBytes: Math.min(maxBytes, this.maxBytes),
+      maxRecords,
+      replace,
+    };
+    return this.#locked(async () => {
+      if (!records.length) {
+        return;
+      }
+      const index = await this.#indexFor(collection, true);
+      if (index) {
+        await appendIndexedRecords(
+          this.#chunkContext(collection),
+          records.map(normalized),
+          budget
+        );
+        return;
+      }
+      const next = retainNewest(
+        singular(collection),
+        mergeRecords(
+          await this.#currentRecords(collection),
+          records.map(normalized),
+          replace
+        ),
+        budget
+      );
+      await this.#saveRecords(collection, next, budget.maxBytes);
+    });
   }
 
   // Offers written before #82 may hold provider media objects and their
@@ -659,9 +810,8 @@ export class LinksStore {
     });
   }
 
-  async loadSources() {
-    const notation = await this.#loadNotation('sources');
-    return deserializeSources(notation);
+  loadSources() {
+    return this.loadRecords('sources');
   }
 
   saveSources(sources) {

@@ -159,9 +159,11 @@ of the command's stdout and stderr, with Telegram tokens redacted. When the
 failed attempt removed the `.deploy/PROJECT/` it created, the entry goes to
 `.deploy/deploy.log`.
 
-The data schema marker is version 3 from the release that writes large offer
-collections through an atomic chunk index (#61). An older image would ignore
-the index and read stale `offers.lino` data. The previous version 2 marker
+The data schema marker is version 4 from the release that writes every large
+record collection, such as `domain-records` and `traces`, through an atomic
+chunk index (#90). An older image would ignore `KIND.index.json` and read a
+stale or missing `KIND.lino`. Version 3 did the same for offers (#61), so an
+older image would read stale `offers.lino` data. The previous version 2 marker
 introduced escaped schema-v3 collection names (#55). `rollback` therefore compares the previous image's
 recorded data schema with the directory's marker. For an older schema it
 refuses unless `--restore-snapshot` is passed, which restores the state
