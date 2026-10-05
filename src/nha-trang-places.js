@@ -139,16 +139,24 @@ function fold(value) {
     .toLocaleLowerCase('en');
 }
 
+// One pattern holds every place of a group, each in its own capture group,
+// so a post is scanned once per group. The leftmost match wins, and a tie
+// goes to the place listed first.
 function compile(entries) {
-  return entries.map(([name, ...aliases]) => ({
-    name,
-    pattern: new RegExp(
-      `(?<![\\p{L}\\d])(?:${aliases
+  const names = entries.map(([name]) => name);
+  const alternatives = entries.map(
+    ([, ...aliases]) =>
+      `(${aliases
         .map((alias) => fold(alias).replace(/\s+/gu, '\\s+'))
-        .join('|')})(?![\\p{L}\\d])`,
+        .join('|')})`
+  );
+  return {
+    names,
+    pattern: new RegExp(
+      `(?<![\\p{L}\\d])(?:${alternatives.join('|')})(?![\\p{L}\\d])`,
       'u'
     ),
-  }));
+  };
 }
 
 const GROUPS = [
@@ -158,15 +166,9 @@ const GROUPS = [
   { places: compile(WARDS), shared: true },
 ];
 
-function firstMatch(places, text) {
-  let found;
-  for (const place of places) {
-    const index = text.search(place.pattern);
-    if (index >= 0 && (!found || index < found.index)) {
-      found = { index, name: place.name };
-    }
-  }
-  return found?.name;
+function firstMatch({ names, pattern }, text) {
+  const match = text.match(pattern);
+  return match && names[match.slice(1).findIndex((group) => group)];
 }
 
 // Tells whether the text names a city, an address, or one of the places
