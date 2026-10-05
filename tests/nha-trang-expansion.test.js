@@ -17,7 +17,8 @@ const ENABLED_WEB_SEEDS = DEFAULT_WEB_SOURCES.filter(
 ).length;
 
 // Parses the posts once so the time covers matching, not the first
-// compilation of every pattern, then times a second pass.
+// compilation of every pattern, then keeps the fastest of three timed
+// passes: a busy test machine slows some passes, a quadratic pattern all.
 function timedParse(texts) {
   const parse = () =>
     texts.map((text, index) =>
@@ -31,10 +32,14 @@ function timedParse(texts) {
         { now: new Date('2026-09-21T00:00:00Z') }
       )
     );
-  parse();
-  const startedAt = globalThis.performance.now();
   const offers = parse();
-  return { durationMs: globalThis.performance.now() - startedAt, offers };
+  let durationMs = Infinity;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const startedAt = globalThis.performance.now();
+    parse();
+    durationMs = Math.min(durationMs, globalThis.performance.now() - startedAt);
+  }
+  return { durationMs, offers };
 }
 
 describe('Nha Trang source coverage', () => {
