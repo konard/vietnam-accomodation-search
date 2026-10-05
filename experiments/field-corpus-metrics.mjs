@@ -87,7 +87,12 @@ function parseCase(input, postedAt, rates) {
   }
   return normalizeOffer(
     { postedAt, sourceId: input.sourceId, sourceType: 'web', text: input.text },
-    { now: postedAt, rates }
+    {
+      locationHint:
+        input.focus === 'nha-trang' ? 'Nha Trang, Vietnam' : undefined,
+      now: postedAt,
+      rates,
+    }
   );
 }
 

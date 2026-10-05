@@ -2,6 +2,8 @@
 // the collector's own in-page extraction, for the reviewed field corpus.
 //
 //   node experiments/issue-97-collect-vi-cards.mjs /tmp/vi-cards.json
+//   CARD_SOURCES=be-jib-nha-trang,nha-trang-vn \
+//     node experiments/issue-97-collect-vi-cards.mjs /tmp/web-cards.json
 //
 // The output holds live contact details; anonymise it before committing.
 import { writeFile } from 'node:fs/promises';
@@ -13,11 +15,17 @@ import { extractPageListings } from '../src/browser-collector.js';
 import { DEFAULT_WEB_SOURCES } from '../src/index.js';
 
 const output = process.argv[2] || '/tmp/vi-cards.json';
+// CARD_SOURCES picks enabled sources by id in any language.
+const only = new Set(
+  (process.env.CARD_SOURCES || '').split(',').filter(Boolean)
+);
 const sources = DEFAULT_WEB_SOURCES.filter(
   (source) =>
     source.enabled !== false &&
-    source.geographicFocus === 'nha-trang' &&
-    source.languages?.includes('vi')
+    (only.size
+      ? only.has(source.id)
+      : source.geographicFocus === 'nha-trang' &&
+        source.languages?.includes('vi'))
 );
 
 const browser = await chromium.launch({

@@ -66,8 +66,13 @@ function replayRuntime(cases) {
   };
 }
 
+// Each replayed source keeps the city focus its reviewed cards came from.
 function replaySources(cases) {
-  return [...new Set(cases.map(({ input }) => input.sourceId))].map((id) => ({
+  const focus = new Map(
+    cases.map(({ input }) => [input.sourceId, input.focus])
+  );
+  return [...focus].map(([id, geographicFocus]) => ({
+    geographicFocus,
     id,
     searchUrl: `https://${id}.audit.invalid/search?q={query}`,
     type: 'web',

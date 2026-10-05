@@ -304,6 +304,65 @@
     },
     "homedy-005": {
       "priceVnd": 5500000
+    },
+    "nha-trang-vn-001": {
+      "rooms": 3
+    },
+    "nha-trang-vn-002": {
+      "rooms": 1
+    },
+    "nha-trang-vn-003": {
+      "rooms": 1
+    },
+    "nha-trang-vn-004": {
+      "rooms": 1
+    },
+    "nha-trang-vn-006": {
+      "rooms": 2
+    },
+    "nha-trang-vn-008": {
+      "rooms": 2
+    },
+    "be-jib-nha-trang-002": {
+      "priceVnd": 14481000,
+      "period": "month"
+    },
+    "be-jib-nha-trang-003": {
+      "priceVnd": 14481000,
+      "period": "month"
+    },
+    "be-jib-nha-trang-004": {
+      "priceVnd": 10619400,
+      "period": "month"
+    },
+    "be-jib-nha-trang-005": {
+      "priceVnd": 16894500,
+      "period": "month"
+    },
+    "be-jib-nha-trang-006": {
+      "priceVnd": 13515600,
+      "period": "month"
+    },
+    "be-jib-nha-trang-007": {
+      "priceVnd": 12067500,
+      "period": "month"
+    },
+    "be-jib-nha-trang-008": {
+      "priceVnd": 18342600,
+      "period": "month"
+    },
+    "nha-trang-renting-001": {
+      "rooms": 2
+    },
+    "nha-trang-renting-006": {
+      "location": "Napoleon Castle, Nha Trang",
+      "rooms": 2
+    },
+    "nha-trang-renting-007": {
+      "location": "Mường Thanh Khánh Hòa, Nha Trang"
+    },
+    "nha-trang-renting-008": {
+      "location": "Mường Thanh Khánh Hòa, Nha Trang"
     }
   }
 }

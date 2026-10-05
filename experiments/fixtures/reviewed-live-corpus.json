@@ -4401,6 +4401,438 @@
         "location": "Đường Lê Đại Hành, Phường Nha Trang, Khánh Hòa",
         "rooms": 6
       }
+    },
+    {
+      "id": "nha-trang-vn-001",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-vn",
+        "sourceType": "web",
+        "text": "🏡 HOUSES\n3-Bedroom House for Rent – VCN Phước Hải, Nha Trang, 30M VND/month\n3\nSecurity\nlast month\n₫30,000,000/mo\nVCN · South\nlocation: VCN · South\nprice: ₫30,000,000/mo\nmetadata: 🏡 HOUSES\n3\nSecurity\nlast month\n₫30,000,000/mo\nVCN · South\navailability: not stated on source card"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 30000000,
+        "period": "month",
+        "location": "VCN · South",
+        "rooms": 3
+      }
+    },
+    {
+      "id": "nha-trang-vn-002",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-vn",
+        "sourceType": "web",
+        "text": "🏢 APARTMENTS\n1-Bedroom Apartment – Near Mueong Thanh Vien Trieu, 150m from Beach, 10M VND/month\n1\nBalcony\nWasher\nlast month\n₫10,000,000/mo\nMường Thanh\nlocation: Mường Thanh\nprice: ₫10,000,000/mo\nmetadata: 🏢 APARTMENTS\n1\nBalcony\nWasher\nlast month\n₫10,000,000/mo\nMường Thanh\navailability: not stated on source card"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 10000000,
+        "period": "month",
+        "location": "Mường Thanh",
+        "rooms": 1
+      }
+    },
+    {
+      "id": "nha-trang-vn-003",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-vn",
+        "sourceType": "web",
+        "text": "🏢 APARTMENTS\n1-Bedroom Apartment – Phuoc Hai, Nha Trang, 12M VND/month\n1\nWi-Fi\nWasher\nlast month\n₫12,000,000/mo\nSouth\nlocation: South\nprice: ₫12,000,000/mo\nmetadata: 🏢 APARTMENTS\n1\nWi-Fi\nWasher\nlast month\n₫12,000,000/mo\nSouth\navailability: not stated on source card"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 12000000,
+        "period": "month",
+        "location": "South",
+        "rooms": 1
+      }
+    },
+    {
+      "id": "nha-trang-vn-004",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-vn",
+        "sourceType": "web",
+        "text": "🏢 APARTMENTS\n1-Bedroom Apartment South Nha Trang – 7M VND/month\n1\nlast month\n₫7,000,000/mo\nSouth\nlocation: South\nprice: ₫7,000,000/mo\nmetadata: 🏢 APARTMENTS\n1\nlast month\n₫7,000,000/mo\nSouth\navailability: not stated on source card"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 7000000,
+        "period": "month",
+        "location": "South",
+        "rooms": 1
+      }
+    },
+    {
+      "id": "nha-trang-vn-005",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-vn",
+        "sourceType": "web",
+        "text": "🏢 APARTMENTS\nLuxury Studio Apartment on the Beach – Vinh Hai, Northern Nha Trang\n0\nElevator\nParking\nlast month\n₫8,000,000/mo\nNorth\nlocation: North\nprice: ₫8,000,000/mo\nmetadata: 🏢 APARTMENTS\n0\nElevator\nParking\nlast month\n₫8,000,000/mo\nNorth\nrooms: Luxury Studio Apartment on the Beach – Vinh Hai, Northern Nha Trang\navailability: not stated on source card"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 8000000,
+        "period": "month",
+        "location": "North",
+        "rooms": 0
+      }
+    },
+    {
+      "id": "nha-trang-vn-006",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-vn",
+        "sourceType": "web",
+        "text": "🏢 APARTMENTS\n2-Bedroom Apartment in D'Qua – 17M VND/month\n2\nPool\nGym\nlast month\n₫17,000,000/mo\nD'Qua · North\nlocation: D'Qua · North\nprice: ₫17,000,000/mo\nmetadata: 🏢 APARTMENTS\n2\nPool\nGym\nlast month\n₫17,000,000/mo\nD'Qua · North\navailability: not stated on source card"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 17000000,
+        "period": "month",
+        "location": "D'Qua · North",
+        "rooms": 2
+      }
+    },
+    {
+      "id": "nha-trang-vn-007",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-vn",
+        "sourceType": "web",
+        "text": "🛏️ ROOMS\nStudio Apartment South Side – 5.5M VND/month\n0\nParking\nWasher\nlast month\n₫5,500,000/mo\nSouth\nlocation: South\nprice: ₫5,500,000/mo\nmetadata: 🛏️ ROOMS\n0\nParking\nWasher\nlast month\n₫5,500,000/mo\nSouth\nrooms: Studio Apartment South Side – 5.5M VND/month\navailability: not stated on source card"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 5500000,
+        "period": "month",
+        "location": "South",
+        "rooms": 0
+      }
+    },
+    {
+      "id": "nha-trang-vn-008",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-vn",
+        "sourceType": "web",
+        "text": "🏢 APARTMENTS\n2-Bedroom Apartment at Happy Sky – 18M VND/month\n2\nlast month\n₫18,000,000/mo\nprice: ₫18,000,000/mo\nmetadata: 🏢 APARTMENTS\n2\nlast month\n₫18,000,000/mo\navailability: not stated on source card\nlocation: Nha Trang"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 18000000,
+        "period": "month",
+        "location": "Nha Trang",
+        "rooms": 2
+      }
+    },
+    {
+      "id": "be-jib-nha-trang-001",
+      "language": "ru",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "be-jib-nha-trang",
+        "sourceType": "web",
+        "text": "Проверено\nДоступно\nНячанг\nКвартира\nАпартаменты 2 спальни на Тхай Нгуен, Нячанг — 300 м до пляжа\n\n2BR · 70㎡\n\nКвартира 70 кв. м на улице Тхай Нгуен в центре Нячанга. До пляжа пешком 300 м, балкон на 2-м этаже с видом на город. 2 спальни, гостиная, кухня, 1 санузел. Аренда 12 000 000 донгов в месяц.\n\n38 616 ₽\n/мес\nЗалог 1 месяц + предоплата 1 месяц\navailability: Доступно\nbedrooms: 2BR · 70㎡\ndescription: Квартира 70 кв. м на улице Тхай Нгуен в центре Нячанга. До пляжа пешком 300 м, балкон на 2-м этаже с видом на город. 2 спальни, гостиная, кухня, 1 санузел. Аренда 12 000 000 донгов в месяц.\nlocation: Нячанг\nprice: 38 616 ₽\n/мес\n38 616 ₽\n/мес\nЗалог 1 месяц + предоплата 1 месяц\nmetadata: Проверено\nКвартира\n2BR · 70㎡"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 12000000,
+        "period": "month",
+        "location": "Нячанг",
+        "rooms": 2
+      }
+    },
+    {
+      "id": "be-jib-nha-trang-002",
+      "language": "ru",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "be-jib-nha-trang",
+        "sourceType": "web",
+        "text": "Проверено\nДоступно\nНячанг\nКвартира\nАренда 1-комнатной квартиры в районе Ха Куанг 2 – Нячанг\n\n1BR · 40㎡ · Мин. срок 3 мес.\n\nКвартира площадью 40 м² с одной спальней в новом городском квартале Ха Куанг 2, Нячанг. Полностью меблирована, есть отдельная стиральная машина, просторный балкон с видом на город и современный интерьер в европейском стиле. Рядом магазины, кафе, спортзалы.\n\n48 270 ₽\n/мес\nЗалог за 1 месяц + 1 месяц аренды авансом\navailability: Доступно\nbedrooms: 1BR · 40㎡ · Мин. срок 3 мес.\ndescription: Квартира площадью 40 м² с одной спальней в новом городском квартале Ха Куанг 2, Нячанг. Полностью меблирована, есть отдельная стиральная машина, просторный балкон с видом на город и современный интерьер в европейском стиле. Рядом магазины, кафе, спортзалы.\nlocation: Нячанг\nprice: 48 270 ₽\n/мес\n48 270 ₽\n/мес\nЗалог за 1 месяц + 1 месяц аренды авансом\nmetadata: Проверено\nКвартира\n1BR · 40㎡ · Мин. срок 3 мес."
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 14481000,
+        "period": "month",
+        "location": "Нячанг",
+        "rooms": 1
+      }
+    },
+    {
+      "id": "be-jib-nha-trang-003",
+      "language": "ru",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "be-jib-nha-trang",
+        "sourceType": "web",
+        "text": "Проверено\nДоступно\nНячанг\nКвартира\nАренда апартаментов 1 спальня, Ха Куанг 2, Нячанг\n\n1BR · 40㎡ · Мин. срок 3 мес.\n\nАпартаменты площадью 40 м² с 1 спальней в новом жилом районе Ха Куанг 2. Полностью меблированы и оборудованы, отдельная стиральная машина, просторный балкон с видом на город, современный интерьер в европейском стиле. Рядом супермаркеты, кафе, фитнес-клуб.\n\n48 270 ₽\n/мес\nЗалог 1 месяц + 1 месяц аренды авансом\navailability: Доступно\nbedrooms: 1BR · 40㎡ · Мин. срок 3 мес.\ndescription: Апартаменты площадью 40 м² с 1 спальней в новом жилом районе Ха Куанг 2. Полностью меблированы и оборудованы, отдельная стиральная машина, просторный балкон с видом на город, современный интерьер в европейском стиле. Рядом супермаркеты, кафе, фитнес-клуб.\nlocation: Нячанг\nprice: 48 270 ₽\n/мес\n48 270 ₽\n/мес\nЗалог 1 месяц + 1 месяц аренды авансом\nmetadata: Проверено\nКвартира\n1BR · 40㎡ · Мин. срок 3 мес."
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 14481000,
+        "period": "month",
+        "location": "Нячанг",
+        "rooms": 1
+      }
+    },
+    {
+      "id": "be-jib-nha-trang-004",
+      "language": "ru",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "be-jib-nha-trang",
+        "sourceType": "web",
+        "text": "Проверено\nДоступно\nНячанг\nСтудия\nСтудия с балконом в аренду — Южный Нячанг\n\nСтудия · Мин. срок 3 мес.\n\nСтудия на первом этаже в Кханьхоа, Южный Нячанг. Полностью меблирована, есть кухня, личная стиральная машина и балкон. Заезд с 1 октября, договор на 3–6 месяцев.\n\n35 398 ₽\n/мес\nЗалог 1 месяц, предоплата 1 месяц\navailability: Доступно\nbedrooms: Студия · Мин. срок 3 мес.\ndescription: Студия на первом этаже в Кханьхоа, Южный Нячанг. Полностью меблирована, есть кухня, личная стиральная машина и балкон. Заезд с 1 октября, договор на 3–6 месяцев.\nlocation: Нячанг\nprice: 35 398 ₽\n/мес\n35 398 ₽\n/мес\nЗалог 1 месяц, предоплата 1 месяц\nmetadata: Проверено\nСтудия\nСтудия · Мин. срок 3 мес."
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 10619400,
+        "period": "month",
+        "location": "Нячанг",
+        "rooms": 0
+      }
+    },
+    {
+      "id": "be-jib-nha-trang-005",
+      "language": "ru",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "be-jib-nha-trang",
+        "sourceType": "web",
+        "text": "Проверено\nДоступно\nНячанг\nКвартира\nАренда квартиры Ха Куанг 2 — 2 спальни, 65 м²\n\n2BR · 65㎡ · Мин. срок 6 мес.\n\nКвартира 65 м² с 2 спальнями в жилом комплексе Ха Куанг 2, южный Нячанг. Полная меблировка, отдельная стиральная машина, хорошая вентиляция. Лифт, парковка для автомобиля, рядом супермаркет Co.opmart, кафе и спортзал.\n\n56 315 ₽\n/мес\nЗалог за 1 месяц + 1 месяц авансом\navailability: Доступно\nbedrooms: 2BR · 65㎡ · Мин. срок 6 мес.\ndescription: Квартира 65 м² с 2 спальнями в жилом комплексе Ха Куанг 2, южный Нячанг. Полная меблировка, отдельная стиральная машина, хорошая вентиляция. Лифт, парковка для автомобиля, рядом супермаркет Co.opmart, кафе и спортзал.\nlocation: Нячанг\nprice: 56 315 ₽\n/мес\n56 315 ₽\n/мес\nЗалог за 1 месяц + 1 месяц авансом\nmetadata: Проверено\nКвартира\n2BR · 65㎡ · Мин. срок 6 мес."
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 16894500,
+        "period": "month",
+        "location": "Нячанг",
+        "rooms": 2
+      }
+    },
+    {
+      "id": "be-jib-nha-trang-006",
+      "language": "ru",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "be-jib-nha-trang",
+        "sourceType": "web",
+        "text": "Проверено\nДоступно\nНячанг\nСтудия\nСтудия Ха Куанг 2, Фыок Хай – полная меблировка, въезд сразу\n\nСтудия · Мин. срок 3 мес.\n\nСтудия на первом этаже в жилом комплексе VCN Фыок Хай, южная часть Нячанга. Полная меблировка, стиральная машина с вертикальной загрузкой, посуда и микроволновка. Разрешены домашние животные. Свободна прямо сейчас.\n\n45 052 ₽\n/мес\nЗалог 1 месяц + оплата первого месяца вперёд\navailability: Доступно\nbedrooms: Студия · Мин. срок 3 мес.\ndescription: Студия на первом этаже в жилом комплексе VCN Фыок Хай, южная часть Нячанга. Полная меблировка, стиральная машина с вертикальной загрузкой, посуда и микроволновка. Разрешены домашние животные. Свободна прямо сейчас.\nlocation: Нячанг\nprice: 45 052 ₽\n/мес\n45 052 ₽\n/мес\nЗалог 1 месяц + оплата первого месяца вперёд\nmetadata: Проверено\nСтудия\nСтудия · Мин. срок 3 мес."
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 13515600,
+        "period": "month",
+        "location": "Нячанг",
+        "rooms": 0
+      }
+    },
+    {
+      "id": "be-jib-nha-trang-007",
+      "language": "ru",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "be-jib-nha-trang",
+        "sourceType": "web",
+        "text": "Проверено\nДоступно\nНячанг\nКвартира\nАренда 1-комнатной квартиры в Ха Куанг 2 – люкс-класс\n\n1BR · 40㎡ · Мин. срок 3 мес.\n\nКвартира 40 м², 1 спальня, в комплексе Ха Куанг 2, район Фыок Хай. Полная меблировка, личная стиральная машина, балкон с хорошим освещением. Заезд сразу.\n\n40 225 ₽\n/мес\nЗалог 1 месяц, оплата вперёд 1 месяц\navailability: Доступно\nbedrooms: 1BR · 40㎡ · Мин. срок 3 мес.\ndescription: Квартира 40 м², 1 спальня, в комплексе Ха Куанг 2, район Фыок Хай. Полная меблировка, личная стиральная машина, балкон с хорошим освещением. Заезд сразу.\nlocation: Нячанг\nprice: 40 225 ₽\n/мес\n40 225 ₽\n/мес\nЗалог 1 месяц, оплата вперёд 1 месяц\nmetadata: Проверено\nКвартира\n1BR · 40㎡ · Мин. срок 3 мес."
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 12067500,
+        "period": "month",
+        "location": "Нячанг",
+        "rooms": 1
+      }
+    },
+    {
+      "id": "be-jib-nha-trang-008",
+      "language": "ru",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "be-jib-nha-trang",
+        "sourceType": "web",
+        "text": "Проверено\nДоступно\nНячанг\nСтудия\nНячанг, Panorama Apartments — студия с видом на море, аренда помесячно\n\nСтудия · Мин. срок 1 мес.\n\nСтудия в жилом комплексе Panorama на улице Чан Фу. Вид на море, балкон, полная меблировка с кухней. Бассейн и тренажёрный зал бесплатно, уборка раз в неделю включена. Въезд сразу.\n\n61 142 ₽\n/мес\nДоговор 1–5 мес.: залог 1 месяц + предоплата 1 месяц. Договор 6–12 мес.: залог 2 месяца + предоплата 1 месяц.\navailability: Доступно\nbedrooms: Студия · Мин. срок 1 мес.\ndescription: Студия в жилом комплексе Panorama на улице Чан Фу. Вид на море, балкон, полная меблировка с кухней. Бассейн и тренажёрный зал бесплатно, уборка раз в неделю включена. Въезд сразу.\nlocation: Нячанг\nprice: 61 142 ₽\n/мес\n61 142 ₽\n/мес\nДоговор 1–5 мес.: залог 1 месяц + предоплата 1 месяц. Договор 6–12 мес.: залог 2 месяца + предоплата 1 месяц.\nmetadata: Проверено\nСтудия\nСтудия · Мин. срок 1 мес."
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 18342600,
+        "period": "month",
+        "location": "Нячанг",
+        "rooms": 0
+      }
+    },
+    {
+      "id": "nha-trang-renting-001",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-renting",
+        "sourceType": "web",
+        "text": "Location: North\nArea m²: 47.4\n$420/mo\n2\n1\nFor Rent\nTwo bedroom apartment for rent in Champa island. ID A902\navailability: For Rent\nbathrooms: 1\nbedrooms: 2\ndescription: Location: North\nArea m²: 47.4\nlocation: Location: North\nprice: $420/mo\n2\n1\nmetadata: Location: North\nArea m²: 47.4\n$420/mo\n2\n1"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 10920000,
+        "period": "month",
+        "location": "North",
+        "rooms": 2
+      }
+    },
+    {
+      "id": "nha-trang-renting-002",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-renting",
+        "sourceType": "web",
+        "text": "Location: Centre\nArea m²: 43.40\n$470/mo\n1\nFor Rent\nSTUDIO IN MARINA SUITE ID A900\navailability: For Rent\nbathrooms: 1\ndescription: Location: Centre\nArea m²: 43.40\nlocation: Location: Centre\nprice: $470/mo\n1\nmetadata: Location: Centre\nArea m²: 43.40\n$470/mo\n1"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 12220000,
+        "period": "month",
+        "location": "Centre",
+        "rooms": 0
+      }
+    },
+    {
+      "id": "nha-trang-renting-003",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-renting",
+        "sourceType": "web",
+        "text": "Location: North\nDeposit: $393\nArea m²: 60\n$393/mo\n1\n1\nFor Rent\nRENT - 1 BEDROOM IN MUONG THANH BA LANG - ID A899\navailability: For Rent\nbathrooms: 1\nbedrooms: 1\ndescription: Location: North\nDeposit: $393\nArea m²: 60\nlocation: Location: North\nprice: $393/mo\n1\n1\nmetadata: Location: North\nDeposit: $393\nArea m²: 60\n$393/mo\n1\n1"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 10218000,
+        "period": "month",
+        "location": "North",
+        "rooms": 1
+      }
+    },
+    {
+      "id": "nha-trang-renting-004",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-renting",
+        "sourceType": "web",
+        "text": "Location: North\nDeposit: $589\nArea m²: 57\n$589/mo\n2\n2\nFor Rent\nRENT - 2 BEDROOM IN MUONG THANH OCEANUS-OC3 ID A898\navailability: For Rent\nbathrooms: 2\nbedrooms: 2\ndescription: Location: North\nDeposit: $589\nArea m²: 57\nlocation: Location: North\nprice: $589/mo\n2\n2\nmetadata: Location: North\nDeposit: $589\nArea m²: 57\n$589/mo\n2\n2"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 15314000,
+        "period": "month",
+        "location": "North",
+        "rooms": 2
+      }
+    },
+    {
+      "id": "nha-trang-renting-005",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-renting",
+        "sourceType": "web",
+        "text": "Location: Centre\nArea m²: 51\n$471/mo\n1\n1\nFor Rent\nStudio in Gold Coast ID A897\navailability: For Rent\nbathrooms: 1\nbedrooms: 1\ndescription: Location: Centre\nArea m²: 51\nlocation: Location: Centre\nprice: $471/mo\n1\n1\nmetadata: Location: Centre\nArea m²: 51\n$471/mo\n1\n1"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 12246000,
+        "period": "month",
+        "location": "Centre",
+        "rooms": 1
+      }
+    },
+    {
+      "id": "nha-trang-renting-006",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-renting",
+        "sourceType": "web",
+        "text": "Area m²: 60\n$360/mo\n2\n1\nFor Rent\nApartment for rent with sea view in Napoleon ID A896\navailability: For Rent\nbathrooms: 1\nbedrooms: 2\ndescription: Area m²: 60\nlocation: Area m²: 60\nprice: $360/mo\n2\n1\nmetadata: Area m²: 60\n$360/mo\n2\n1"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 9360000,
+        "period": "month",
+        "location": "Napoleon Castle, Nha Trang",
+        "rooms": 2
+      }
+    },
+    {
+      "id": "nha-trang-renting-007",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-renting",
+        "sourceType": "web",
+        "text": "Area m²: 70\n$393/mo\n2\n2\nFor Rent\nApartment for rent with sea view in Muong Thanh Khanh Hoa ID A895\navailability: For Rent\nbathrooms: 2\nbedrooms: 2\ndescription: Area m²: 70\nlocation: Area m²: 70\nprice: $393/mo\n2\n2\nmetadata: Area m²: 70\n$393/mo\n2\n2"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 10218000,
+        "period": "month",
+        "location": "Mường Thanh Khánh Hòa, Nha Trang",
+        "rooms": 2
+      }
+    },
+    {
+      "id": "nha-trang-renting-008",
+      "language": "en",
+      "input": {
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "sourceId": "nha-trang-renting",
+        "sourceType": "web",
+        "text": "Area m²: 136\n$720/mo\n4\n3\nFor Rent\n4 bedroom apartment for rent in Muong Thanh Khanh Hoa ID A894\navailability: For Rent\nbathrooms: 3\nbedrooms: 4\ndescription: Area m²: 136\nlocation: Area m²: 136\nprice: $720/mo\n4\n3\nmetadata: Area m²: 136\n$720/mo\n4\n3"
+      },
+      "expected": {
+        "offer": true,
+        "priceVnd": 18720000,
+        "period": "month",
+        "location": "Mường Thanh Khánh Hòa, Nha Trang",
+        "rooms": 4
+      }
     }
   ]
 }
