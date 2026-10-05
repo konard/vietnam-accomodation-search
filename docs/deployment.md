@@ -60,6 +60,44 @@ APP_IMAGE=OWNER/IMAGE:VERSION docker compose pull app
 APP_IMAGE=OWNER/IMAGE:VERSION docker compose up -d --no-build app
 ```
 
+### Browser sandbox
+
+Compose sets `BROWSER_NO_SANDBOX=1`. Chromium's own sandbox needs
+unprivileged user namespaces or a setuid `chrome-sandbox` helper. The container
+deliberately removes both: it runs as the unprivileged `node` user, drops every
+capability (`cap_drop: ALL`), sets `no-new-privileges`, keeps the default
+seccomp profile, and mounts the root filesystem read-only. With the sandbox
+enabled Chromium exits before its DevTools endpoint is ready, so every search
+fails at launch.
+
+The alternative, a custom seccomp profile that allows `clone`/`unshare` with
+`CLONE_NEWUSER` (or `--cap-add SYS_ADMIN`), widens the kernel surface of the
+whole container, including the Node.js process that holds the Telegram
+credentials. Without the Chromium sandbox, a renderer exploit runs as the
+`node` user inside this container. It can read `/data` and the process
+environment, including the bot token, but it gets no capabilities, cannot
+gain privileges, and cannot write outside `/data` and `/tmp`. Treat the
+container as the browser's isolation boundary: keep the image patched (the
+pinned Playwright Chromium is updated with the package), do not mount host
+paths besides `/data`, and do not run this image with `--privileged`.
+
+Outside this Compose file, leave `BROWSER_NO_SANDBOX` unset whenever Chromium's
+sandbox can start, for example on a desktop or a host with unprivileged user
+namespaces.
+
+Each deploy checks the candidate with the app's own launch path before the
+old container stops. Both checks run through `docker compose run` with the
+deployed environment:
+
+- `self-check browser` launches Chromium through `createApplication()`'s
+  collector, with its launch options, and renders a `data:` page.
+- `self-check search` serves a fixture listing page on `127.0.0.1` inside the
+  container, runs one real search against it in a throwaway data directory,
+  and fails unless it returns at least one offer.
+
+CI runs the same two commands against the built image with the Compose
+security options.
+
 ## Safe redeploy and operations
 
 The deployment command serializes mutations with `.deploy/operation.lock` and

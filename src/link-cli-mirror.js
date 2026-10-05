@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import {
@@ -58,7 +58,9 @@ async function linkOrCopy(source, target, linkFile) {
 
 export async function durableWrite(path, contents) {
   await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  // Writers of one file in one process get distinct temporary names, so one
+  // never removes the file another is about to rename.
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   try {
     const file = await open(temporary, 'wx', 0o600);
     try {
@@ -562,7 +564,7 @@ export class LinkCliMirror {
   async #adopt(directory, kind, digest, roots) {
     for (const root of roots) {
       const source = join(root, digest);
-      const staging = `${directory}.adopt-${process.pid}-${Date.now()}`;
+      const staging = `${directory}.adopt-${process.pid}-${randomUUID()}`;
       try {
         await verifyDatabase(source, kind, digest);
         const { files } = await readManifest(source, kind, digest);

@@ -49,6 +49,47 @@ describe('ranked accommodation sources', () => {
     }
   });
 
+  it('disables every seed that failed each live cohort, even when stored enabled', async () => {
+    const failed = {
+      booking: 'live-cohort-empty',
+      airbnb: 'live-cohort-landing',
+      agoda: 'live-cohort-landing',
+      traveloka: 'live-cohort-empty',
+      expedia: 'live-cohort-empty',
+      hotels: 'live-cohort-collection-failure',
+      trip: 'live-cohort-empty',
+      hostelworld: 'live-cohort-landing',
+      'google-hotels': 'live-cohort-consent-wall',
+      tripadvisor: 'live-cohort-empty',
+      vrbo: 'live-cohort-empty',
+      klook: 'live-cohort-empty',
+      kayak: 'live-cohort-landing',
+      trivago: 'live-cohort-challenge',
+      skyscanner: 'live-cohort-challenge',
+      vntrip: 'live-cohort-empty',
+      ivivu: 'live-cohort-landing',
+      mytour: 'live-cohort-collection-failure',
+      'hotel-mix': 'live-cohort-collection-failure',
+    };
+    for (const [id, reason] of Object.entries(failed)) {
+      const source = DEFAULT_WEB_SOURCES.find((entry) => entry.id === id);
+      expect([id, source.enabled, source.reason]).toEqual([id, false, reason]);
+    }
+    const stale = DEFAULT_WEB_SOURCES.filter(({ id }) => id in failed).map(
+      (source) => ({ ...source, enabled: true })
+    );
+    const registry = new SourceRegistry({
+      store: { loadSources: async () => stale },
+    });
+    const web = (await registry.list('web')).map(({ id }) => id);
+    expect(web.some((id) => id in failed)).toBe(false);
+    expect(web.sort()).toEqual(
+      DEFAULT_WEB_SOURCES.filter(({ enabled }) => enabled)
+        .map(({ id }) => id)
+        .sort()
+    );
+  });
+
   it('updates, de-duplicates, ranks, and caps both source classes', async () => {
     const saved = [];
     const registry = new SourceRegistry({

@@ -15,6 +15,13 @@ services:
       HEALTH_HOST: 0.0.0.0
       HEALTH_PORT: 8080
       LINKS_BINARY_MIRROR: 1
+      # Chromium's own sandbox needs unprivileged user namespaces or a setuid
+      # helper. This container drops all capabilities, forbids new
+      # privileges, and runs as the non-root `node` user on a read-only root,
+      # so that sandbox cannot start and Chromium exits at launch. The
+      # container is the isolation boundary for browsing; see
+      # docs/deployment.md#browser-sandbox.
+      BROWSER_NO_SANDBOX: 1
     restart: unless-stopped
     stop_grace_period: 30s
     ports:

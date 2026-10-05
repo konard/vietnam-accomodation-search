@@ -12,6 +12,36 @@ import {
   parseTelegramOffer,
 } from '../src/index.js';
 
+const ENABLED_WEB_SEEDS = DEFAULT_WEB_SOURCES.filter(
+  ({ enabled }) => enabled
+).length;
+
+// Parses the posts once so the time covers matching, not the first
+// compilation of every pattern, then keeps the fastest of three timed
+// passes: a busy test machine slows some passes, a quadratic pattern all.
+function timedParse(texts) {
+  const parse = () =>
+    texts.map((text, index) =>
+      parseTelegramOffer(
+        {
+          chat: { username: 'adversarial_input' },
+          date: '2026-09-20T00:00:00Z',
+          messageId: index + 1,
+          text,
+        },
+        { now: new Date('2026-09-21T00:00:00Z') }
+      )
+    );
+  const offers = parse();
+  let durationMs = Infinity;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const startedAt = globalThis.performance.now();
+    parse();
+    durationMs = Math.min(durationMs, globalThis.performance.now() - startedAt);
+  }
+  return { durationMs, offers };
+}
+
 describe('Nha Trang source coverage', () => {
   it('adds twenty focused sources including the requested communities', () => {
     const ids = new Set(
@@ -28,14 +58,16 @@ describe('Nha Trang source coverage', () => {
     }
   });
 
-  it('keeps twenty sources in each configured cohort', async () => {
+  it('keeps every enabled web seed and twenty sources in each Telegram cohort', async () => {
     const registry = new SourceRegistry({
       store: { loadSources: async () => [] },
     });
 
     const sources = await registry.list();
 
-    expect(sources.filter((source) => source.type === 'web').length).toBe(20);
+    expect(sources.filter((source) => source.type === 'web').length).toBe(
+      ENABLED_WEB_SEEDS
+    );
     expect(
       sources.filter((source) => source.type === 'telegram' && !source.focus)
         .length
@@ -105,10 +137,10 @@ describe('Nha Trang source coverage', () => {
 
     const updated = await registry.update();
 
-    expect(updated.web.length).toBe(20);
+    expect(updated.web.length).toBe(ENABLED_WEB_SEEDS);
     expect(updated.telegram.length).toBe(40);
     expect(updated.telegram.filter((source) => source.focus).length).toBe(20);
-    expect(saved[0].length).toBe(60);
+    expect(saved[0].length).toBe(ENABLED_WEB_SEEDS + 40);
   });
 
   it('keeps the existing seed cohorts independent', () => {
@@ -270,41 +302,19 @@ describe('complete recent Telegram parsing', () => {
   });
 
   it('parses adversarial whitespace in bounded time', () => {
-    const startedAt = globalThis.performance.now();
-    for (const prefix of ['этаж', 'mã']) {
-      parseTelegramOffer(
-        {
-          chat: { username: 'adversarial_input' },
-          date: '2026-09-20T00:00:00Z',
-          messageId: 1,
-          text: `${prefix}${' '.repeat(10_000)}!`,
-        },
-        { now: new Date('2026-09-21T00:00:00Z') }
-      );
-    }
-    const durationMs = globalThis.performance.now() - startedAt;
+    const { durationMs } = timedParse(
+      ['этаж', 'mã'].map((prefix) => `${prefix}${' '.repeat(10_000)}!`)
+    );
 
     expect(durationMs < 150).toBe(true);
   });
 
   it('parses adversarial word and location punctuation runs in bounded time', () => {
-    const startedAt = globalThis.performance.now();
-    for (const text of [
+    const { durationMs } = timedParse([
       `${'-'.repeat(20_000)} x`,
       `спальни${' '.repeat(20_000)}x`,
       `Address: Nha Trang${'!'.repeat(20_000)}x`,
-    ]) {
-      parseTelegramOffer(
-        {
-          chat: { username: 'adversarial_input' },
-          date: '2026-09-20T00:00:00Z',
-          messageId: 2,
-          text,
-        },
-        { now: new Date('2026-09-21T00:00:00Z') }
-      );
-    }
-    const durationMs = globalThis.performance.now() - startedAt;
+    ]);
 
     expect(durationMs < 500).toBe(true);
   });
@@ -369,26 +379,13 @@ describe('complete recent Telegram parsing', () => {
 
 describe('bounded official URL parsing', () => {
   it('trims punctuation without pathological backtracking', () => {
-    const startedAt = globalThis.performance.now();
-    const parsed = parseTelegramOffer(
-      {
-        chat: { username: 'adversarial_input' },
-        date: '2026-09-20T00:00:00Z',
-        messageId: 2,
-        text: `Official website: https://hotel.example/${'!'.repeat(20_000)}x`,
-      },
-      { now: new Date('2026-09-21T00:00:00Z') }
-    );
-    const parsedTrailing = parseTelegramOffer(
-      {
-        chat: { username: 'adversarial_input' },
-        date: '2026-09-20T00:00:00Z',
-        messageId: 3,
-        text: 'Official website: https://hotel.example/stay!!!',
-      },
-      { now: new Date('2026-09-21T00:00:00Z') }
-    );
-    const durationMs = globalThis.performance.now() - startedAt;
+    const {
+      durationMs,
+      offers: [parsed, parsedTrailing],
+    } = timedParse([
+      `Official website: https://hotel.example/${'!'.repeat(20_000)}x`,
+      'Official website: https://hotel.example/stay!!!',
+    ]);
 
     expect(parsed.officialUrl?.endsWith('x')).toBe(true);
     expect(parsedTrailing.officialUrl).toBe('https://hotel.example/stay');

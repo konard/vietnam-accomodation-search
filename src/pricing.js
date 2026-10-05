@@ -4,110 +4,289 @@ const CURRENCY_ALIASES = new Map([
   ['USD', 'USD'],
   ['€', 'EUR'],
   ['EUR', 'EUR'],
+  ['EURO', 'EUR'],
+  ['EUROS', 'EUR'],
+  ['ЕВРО', 'EUR'],
   ['£', 'GBP'],
+  ['₽', 'RUB'],
+  ['RUB', 'RUB'],
   ['GBP', 'GBP'],
-  ['VND', 'VND'],
-  ['VNĐ', 'VND'],
-  ['ДОНГ', 'VND'],
-  ['ДОНГА', 'VND'],
-  ['ДОНГОВ', 'VND'],
-  ['Đ', 'VND'],
-  ['₫', 'VND'],
+  ['美元', 'USD'],
+  ['美金', 'USD'],
 ]);
 
-function parseNumber(value, scaled = false) {
-  const compact = value.replace(/\s/g, '');
+const CURRENCY =
+  'VND|VNĐ|донг(?:а|ов)?|đồng|₫|đ(?!\\p{L})|USD|US\\$|\\$|долл(?:ар\\p{L}{0,3})?|dollars?|EUR|€|евро|euros?|GBP|£|₽|RUB|руб(?:л\\p{L}{0,3}|\\.)?|美元|美金|越盾';
+const NUMBER = '\\d{1,12}(?:[.,\\u00a0 ]\\d{3}){0,4}(?:[.,]\\d{1,4})?';
+const SCALE =
+  'triệu|tr|million|mio|mln|млн|мл|миллион\\p{L}{0,3}|tỷ|billion|млрд|миллиард\\p{L}{0,3}|k|к|тыс|nghìn|ngàn|thousand|m|萬|万';
+// A money token is a number or range with an optional scale word and a
+// currency on either side. The scale and currency must end at a word
+// boundary, so "60 Trần Phú" or "60 m²" never read as millions. Chinese
+// text has no spaces, so a Han character next to a token is not a word.
+const LETTER = '(?!\\p{sc=Han})\\p{L}';
+const MONEY = new RegExp(
+  `(?<![\\d.,+]|${LETTER})(?:(${CURRENCY})\\s?)?(${NUMBER})(?:\\s?[-–—]\\s?(${NUMBER}))?(?!\\d)(?:(\\s?)(${SCALE})(?![\\d²³]|${LETTER}))?(?:\\.?\\s{0,6}\\/?\\s?(${CURRENCY})(?!${LETTER}))?`,
+  'giu'
+);
 
-  if (scaled) {
-    return Number(compact.replace(',', '.'));
+const PERIODS = [
+  [
+    'night',
+    /(?<!\p{L})(?:ноч\p{L}*|сут(?:ки|ок|ка)?|день|дн(?:я|ей)|nights?|days?|đêm|ngày)(?!\p{L})/iu,
+  ],
+  ['week', /(?<!\p{L})(?:недел\p{L}*|weeks?|tuần)(?!\p{L})/iu],
+  [
+    'month',
+    /(?<!\p{L})(?:месяц\p{L}*|мес|months?|tháng)(?!\p{L})|每月|月租|[個个]月/iu,
+  ],
+  ['year', /(?<!\p{L})(?:год(?:а|ов)?|years?|năm)(?!\p{L})/iu],
+];
+const PERIOD_WORDS = new RegExp(
+  PERIODS.map(([, pattern]) => pattern.source).join('|'),
+  'giu'
+);
+
+// Labels that name the rent itself. An amount under one of them outranks
+// every unlabelled amount in the post.
+const RENT_LABEL =
+  /стоимост\p{L}*|цен[аыуе](?!\p{L})|аренд\p{L}*|price|rent|giá|租金/iu;
+// Labels for amounts that are not the rent: utilities, building fees,
+// deposits, extras, vehicle rental offered next to the apartment, and sale
+// prices.
+const FEE_LABEL =
+  /продаж\p{L}*|for\s+sale|sale\s+price|(?<!\p{L})giá\s+bán|электр\p{L}*|свет(?!\p{L})|вод[аыуе](?!\p{L})|интернет|wi-?fi|вай-?фай|управлен\p{L}*|обслужив\p{L}*|охран\p{L}*|услуг\p{L}*|сервис\p{L}*|депозит|залог|комисси\p{L}*|уборк\p{L}*|клининг|стирк\p{L}*|парков\p{L}*|питом\p{L}*|животн\p{L}*|доплат\p{L}*|газ(?!\p{L})|мусор|коммунал\p{L}*|байк\p{L}*|скутер\p{L}*|автомоб\p{L}*|трансфер|electric\p{L}*|water|internet|management|service|deposit|cleaning|laundry|parking|(?<!\p{L})pets?(?!\p{L})|commission|agency|utilit\p{L}*|motorbike|scooter|(?<!\p{L})bike|transfer|điện|nước|phí|cọc|dọn|giặt|gửi\s*xe|xe\s*máy|押金|管理[費费]|水[電电]/iu;
+// Unit rates such as "4.500 VND / кВт⋅ч" or "100.000 VND / человек".
+const PER_UNIT =
+  /^\s?(?:\/|за|per|mỗi|một)?\s?(?:кв?т|kwh|kw(?!\p{L})|số(?!\p{L})|человек\p{L}*|чел(?!\p{L})|person|pax|người|м³|m³|m3|куб\p{L}*|khối|кг|kg|ký(?!\p{L})|m²|m2|м²|м2)/iu;
+// "до 10 млн" or "up to $500" states a budget ceiling, not a listed rent.
+// Headings such as "Дополнительные расходы:" that open a list of fees.
+const FEE_SECTION =
+  /дополнительн\p{L}*|расход\p{L}*|additional|extra\s*(?:costs|fees|charges)|chi\s*phí\s*khác|phát\s*sinh/iu;
+const CEILING = /(?:(?<!\p{L})до|up\s+to|under|dưới|не\s+дороже)\s*$/iu;
+// Floor words qualify one option of a per-floor rent ("tầng 2 8tr") rather
+// than label it, and the number right after one is the floor, so
+// "floor 2 - 8,000,000 VND" is no range from 2.
+const FLOOR_WORDS =
+  /(?<!\p{L})(?:floors?|levels?|этаж\p{L}*|tầng|lầu)(?!\p{L})/giu;
+const FLOOR_BEFORE =
+  /(?<!\p{L})(?:floors?|levels?|этаж\p{L}*|tầng|lầu)\s*(?:№\s*)?$/iu;
+
+function currencyFrom(value) {
+  if (!value) {
+    return undefined;
   }
+  const upper = value.toUpperCase();
+  if (/^(?:ДОЛЛ|DOLLAR)/u.test(upper)) {
+    return 'USD';
+  }
+  if (upper.startsWith('РУБ')) {
+    return 'RUB';
+  }
+  return CURRENCY_ALIASES.get(upper) || 'VND';
+}
 
+function parseNumber(value, scaled) {
+  const compact = value.replace(/\s/gu, '');
   const separators = compact.match(/[.,]/g) || [];
   if (
     separators.length > 1 ||
-    (separators.length === 1 && /[.,]\d{3}$/.test(compact))
+    (!scaled && separators.length === 1 && /[.,]\d{3}$/.test(compact))
   ) {
     return Number(compact.replace(/[.,]/g, ''));
   }
-
   return Number(compact.replace(',', '.'));
 }
 
-function detectPeriod(text) {
-  if (/(?:\/|per\s+|mỗi\s+|по\s*)?(?:night|đêm|ночь)/iu.test(text)) {
-    return 'night';
+function multiplier(scale) {
+  if (!scale) {
+    return 1;
   }
-  if (/(?:\/|per\s+|mỗi\s+|за\s*)?(?:week|tuần|недел)/iu.test(text)) {
-    return 'week';
+  const unit = scale.toLocaleLowerCase('vi');
+  if (/^(?:tỷ|billion|млрд|миллиард)/u.test(unit)) {
+    return 1_000_000_000;
   }
-  if (/(?:\/|per\s+|mỗi\s+|за\s*)?(?:year|năm|год)/iu.test(text)) {
-    return 'year';
+  if (/^(?:k|к|тыс|nghìn|ngàn|thousand)$/u.test(unit)) {
+    return 1_000;
   }
-  return 'month';
+  if (/^[萬万]$/u.test(unit)) {
+    return 10_000;
+  }
+  return 1_000_000;
 }
 
-function currencyFrom(value) {
-  return CURRENCY_ALIASES.get(value.toUpperCase()) || 'VND';
-}
-
-function scaledCandidates(text) {
-  const candidates = [];
-  const pattern =
-    /(?<![\d.,])(\d{1,12}(?:[.,]\d{1,4})?)(?![\d.,])\s*(triệu|tr(?:iệu)?|million|mio|млн|tỷ|billion)(?:\s*(VND|VNĐ|донг(?:а|ов)?|₫|đ|USD|US\$|\$|EUR|€|GBP|£))?/giu;
-
-  for (const match of text.matchAll(pattern)) {
-    const unit = match[2].toLocaleLowerCase('vi');
-    const multiplier = /tỷ|billion/u.test(unit) ? 1_000_000_000 : 1_000_000;
-    candidates.push({
-      amount: parseNumber(match[1], true) * multiplier,
-      currency: match[3] ? currencyFrom(match[3]) : 'VND',
-      period: detectPeriod(text.slice(match.index, match.index + 80)),
-    });
-  }
-
-  return candidates;
-}
-
-function explicitCurrencyCandidates(text) {
-  const candidates = [];
-  const currency = '(VND|VNĐ|донг(?:а|ов)?|₫|đ|USD|US\\$|\\$|EUR|€|GBP|£)';
-  const number = '(?<!\\d)(\\d(?:[\\d.,\\s]{0,20}\\d)?)(?!\\d)';
-  const patterns = [
-    new RegExp(`${currency}\\s*${number}`, 'giu'),
-    new RegExp(`${number}\\s*${currency}`, 'giu'),
-  ];
-
-  for (const [patternIndex, pattern] of patterns.entries()) {
-    for (const match of text.matchAll(pattern)) {
-      const currencyIndex = patternIndex === 0 ? 1 : 2;
-      const numberIndex = patternIndex === 0 ? 2 : 1;
-      const amount = parseNumber(match[numberIndex]);
-      if (Number.isFinite(amount)) {
-        candidates.push({
-          amount,
-          currency: currencyFrom(match[currencyIndex]),
-          period: detectPeriod(text.slice(match.index, match.index + 80)),
-        });
-      }
+function periodIn(text) {
+  let found;
+  for (const [period, pattern] of PERIODS) {
+    const index = text.search(pattern);
+    if (index >= 0 && (!found || index < found.index)) {
+      found = { index, period };
     }
   }
-
-  return candidates;
+  return found?.period;
 }
 
-export function parsePrice(text = '') {
-  const candidates = [
-    ...scaledCandidates(String(text)),
-    ...explicitCurrencyCandidates(String(text)),
-  ].filter(
-    (candidate) => Number.isFinite(candidate.amount) && candidate.amount > 0
-  );
+function clauses(text) {
+  return text
+    .split(/\r?\n|[;|•]|(?<=[.!?])\s+(?=\p{Lu})/u)
+    .filter((clause) => clause.trim());
+}
 
-  return (
-    candidates.find((candidate) => candidate.currency === 'VND') ||
-    candidates[0] ||
-    null
+function nearestLabel(text) {
+  const comma = text.lastIndexOf(', ');
+  return comma >= 0 ? text.slice(comma + 2) : text;
+}
+
+// Currency and period words alone ("/сутки", "VND / месяц") do not label an
+// amount; the amount then shares the label of the amount before it.
+function hasLabelWords(label) {
+  if (FEE_LABEL.test(label) || RENT_LABEL.test(label)) {
+    return true;
+  }
+  return /\p{L}{3,}/u.test(
+    label
+      .replace(new RegExp(CURRENCY, 'giu'), '')
+      .replace(PERIOD_WORDS, '')
+      .replace(FLOOR_WORDS, '')
+      .replace(/(?<!\p{L})(?:в|за|per|a|an|mỗi|một|от|from|từ)(?!\p{L})/giu, '')
   );
+}
+
+// "m" alone means metres, and "5 к" with a space is usually a preposition, so
+// only "M" and an attached "k"/"к" scale the number.
+function scaleOf(match) {
+  const [space, scale] = [match[4], match[5]];
+  if (scale === 'm' || (/^[kк]$/iu.test(scale || '') && space)) {
+    return undefined;
+  }
+  return scale;
+}
+
+function tokenAmounts(match, scale) {
+  const scaled = Boolean(scale);
+  const factor = multiplier(scale);
+  const floorFirst =
+    Boolean(match[3]) && FLOOR_BEFORE.test(match.input.slice(0, match.index));
+  const [first, second] = floorFirst ? [match[3]] : [match[2], match[3]];
+  const low = parseNumber(first, scaled) * factor;
+  const high = second ? parseNumber(second, scaled) * factor : low;
+  return high > low ? { high, low } : { high: low, low };
+}
+
+function moneyTokens(clause) {
+  const tokens = [];
+  for (const match of clause.matchAll(MONEY)) {
+    const scale = scaleOf(match);
+    const { high, low } = tokenAmounts(match, scale);
+    const currency = currencyFrom(match[1] || match[6]);
+    const bare = !currency && !scale;
+    if (
+      !Number.isFinite(low) ||
+      low <= 0 ||
+      // "0,0055 Triệu" is a card typo; no rent in dong is that small.
+      (scale && (currency || 'VND') === 'VND' && low < 50_000) ||
+      (bare &&
+        (low < 100_000 || !/[.,]\d{3}/u.test(match[2]) || /^0/u.test(match[2])))
+    ) {
+      continue;
+    }
+    tokens.push({
+      amount: low,
+      bare,
+      currency: currency || 'VND',
+      end: match.index + match[0].length,
+      high,
+      start: match.index,
+    });
+  }
+  return tokens;
+}
+
+function classifyTokens(clause, tokens, section) {
+  let previous = section;
+  let cursor = 0;
+  return tokens.map((token, index) => {
+    const before = clause.slice(cursor, token.start);
+    const label = nearestLabel(before);
+    const next = tokens[index + 1]?.start ?? clause.length;
+    const after = clause.slice(token.end, Math.min(next, token.end + 40));
+    const leading = after.replace(/^[\s:–—-]*/u, '').split(/\s/u)[0];
+    const own = hasLabelWords(label);
+    const fee = own
+      ? FEE_LABEL.test(label)
+      : previous.fee || FEE_LABEL.test(leading);
+    const rent = !fee && (own ? RENT_LABEL.test(label) : previous.rent);
+    cursor = token.end;
+    previous = { fee, rent };
+    return {
+      ...token,
+      ceiling: CEILING.test(before),
+      fee: fee || PER_UNIT.test(after),
+      period: periodIn(label) || periodIn(after.slice(0, 24)),
+      rent,
+    };
+  });
+}
+
+// A clause without amounts that ends with a colon is a heading; the bullets
+// under it share its label until the next heading.
+function headingSection(clause) {
+  const fee = FEE_SECTION.test(clause) || FEE_LABEL.test(clause);
+  return { fee, rent: !fee && RENT_LABEL.test(clause) };
+}
+
+function candidates(text) {
+  let section = { fee: false, rent: false };
+  return clauses(text).flatMap((clause) => {
+    const tokens = moneyTokens(clause);
+    if (!tokens.length) {
+      if (/:[\s\p{S}\p{P}]*$/u.test(clause)) {
+        section = headingSection(clause);
+      }
+      return [];
+    }
+    return classifyTokens(clause, tokens, section);
+  });
+}
+
+function preferred(pool) {
+  const priced = pool.some(({ bare }) => !bare)
+    ? pool.filter(({ bare }) => !bare)
+    : pool;
+  const periods = priced.map(({ period }) => period || 'month');
+  const period = periods.includes('month') ? 'month' : periods[0];
+  const samePeriod = priced.filter(
+    (candidate) => (candidate.period || 'month') === period
+  );
+  const currency = samePeriod.some(({ currency }) => currency === 'VND')
+    ? 'VND'
+    : samePeriod[0].currency;
+  const options = samePeriod.filter(
+    (candidate) => candidate.currency === currency
+  );
+  const amount = Math.min(...options.map(({ amount }) => amount));
+  const maximum = Math.max(...options.map(({ high }) => high));
+  return {
+    amount,
+    currency,
+    period,
+    ...(maximum > amount ? { range: { max: maximum, min: amount } } : {}),
+  };
+}
+
+// The rent is chosen clause by clause. Amounts labelled as utilities, fees,
+// deposits, unit rates, or budget ceilings are ignored, and amounts under a
+// rent label outrank unlabelled ones. Monthly rent wins over other periods
+// and VND over other currencies in the same post. When a post lists several
+// rent options (by floor or contract length) the price is the lowest one and
+// `range` spans all of them.
+export function parsePrice(text = '') {
+  const all = candidates(String(text)).filter(
+    ({ ceiling, fee }) => !fee && !ceiling
+  );
+  const rent = all.filter((candidate) => candidate.rent);
+  const pool = rent.length ? rent : all.filter(({ bare }) => !bare);
+  return pool.length ? preferred(pool) : null;
 }
 
 export function convertToVnd(price, rates = {}) {

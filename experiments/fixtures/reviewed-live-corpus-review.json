@@ -1,0 +1,368 @@
+{
+  "reviewer": "agent",
+  "reviews": {
+    "tg-oceanusarenda-001": {
+      "rooms": 3
+    },
+    "tg-oceanusarenda-002": {
+      "rooms": 2
+    },
+    "tg-oceanusarenda-003": {
+      "rooms": 2
+    },
+    "tg-oceanusarenda-004": {
+      "rooms": 2
+    },
+    "tg-oceanusarenda-005": {
+      "rooms": 2
+    },
+    "tg-oceanusarenda-006": {
+      "rooms": 2
+    },
+    "tg-vietnamstay-003": {
+      "rooms": 1
+    },
+    "tg-vietnamstay-005": {
+      "rooms": 1
+    },
+    "tg-vietnamstay-008": {
+      "rooms": 1
+    },
+    "tg-vietnamstay-006": {
+      "rooms": 4
+    },
+    "tg-vietnamstay-007": {
+      "rooms": 2
+    },
+    "tg-forrentnhatrang-003": {
+      "rooms": 1
+    },
+    "tg-forrentnhatrang-007": {
+      "rooms": 1
+    },
+    "tg-forrentnhatrang-004": {
+      "rooms": 2
+    },
+    "tg-forrentnhatrang-006": {
+      "rooms": 2
+    },
+    "tg-forrentnhatrang-005": {
+      "rooms": 4
+    },
+    "tg-lowrentnt-003": {
+      "rooms": 1
+    },
+    "tg-lowrentnt-004": {
+      "rooms": null
+    },
+    "tg-nhatranghouses-002": {
+      "rooms": 3
+    },
+    "tg-nhatranghouses-003": {
+      "rooms": 3
+    },
+    "tg-nhatranghouses-004": {
+      "rooms": 3
+    },
+    "tg-nhatranghouses-005": {
+      "rooms": 2
+    },
+    "tg-nhatranghouses-006": {
+      "rooms": null
+    },
+    "tg-nhatranghouses-007": {
+      "rooms": 4
+    },
+    "homedy-002": {
+      "rooms": 2
+    },
+    "homedy-008": {
+      "rooms": 2
+    },
+    "homedy-009": {
+      "rooms": 2
+    },
+    "nhatrangland-003": {
+      "rooms": 2
+    },
+    "nhatrangland-004": {
+      "rooms": 2
+    },
+    "nhatrangland-005": {
+      "rooms": 2
+    },
+    "nhatrangland-009": {
+      "rooms": 2
+    },
+    "nhatrangland-011": {
+      "rooms": 2
+    },
+    "nhatrangland-010": {
+      "rooms": 3
+    },
+    "yourhome-007": {
+      "rooms": 1
+    },
+    "yourhome-008": {
+      "rooms": 2
+    },
+    "yourhome-009": {
+      "rooms": 2
+    },
+    "tg-arenda_nyachang_zhilye-001": {
+      "offer": true
+    },
+    "tg-arenda_nyachang_zhilye-002": {
+      "offer": true
+    },
+    "tg-arenda_nyachang_zhilye-003": {
+      "offer": true
+    },
+    "tg-arenda_nyachang_zhilye-004": {
+      "offer": true
+    },
+    "tg-arenda_nyachang_zhilye-005": {
+      "offer": true
+    },
+    "tg-arenda_nyachang_zhilye-006": {
+      "offer": true
+    },
+    "tg-nyachang_arenda_kvartir-001": {
+      "offer": true
+    },
+    "tg-nyachang_arenda_kvartir-002": {
+      "offer": true
+    },
+    "tg-nyachang_arenda_kvartir-003": {
+      "offer": true
+    },
+    "tg-nyachang_arenda_kvartir-004": {
+      "offer": true
+    },
+    "tg-nyachang_arenda_kvartir-005": {
+      "offer": true
+    },
+    "homedy-006": {
+      "offer": true
+    },
+    "tg-arendaotshahnoza-001": {
+      "offer": true
+    },
+    "tg-arendaotshahnoza-003": {
+      "offer": true
+    },
+    "tg-nhatrang_newarenda-003": {
+      "offer": true
+    },
+    "tg-nhatrangrental-001": {
+      "offer": true,
+      "rooms": 2
+    },
+    "tg-nhatrangrental-002": {
+      "offer": true,
+      "rooms": 2
+    },
+    "tg-nhatrangrental-003": {
+      "offer": true,
+      "rooms": 2
+    },
+    "tg-nhatrangrental-005": {
+      "offer": true,
+      "rooms": 2,
+      "location": null
+    },
+    "tg-bdsvnco-011": {
+      "offer": true,
+      "priceVnd": 39000000,
+      "period": "month",
+      "rooms": 4,
+      "location": "Ho Chi Minh City"
+    },
+    "tg-bdsvnco-015": {
+      "offer": true,
+      "priceVnd": 15000000,
+      "period": "month",
+      "rooms": 3,
+      "location": null
+    },
+    "tg-bdsvnco-020": {
+      "offer": true,
+      "priceVnd": 30000000,
+      "period": "month",
+      "rooms": 2,
+      "location": "Ho Chi Minh City"
+    },
+    "tg-bdsvnco-025": {
+      "offer": true,
+      "priceVnd": 20800000,
+      "period": "month",
+      "rooms": 2,
+      "location": "Ho Chi Minh City"
+    },
+    "tg-bdsvnco-026": {
+      "offer": true,
+      "priceVnd": 10400000,
+      "period": "month",
+      "rooms": 2,
+      "location": "Ho Chi Minh City"
+    },
+    "tg-nhatranghouses-001": {
+      "offer": false
+    },
+    "tg-nhatranghouses-008": {
+      "offer": false
+    },
+    "tg-phuquoc_realestate-001": {
+      "offer": false
+    },
+    "tg-phuquoc_realestate-003": {
+      "offer": false
+    },
+    "tg-phuquoc_realestate-008": {
+      "offer": false
+    },
+    "tg-phuquoc_realestate-012": {
+      "offer": false
+    },
+    "alonhadat-nha-trang-002": {
+      "offer": false
+    },
+    "alonhadat-nha-trang-003": {
+      "offer": false
+    },
+    "alonhadat-nha-trang-010": {
+      "offer": false
+    },
+    "alonhadat-nha-trang-018": {
+      "offer": false
+    },
+    "tg-phuquoc_realestate-007": {
+      "offer": true,
+      "location": "Phu Quoc",
+      "priceVnd": null,
+      "period": null
+    },
+    "tg-nyachangarenda-001": {
+      "location": ["Центр", "Central Nha Trang"]
+    },
+    "tg-nyachangarenda-002": {
+      "location": ["Центр", "Central Nha Trang"]
+    },
+    "tg-nyachangarenda-003": {
+      "location": ["Центр", "Central Nha Trang"]
+    },
+    "tg-nyachangarenda-004": {
+      "location": ["Центр", "Central Nha Trang"]
+    },
+    "tg-arendaotshahnoza-006": {
+      "rooms": null
+    },
+    "tg-rentnhatrang-003": {
+      "rooms": 1
+    },
+    "tg-rentnhatrang-006": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-002": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-007": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-008": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-014": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-015": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-018": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-019": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-023": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-024": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-025": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-026": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-031": {
+      "rooms": 1
+    },
+    "tg-nhatrangapartment_rental-011": {
+      "rooms": 2
+    },
+    "homedy-005": {
+      "priceVnd": 5500000
+    },
+    "nha-trang-vn-001": {
+      "rooms": 3
+    },
+    "nha-trang-vn-002": {
+      "rooms": 1
+    },
+    "nha-trang-vn-003": {
+      "rooms": 1
+    },
+    "nha-trang-vn-004": {
+      "rooms": 1
+    },
+    "nha-trang-vn-006": {
+      "rooms": 2
+    },
+    "nha-trang-vn-008": {
+      "rooms": 2
+    },
+    "be-jib-nha-trang-002": {
+      "priceVnd": 14481000,
+      "period": "month"
+    },
+    "be-jib-nha-trang-003": {
+      "priceVnd": 14481000,
+      "period": "month"
+    },
+    "be-jib-nha-trang-004": {
+      "priceVnd": 10619400,
+      "period": "month"
+    },
+    "be-jib-nha-trang-005": {
+      "priceVnd": 16894500,
+      "period": "month"
+    },
+    "be-jib-nha-trang-006": {
+      "priceVnd": 13515600,
+      "period": "month"
+    },
+    "be-jib-nha-trang-007": {
+      "priceVnd": 12067500,
+      "period": "month"
+    },
+    "be-jib-nha-trang-008": {
+      "priceVnd": 18342600,
+      "period": "month"
+    },
+    "nha-trang-renting-001": {
+      "rooms": 2
+    },
+    "nha-trang-renting-006": {
+      "location": "Napoleon Castle, Nha Trang",
+      "rooms": 2
+    },
+    "nha-trang-renting-007": {
+      "location": "Mường Thanh Khánh Hòa, Nha Trang"
+    },
+    "nha-trang-renting-008": {
+      "location": "Mường Thanh Khánh Hòa, Nha Trang"
+    }
+  }
+}

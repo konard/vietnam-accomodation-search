@@ -161,6 +161,16 @@ function matchesNamedFilters(offer, options) {
   );
 }
 
+// Sold-out, rented, and occupied listings stay stored so a later copy can
+// update them, but search and subscriptions skip them unless asked.
+function isAvailable(offer, options) {
+  return (
+    options.includeUnavailable === true ||
+    (offer.attributes?.availability !== 'unavailable' &&
+      offer.attributes?.availableNow !== false)
+  );
+}
+
 function sourceCoverageIsComplete(offers, sources, query) {
   if (!sources.length) {
     return offers.length > 0;
@@ -171,6 +181,40 @@ function sourceCoverageIsComplete(offers, sources, query) {
       .flatMap((offer) => offer.sourceIds || [offer.sourceId])
   );
   return sources.every((source) => covered.has(source.id));
+}
+
+// Sources without a fresh offer for the query go first, so a refresh that
+// stops at its budget still extends coverage on the next search.
+// "Nhà Trang apartment" → "nha-trang-apartment", the form of source focus.
+function citySlug(query) {
+  return normalizedValue(query)
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-|-$/gu, '');
+}
+
+function refreshOrder(offers, sources, query, now, maxAgeMs) {
+  const fresh = new Set(
+    offers
+      .filter(
+        (offer) => isForQuery(offer, query) && isFresh(offer, now, maxAgeMs)
+      )
+      .flatMap((offer) => offer.sourceIds || [offer.sourceId])
+  );
+  const city = citySlug(query);
+  const focused = (source) => {
+    const focus = source.focus || source.geographicFocus;
+    return Boolean(city && focus) && city.includes(focus);
+  };
+  // A search budget runs out before every source finishes; spend it on
+  // sources focused on the queried city first.
+  const byFocus = (list) => [
+    ...list.filter(focused),
+    ...list.filter((source) => !focused(source)),
+  ];
+  return [
+    ...byFocus(sources.filter((source) => !fresh.has(source.id))),
+    ...byFocus(sources.filter((source) => fresh.has(source.id))),
+  ];
 }
 
 export class SearchService {
@@ -205,14 +249,55 @@ export class SearchService {
     );
   }
 
-  // eslint-disable-next-line complexity -- Search owns one correlated lifecycle across refresh, cache, ranking, and trace outcomes.
   async search(options = {}) {
+    return (await this.searchWithReport(options)).offers;
+  }
+
+  // Saves each finished source as it completes, so an interrupted refresh
+  // keeps finished work; writes are chained to keep them ordered.
+  #sourcePersister() {
+    let chain = Promise.resolve();
+    const persist = async ({ offers, signal }) => {
+      if (!offers.length) {
+        return;
+      }
+      const cached = this.mediaCache
+        ? await this.mediaCache.cacheOffers(offers, { signal })
+        : offers;
+      await this.store.saveOffers(cached);
+    };
+    return (completion) => {
+      chain = chain.then(() => persist(completion));
+      return chain;
+    };
+  }
+
+  async #refresh(sources, query, { runId, signal }) {
+    const options = { runId, signal, traceRecorder: this.trace };
+    if (typeof this.collector.collectWithReport !== 'function') {
+      let collected = await this.collector.collect(sources, query, options);
+      if (this.mediaCache) {
+        collected = await this.mediaCache.cacheOffers(collected);
+      }
+      await this.store.saveOffers(collected);
+      return { collected, report: undefined };
+    }
+    const report = await this.collector.collectWithReport(sources, query, {
+      ...options,
+      onSourceComplete: this.#sourcePersister(),
+    });
+    return { collected: report.offers, report };
+  }
+
+  // eslint-disable-next-line complexity -- Search owns one correlated lifecycle across refresh, cache, ranking, and trace outcomes.
+  async searchWithReport(options = {}) {
     const {
       cheapest = false,
       filters = {},
       limit = 10,
       query = '',
       refresh,
+      signal,
       traceRunId,
     } = options;
     const runId =
@@ -223,19 +308,26 @@ export class SearchService {
       let offers = await this.store.listOffers();
       const sources = await this.registry.list();
       const shouldRefresh = this.shouldRefresh(offers, sources, refresh, query);
+      let report;
 
       if (shouldRefresh) {
-        let collected = await this.collector.collect(sources, query, {
+        const ordered = refreshOrder(
+          offers,
+          sources,
+          query,
+          this.now(),
+          this.maxAgeMs
+        );
+        const refreshed = await this.#refresh(ordered, query, {
           runId,
-          traceRecorder: this.trace,
+          signal,
         });
-        if (this.mediaCache) {
-          collected = await this.mediaCache.cacheOffers(collected);
-        }
-        await this.store.saveOffers(collected);
-        const budget = await this.mediaCache?.enforceBudget(collected);
+        report = refreshed.report;
+        const budget = await this.mediaCache?.enforceBudget(
+          refreshed.collected
+        );
         if (budget?.removed.length) {
-          await this.store.saveOffers(collected);
+          await this.store.saveOffers(refreshed.collected);
         }
         offers = await this.store.listOffers();
       }
@@ -243,6 +335,7 @@ export class SearchService {
       const unique = deduplicateOffers(offers).filter(
         (offer) =>
           Number.isFinite(offer.priceVnd) &&
+          isAvailable(offer, options) &&
           isForQuery(offer, query) &&
           telegramOfferMatches(offer, query) &&
           matchesFilters(offer, filters) &&
@@ -257,15 +350,23 @@ export class SearchService {
       this.trace.record({
         runId,
         stage: 'search',
-        status: 'success',
+        status: report?.summary.allFailed ? 'degraded' : 'success',
         metadata: {
           candidates: unique.length,
+          failedSources: report?.summary.failed,
           refresh: shouldRefresh,
           returned: result.length,
           sources: sources.length,
         },
       });
-      return result;
+      return {
+        offers: result,
+        report: report && {
+          budgetElapsed: report.budgetElapsed,
+          outcomes: report.outcomes,
+          summary: report.summary,
+        },
+      };
     } catch (error) {
       this.trace.record({
         runId,

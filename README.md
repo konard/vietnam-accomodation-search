@@ -13,10 +13,14 @@ spelling, so the executable and npm package are named
 
 ## What it does
 
-- Starts with 20 ranked web services, 20 nationwide Telegram communities, and
-  up to 40 additional Nha Trang-focused Telegram communities.
+- Ships 29 ranked web services, 20 nationwide Telegram communities, and up to
+  40 additional Nha Trang-focused Telegram communities. Searches use only the
+  web services that returned reviewed rental cards in a live acceptance run;
+  the others stay listed as disabled candidates with the reason they failed
+  (`live-cohort-empty`, `live-cohort-landing`, `live-cohort-challenge`, and so
+  on). A stored registry cannot re-enable a disabled seed.
 - Refreshes all three rankings with `/update_sources`, independently keeping
-  20 web, 20 nationwide Telegram, and up to 40 Nha Trang Telegram sources while
+  up to 20 web, 20 nationwide Telegram, and up to 40 Nha Trang Telegram sources while
   searching in English, Russian, and Vietnamese.
 - Navigates each configured source's web UI rather than calling a private
   accommodation API.
@@ -36,6 +40,14 @@ spelling, so the executable and npm package are named
   currencies using a daily exchange-rate snapshot.
 - Returns one offer for `/search --cheapest` or up to 50 for
   `/search --cheapest N`.
+- Marks sold-out, rented, and occupied posts (`Sold out`, `сдана`, `занята`,
+  `đã cho thuê`, `hết phòng`, and similar) as unavailable. Search and
+  subscriptions skip them; `/search --include-unavailable` shows them.
+- Reads the location from labels (`Локация:`, `Vị trí:`, `Address:`), the
+  bullets under an empty label, or a `📍` line. Posts without one get a known
+  Nha Trang complex, street, ward, or part of the city, then the one city the
+  post names. `locationProvenance.method` tells which (`labeled-text`,
+  `gazetteer`, `not-mentioned`).
 - Keeps complete raw records in a `.lino` link store for future parsers.
 - Caches at most ten photos per offer under a shared 10 GiB budget. Eviction
   removes only local files; the original photo URL stays in the offer record.
@@ -96,7 +108,21 @@ Chromium sandboxing remains enabled by default. In a locked-down container
 where unprivileged user namespaces are unavailable, set
 `BROWSER_NO_SANDBOX=1` to pass the browser command-line fallback documented by
 browser-commander. Use that setting only when the surrounding container is the
-security boundary.
+security boundary. `compose.yaml` sets it, because the hardened container
+cannot start Chromium's sandbox; see
+[docs/deployment.md](docs/deployment.md#browser-sandbox) for the risk.
+
+`self-check browser` launches the browser exactly as a search does, and
+`self-check search` searches a fixture page served on `127.0.0.1` in a
+throwaway data directory and fails unless it finds an offer.
+
+A search opens up to `BROWSER_CONCURRENCY` pages (default 4), stops a source
+after `BROWSER_SOURCE_TIMEOUT_MS` (default 90000), and stops the whole search
+after `SEARCH_BUDGET_MS` (default 180000). Each finished source is saved as
+soon as it completes. The CLI and the bot name the sources that failed,
+timed out, or were still pending at the budget, with the reason for each. When no source produced offers, the
+CLI exits with status 1; an interrupted search (SIGINT/SIGTERM) closes its
+browser and exits with status 130.
 
 ## Telegram commands
 
@@ -153,7 +179,7 @@ for Vietnam accommodation services plus multilingual Nha Trang Telegram
 communities. Website candidates are reranked by their result position.
 Telegram candidates discovered in the search UI are combined with their seed
 cohort, then each public `t.me` preview is visited to read its current member or
-subscriber count. The highest 20 web and nationwide Telegram records and up to
+subscriber count. The highest 20 enabled web and nationwide Telegram records and up to
 40 independently ranked Nha Trang Telegram records are saved.
 
 Popularity changes constantly, so the bundled list is a bootstrap candidate

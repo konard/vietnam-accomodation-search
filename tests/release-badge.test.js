@@ -1,13 +1,14 @@
 /**
  * Tests for npm badge version normalization in release notes.
- * Reproduces issue #40: language-prefixed tags must not be interpolated
- * directly into shields.io static badge URLs.
+ * Language-prefixed tags must not be interpolated directly into shields.io
+ * static badge URLs.
  */
 
 import { describe, it, expect } from 'test-anywhere';
 import {
   buildNpmVersionBadge,
   encodeShieldsStaticBadgeSegment,
+  hasShieldsBadge,
   normalizeReleaseVersionForBadge,
 } from '../scripts/format-release-notes-helpers.mjs';
 
@@ -51,5 +52,25 @@ describe('release badge version normalization', () => {
 
     expect(badge.includes('/badge/npm-1.0.0--alpha.1-blue.svg')).toBe(true);
     expect(badge.includes('/my-package/v/1.0.0-alpha.1')).toBe(true);
+  });
+});
+
+describe('formatted release detection', () => {
+  it('detects a badge served from the img.shields.io host', () => {
+    expect(hasShieldsBadge(buildNpmVersionBadge('my-package', 'v1.2.3'))).toBe(
+      true
+    );
+  });
+
+  it('ignores lookalike hosts and plain mentions of the host name', () => {
+    expect(
+      hasShieldsBadge(
+        '[x](https://img.shields.io.evil.example/a.svg) ' +
+          'https://evil.example/?u=img.shields.io img.shields.io'
+      )
+    ).toBe(false);
+    expect(hasShieldsBadge('')).toBe(false);
+    expect(hasShieldsBadge(undefined)).toBe(false);
+    expect(hasShieldsBadge('https://[bad')).toBe(false);
   });
 });

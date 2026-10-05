@@ -57,6 +57,7 @@ describe('container runtime contract', () => {
     expect(compose).toContain('read_only: true');
     expect(compose).toContain('no-new-privileges:true');
     expect(compose).toContain('cap_drop:');
+    expect(compose).toContain('BROWSER_NO_SANDBOX: 1');
     expect(compose).toContain('required: true');
     expect(compose).toContain('${ENV_FILE:-.env}');
     expect(compose).not.toContain('init: true');
@@ -152,7 +153,13 @@ describe('container runtime contract', () => {
     expect(deploy).toContain('storagePreflight');
     expect(deploy).toContain('candidate-${Date.now()}');
     expect(deploy).toContain('telegram preflight');
-    expect(deploy).toContain('chromium.launch');
+    expect(deploy).not.toContain('chromium.launch');
+    expect(deploy).toContain(
+      'app bin/vietnam-accomodation-search.js self-check browser'
+    );
+    expect(deploy).toContain(
+      'app bin/vietnam-accomodation-search.js self-check search'
+    );
     expect(deploy).toContain('await syncDirectory(dirname(path))');
     expect(deploy).toContain('docker image tag ${imageId} ${rollbackImage}');
     expect(deploy).toContain("prefix: 'Candidate readiness failed'");

@@ -57,7 +57,10 @@ describe('browser-driven collection', () => {
     );
 
     expect(events[0]).toBe('goto:https://booking.example/search?q=Da%20Nang');
-    expect(launchOptions.args).toEqual(['--no-sandbox']);
+    expect(launchOptions.args).toEqual([
+      '--disable-dev-shm-usage',
+      '--no-sandbox',
+    ]);
     expect(offers.length).toBe(1);
     expect(offers[0].raw.text).toContain('500,000 VND');
     expect(offers[0].identifiers).toEqual({ booking: 'hotel-42' });
@@ -150,6 +153,54 @@ describe('browser-driven collection', () => {
 
     expect(offers.map(({ attributes }) => attributes.propertyId)).toEqual([
       'open',
+    ]);
+  });
+
+  it('does not emit web cards for commercial premises or sales', async () => {
+    const collector = new BrowserCollector({
+      browserRuntime: {
+        launchBrowser: async () => ({
+          browser: { close: async () => {} },
+          page: {},
+        }),
+        makeBrowserCommander: () => ({
+          destroy: async () => {},
+          goto: async () => {},
+          evaluate: async (operation) =>
+            operation.name === 'extractPageState'
+              ? { status: 200, url: 'https://rent.example/results' }
+              : [
+                  {
+                    attributes: { propertyId: 'shop' },
+                    text: 'CHO THUÊ MẶT BẰNG KINH DOANH 25 triệu/tháng',
+                    url: 'https://rent.example/shop',
+                  },
+                  {
+                    attributes: { propertyId: 'spa' },
+                    text: 'CHO THUÊ NHÀ HOẶC SANG NHƯỢNG SPA 35 triệu/tháng',
+                    url: 'https://rent.example/spa',
+                  },
+                  {
+                    attributes: { propertyId: 'serviced' },
+                    text: 'Cho thuê căn hộ dịch vụ 5 triệu/tháng',
+                    url: 'https://rent.example/serviced',
+                  },
+                ],
+        }),
+      },
+      rates: { VND: 1 },
+    });
+
+    const offers = await collector.collect([
+      {
+        id: 'rent',
+        searchUrl: 'https://rent.example/results',
+        type: 'web',
+      },
+    ]);
+
+    expect(offers.map(({ attributes }) => attributes.propertyId)).toEqual([
+      'serviced',
     ]);
   });
 

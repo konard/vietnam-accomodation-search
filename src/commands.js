@@ -183,6 +183,11 @@ function parseSearchTokens(input, { partial = false } = {}) {
     .trim();
   const tokens = body ? body.split(/\s+/u) : [];
   const result = extractOrdering(tokens, partial);
+  const unavailableIndex = tokens.indexOf('--include-unavailable');
+  if (unavailableIndex >= 0) {
+    result.includeUnavailable = true;
+    tokens.splice(unavailableIndex, 1);
+  }
   const filters = extractFilters(tokens);
   const types = extractTypes(tokens);
   Object.assign(result, extractRanges(tokens));

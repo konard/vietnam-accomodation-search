@@ -1,5 +1,6 @@
 import { canonicalizeUrl } from './utils.js';
 import { detectListingLanguage } from './language.js';
+import { namesPlace, nhaTrangPlace } from './nha-trang-places.js';
 import { parsePrice } from './pricing.js';
 
 function matchedNumber(text, patterns) {
@@ -191,6 +192,66 @@ function wordNumber(text, expressions) {
   return undefined;
 }
 
+// A count stands on the same line as its label and is not the tail of a
+// longer number, so "ID A902\nbathrooms: 1" or "bathrooms: 1\nbedrooms: 2"
+// never lend their digits to the next label. "3-Bedroom" joins them by a dash.
+function countBefore(label, digits = 2) {
+  return new RegExp(
+    `(?<!\\d[.,]?)(\\d{1,${digits}})[ \\t]*-?[ \\t]*(?:${label})(?!\\p{L})`,
+    'iu'
+  );
+}
+
+const CHINESE_DIGITS = { 一: 1, 二: 2, 兩: 2, 两: 2, 三: 3, 四: 4, 五: 5 };
+const RUSSIAN_ROOM_WORDS = [
+  [1, /одно/iu],
+  [2, /двух/iu],
+  [3, /тр[её]х/iu],
+  [4, /четыр[её]х/iu],
+];
+
+// "Комнатная" counts the rooms besides the kitchen; local agencies use it for
+// the bedroom count, so it applies only when no bedroom count is stated.
+function roomAdjectiveCount(text) {
+  const digit = matchedNumber(text, [/(?<!\d)(\d)\s*-\s*комнатн/iu]);
+  if (digit !== undefined) {
+    return digit;
+  }
+  const word = text.match(/(\p{L}+)комнатн/iu)?.[1];
+  return word
+    ? RUSSIAN_ROOM_WORDS.find(([, pattern]) => pattern.test(word))?.[0]
+    : undefined;
+}
+
+// A navigation footer such as "КВАРТИРЫ И СТУДИИ" names the agency's other
+// listings, so only a singular "studio" marks the listing itself.
+const STUDIO = /\bstudio\b|студи(?:я|ю|ей)(?!\p{L})/iu;
+// Listing sites file a studio under "bedrooms: 1"; the property type wins.
+const STUDIO_TYPE = /^type:[^\n]*studio/imu;
+
+function bedroomCount(text) {
+  if (STUDIO_TYPE.test(text)) {
+    return 0;
+  }
+  const numeric = matchedNumber(text, [
+    countBefore('bedrooms?|спальн\\p{L}*|phòng\\s*ngủ'),
+    /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
+    countBefore('BR|BHK|PN'),
+  ]);
+  const chinese = text.match(/([一二兩两三四五])房/u)?.[1];
+  return (
+    numeric ??
+    wordNumber(text, [
+      /([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)[ \t]+(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)/iu,
+      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+(?:с|with)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
+      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
+    ]) ??
+    roomAdjectiveCount(text) ??
+    (chinese ? CHINESE_DIGITS[chinese] : undefined) ??
+    (STUDIO.test(text) ? 0 : undefined)
+  );
+}
+
 function moneyAfterLabel(text, label) {
   const value = text.match(
     new RegExp(`(?:${label})\\s{0,12}[:#-]?\\s{0,12}([^\\n]{1,100})`, 'iu')
@@ -221,45 +282,35 @@ function fees(fields) {
 }
 
 function extractAttributes(text, fields, referenceDate) {
+  // "ID: A2293", "mã căn A12", "Код квартиры: ALAB": the label may name what
+  // it codes, and the id is a token with a digit or in capitals, so a plain
+  // word after the label ("Idea", "mã căn đẹp") is no id.
   const propertyId = text.match(
-    /(?:\bID|код|mã)\s{0,8}[#:№-]?\s{0,8}([\p{L}\d][\p{L}\d_-]{0,31})/iu
+    /(?:\b[Ii][Dd]|(?<!\p{L})(?:[Кк]од|КОД|[Mm]ã|MÃ))(?!\p{L})(?:\s+(?:\p{Ll}{2,12}|\p{Lu}{2,12}(?=\s*[:#№])))?\s{0,8}[#:№-]?\s{0,8}((?=[\p{L}_-]{0,31}\d)[\p{L}\d][\p{L}\d_-]{0,31}|\p{Lu}[\p{Lu}\d_-]{1,31})(?![\p{L}\d_-]|\s*[:#№])/u
   )?.[1];
-  const studio = /\bstudio\b|студи\p{L}*|căn\s*hộ\s*studio/iu.test(text);
-  const numericBedrooms = studio
-    ? 0
-    : matchedNumber(text, [
-        /(\d{1,2})\s*(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)/iu,
-        /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-      ]);
-  const bedrooms =
-    numericBedrooms ??
-    wordNumber(text, [
-      /([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)[ \t]+(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)/iu,
-      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+(?:с|with)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
-      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
-    ]);
+  const bedrooms = bedroomCount(text);
   const bathrooms = matchedNumber(text, [
-    /(\d{1,2})\s*(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)/iu,
+    countBefore('bathrooms?|сануз\\p{L}*|phòng\\s*tắm'),
     /(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-    /(\d{1,2})\s*WC\b/iu,
+    countBefore('WC'),
   ]);
   const beds = matchedNumber(text, [
-    /(?:\bbeds?|кроват\p{L}*|giường)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-    /(\d{1,2})\s*(?:beds?|кроват\p{L}*|giường)/iu,
+    /(?:\bbeds?(?!\p{L})|кроват\p{L}*|giường)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
+    countBefore('beds?|кроват\\p{L}*|giường'),
   ]);
   const guests = matchedNumber(text, [
     /(?:guests?|гост\p{L}*|khách)\s{0,8}[:#-]?\s{0,8}(\d{1,3})/iu,
-    /(\d{1,3})\s*(?:guests?|гост\p{L}*|khách)/iu,
+    countBefore('guests?|гост\\p{L}*|khách', 3),
   ]);
   const areaM2 = matchedNumber(text, [
-    /(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:m²|m2|м²|кв\.?\s*м)/iu,
+    /(\d{1,4}(?:[.,]\d{1,2})?)[ \t]*(?:m²|m2|м²|кв\.?\s*м)/iu,
   ]);
   const floor = matchedNumber(text, [
     /(?:floor|этаж|tầng)\s{0,8}[:#-]?\s{0,8}(\d{1,3})/iu,
-    /(\d{1,3})\s*(?:floor|этаж)/iu,
+    countBefore('floor|этаж\\p{L}*', 3),
   ]);
   const rooms = matchedNumber(text, [
-    /(\d{1,2})\s*(?:rooms?|комнат\p{L}*|phòng(?!\s*(?:ngủ|tắm)))/iu,
+    countBefore('rooms?|комнат\\p{L}*|phòng(?!\\s*(?:ngủ|tắm))'),
   ]);
   const minimumStayMonths = matchedNumber(text, [
     /(?:minimum|аренд\p{L}*\s+от|tối\s*thiểu)\D{0,24}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
@@ -323,10 +374,7 @@ function extractAttributes(text, fields, referenceDate) {
       'quận',
     ]),
     availableFrom: isoDate(text, referenceDate),
-    availableNow:
-      /available\s+now|свобод\p{L}*\s+сейчас|доступ\p{L}*\s+сейчас|có\s+sẵn\s+ngay/iu.test(
-        text
-      ) || undefined,
+    ...availability(text),
     minimumStayMonths,
     maximumStayMonths,
     depositMonths,
@@ -355,6 +403,22 @@ function extractAttributes(text, fields, referenceDate) {
   });
 }
 
+// Channels edit a post after renting it ("❌Sold out‼️") and leave the
+// original "free now" text below, so a marker outranks every open signal.
+const UNAVAILABLE =
+  /sold\s*out|rented\s*out|already\s+(?:rented|taken|booked)|no\s+longer\s+available|not\s+available\s+anymore|(?<!\p{L})(?:уже\s+)?сдан[аыо]?(?!\p{L})(?!\s+в\s+эксплуатац)|(?<!\p{L}|не\s)занят[аыо]?(?!\p{L})|(?<!\p{L})(?:не\s*актуальн\p{L}*|больше\s+не\s+сда[её]тся)|đã\s*(?:cho\s*)?thuê|đã\s*có\s*(?:người|khách)\s*thuê|hết\s*phòng|không\s+còn\s+(?:phòng\s+)?trống/iu;
+const AVAILABLE_NOW =
+  /available\s+now|свобод\p{L}*\s+сейчас|доступ\p{L}*\s+сейчас|có\s+sẵn\s+ngay/iu;
+
+function availability(text) {
+  if (UNAVAILABLE.test(text)) {
+    return { availability: 'unavailable', availableNow: false };
+  }
+  return AVAILABLE_NOW.test(text)
+    ? { availability: 'available', availableNow: true }
+    : {};
+}
+
 function detectKind(text) {
   const kinds = [
     ['apartment', /apartment|квартир|căn\s*hộ/iu],
@@ -377,26 +441,92 @@ function trimTrailingCharacters(value, characters) {
   return value.slice(0, end);
 }
 
-function detectLocation(text, fields) {
-  const location =
-    firstLabeledValue(fields, [
-      'address',
-      'location',
-      'district',
-      'địa chỉ',
-      'khu vực',
-      'quận',
-      'адрес',
-      'район',
-    ]) ||
-    text
-      .match(
-        /(?:address|location|district|địa\s*chỉ|khu\s*vực|quận|адрес|район)\s*:\s*([^\n\r]+)/iu
-      )?.[1]
-      ?.trim();
-  return location
-    ? trimTrailingCharacters(location.trim(), '.,;!').trim()
-    : location;
+const LOCATION_LABELS = [
+  'address',
+  'location',
+  'district',
+  'địa chỉ',
+  'vị trí',
+  'khu vực',
+  'quận',
+  'адрес',
+  'район',
+  'локация',
+  'местоположение',
+  'расположение',
+];
+const LOCATION_LABEL =
+  /(?:address|location|district|địa\s*chỉ|vị\s*trí|khu\s*vực|quận|адрес|район|локация|местоположение|расположение)\s*:[ \t]*([^\n\r]*)/iu;
+// A card whose location slot holds another fact ("Area m²: 60", "Deposit:
+// $393") names no place there.
+const NUMERIC_FACT = /^[^:\d\n]{1,24}:\s*[$€£₫\d]/u;
+const BULLET = /^\s*[•·▪◦‣\-–]\s*(\S.*)$/u;
+// Bullets such as "≈ 5 минут пешком до моря" give a distance, not a place.
+const DISTANCE = /^≈|\d\s*(?:минут|мин|min|phút)/iu;
+
+const PINNED_LINES = /^\s*📍.*$/gmu;
+// A pinned line ends at "|" or at the next emoji: "📍 Центр – Лок Тхо 🌊 500 м".
+// The split part is trimmed, so the pattern holds no whitespace run, which
+// would rescan every unterminated run.
+const PIN_END = /\||\p{Extended_Pictographic}/u;
+// A label with nothing after it ("📍 Локация:") lists the place in the
+// bullets below it.
+function bulletsAfter(lines, index) {
+  const items = [];
+  for (const line of lines.slice(index + 1)) {
+    const item = line.match(BULLET)?.[1].trim();
+    if (!item) {
+      break;
+    }
+    if (!DISTANCE.test(item)) {
+      items.push(item);
+    }
+  }
+  return items.slice(0, 2).join(', ') || undefined;
+}
+
+function labeledLocation(text) {
+  const lines = text.split(/\r?\n/u);
+  for (const [index, line] of lines.entries()) {
+    const label = line.match(LOCATION_LABEL);
+    const value = label && (label[1].trim() || bulletsAfter(lines, index));
+    if (value && !NUMERIC_FACT.test(value)) {
+      return value;
+    }
+  }
+  return text
+    .match(PINNED_LINES)
+    ?.map((line) =>
+      line
+        .replace(/^\s*📍\s*/u, '')
+        .split(PIN_END)[0]
+        .trim()
+    )
+    .find((line) => namesPlace(line));
+}
+
+// The place a card's location slot names: "Location: North" gives "North",
+// and a slot holding another fact gives none.
+export function cardLocation(value) {
+  const slot = String(value || '').trim();
+  const place = (slot.match(LOCATION_LABEL)?.[1] ?? slot).trim();
+  return place && !NUMERIC_FACT.test(place) ? place : undefined;
+}
+
+function detectLocation(text, fields, hint) {
+  const field = firstLabeledValue(fields, LOCATION_LABELS);
+  const labeled =
+    (!NUMERIC_FACT.test(field || '') && field) || labeledLocation(text);
+  if (labeled) {
+    return {
+      location: trimTrailingCharacters(labeled.trim(), '.,;!').trim(),
+      method: 'labeled-text',
+    };
+  }
+  const place = nhaTrangPlace(text, { hint });
+  return place
+    ? { location: place, method: 'gazetteer' }
+    : { location: undefined, method: 'not-mentioned' };
 }
 
 function trimTrailingUrlPunctuation(value) {
@@ -426,19 +556,20 @@ function officialUrl(text) {
   return undefined;
 }
 
-export function parseListingText(value = '', { referenceDate } = {}) {
+export function parseListingText(
+  value = '',
+  { locationHint, referenceDate } = {}
+) {
   const text = String(value);
   const fields = parseLabeledFields(text);
-  const location = detectLocation(text, fields);
+  const { location, method } = detectLocation(text, fields, locationHint);
   return {
     attributes: extractAttributes(text, fields, referenceDate),
     contacts: extractContacts(text),
     kind: detectKind(text),
     language: detectListingLanguage(text),
     location,
-    locationProvenance: location
-      ? { method: 'labeled-text', source: 'message-text' }
-      : { method: 'not-mentioned', source: 'message-text' },
+    locationProvenance: { method, source: 'message-text' },
     officialUrl: officialUrl(text),
   };
 }

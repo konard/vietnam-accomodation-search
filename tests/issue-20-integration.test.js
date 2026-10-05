@@ -37,7 +37,9 @@ describe('issue 20 production integrations', () => {
       store: { loadSources: async () => [] },
     });
     const web = await registry.list('web');
-    expect(web.length).toBe(20);
+    expect(web.length).toBe(
+      DEFAULT_WEB_SOURCES.filter(({ enabled }) => enabled).length
+    );
     expect(web.some(({ id }) => id === 'chotot')).toBe(false);
     expect(web.some(({ id }) => id === 'alonhadat-nha-trang')).toBe(true);
     expect(web.some(({ id }) => id === 'be-jib-nha-trang')).toBe(true);

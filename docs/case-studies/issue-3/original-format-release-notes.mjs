@@ -25,6 +25,7 @@
 
 // TODO: Update this to match your package name in package.json
 const PACKAGE_NAME = 'my-package';
+import { URL } from 'node:url';
 
 // Load use-m dynamically
 const { use } = eval(
@@ -84,7 +85,16 @@ try {
   const currentBody = releaseData.body || '';
 
   // Skip if already formatted (has shields.io badge image)
-  if (currentBody.includes('img.shields.io')) {
+  // Compare parsed hostnames so lookalike hosts never match.
+  const badgeUrls = currentBody.match(/https?:\/\/[^\s)"'<>\]]+/giu) || [];
+  const hasBadge = badgeUrls.some((candidate) => {
+    try {
+      return new URL(candidate).hostname === 'img.shields.io';
+    } catch {
+      return false;
+    }
+  });
+  if (hasBadge) {
     console.log('ℹ️ Release notes already formatted');
     process.exit(0);
   }

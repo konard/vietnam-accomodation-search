@@ -2,13 +2,35 @@ import { normalizeOffer } from './offers.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { classifyTelegramPost } from './telegram-pipeline.js';
 import { TraceRecorder } from './trace.js';
-import { settleCleanup } from './utils.js';
+import {
+  isLostPageError,
+  launchSettings,
+  NAVIGATION_TIMEOUT_MS,
+  gotoPage,
+  openCommander,
+  settleCleanup,
+} from './utils.js';
+import {
+  SOURCE_STATUSES,
+  runSourcePool,
+  summarizeOutcomes,
+  untilAborted,
+} from './source-pool.js';
 import {
   DomainScheduler,
   PAGE_CLASSIFICATIONS,
   browserAdapterFor,
   classifyListingPage,
 } from './browser-adapters.js';
+
+// Web search pages already list rentals, so only clear non-rental intent
+// drops a card; a card without rental words is still kept.
+const WEB_EXCLUDED_LABELS = new Set([
+  'commercial',
+  'request',
+  'sale',
+  'service',
+]);
 
 export function buildSearchUrl(source, query = '') {
   return source.searchUrl.replaceAll('{query}', encodeURIComponent(query));
@@ -78,6 +100,17 @@ export function extractPageListings(sourceType, selectors = {}) {
     const result = Number(match?.replace(',', '.'));
     return Number.isFinite(result) ? result : undefined;
   };
+  // A facts line such as "Студия · 35㎡" or "2BR · 70㎡" also states the
+  // area, so the area is no bedroom count and a studio has no bedroom.
+  const bedroomSemantic = (value) => {
+    const facts = String(value || '');
+    if (/\bstudio\b|студи(?:я|ю|ей)(?!\p{L})/iu.test(facts)) {
+      return 0;
+    }
+    return numericSemantic(
+      facts.replace(/\d+(?:[.,]\d+)?\s*(?:㎡|m²|m2|м²|кв\.?\s*м)/giu, '')
+    );
+  };
   const backgroundImage = (element) =>
     element?.style?.backgroundImage?.match(/url\(["']?(.*?)["']?\)/u)?.[1] ||
     element
@@ -107,13 +140,17 @@ export function extractPageListings(sourceType, selectors = {}) {
         return value;
       }
     }
-    const context = `${anchor?.href || ''}\n${element.innerText || ''}`;
+    const href = anchor?.href || '';
+    const context = `${href}\n${element.innerText || ''}`;
+    // A page such as ".../cho-thue-nha-13735772.html" names the listing id
+    // right before ".html"; the card text after the link holds no id.
     return (
-      anchor?.href.match(
+      href.match(
         /(?:\/rooms\/|[?&](?:hotel|property|listing)_id=)([\p{L}\d_-]{1,64})/iu
       )?.[1] ||
+      href.match(/[-_/](\d{3,64})\.html?(?:[?#]|$)/iu)?.[1] ||
       context.match(
-        /(?:\bID|\bpr-|\btg-|\bproperty[-_/]|\blisting[-_/]|\.html\D{0,8})([\p{L}\d_-]{2,64})/iu
+        /(?:\bID(?!\p{L})|\bpr-|\btg-|\bproperty[-_/]|\blisting[-_/])([\p{L}\d_-]{2,64})/iu
       )?.[1]
     );
   };
@@ -202,7 +239,7 @@ export function extractPageListings(sourceType, selectors = {}) {
     const semantic = semanticFor(element);
     const title = titleElement?.textContent?.trim();
     const propertyId = pageIdentity(element, anchor);
-    const bedrooms = numericSemantic(semantic.bedrooms);
+    const bedrooms = bedroomSemantic(semantic.bedrooms);
     const bathrooms = numericSemantic(semantic.bathrooms);
     const areaM2 = numericSemantic(semantic.area);
     const availableNow = availabilityState(semantic.availability);
@@ -216,6 +253,7 @@ export function extractPageListings(sourceType, selectors = {}) {
       }).filter(([, value]) => value !== undefined)
     );
     const semanticText = Object.entries(semantic)
+      .filter(([, value]) => value !== undefined)
       .map(([field, value]) => `${field}: ${value}`)
       .join('\n');
     return {
@@ -288,6 +326,15 @@ function telegramMessage(item, source) {
   };
 }
 
+// A web source about Nha Trang lets a shared name such as "Gold Coast" on
+// its cards stand for the Nha Trang complex.
+function webLocationHint(source) {
+  return (
+    source.location ||
+    (source.geographicFocus === 'nha-trang' ? 'Nha Trang, Vietnam' : undefined)
+  );
+}
+
 function messageId(row) {
   const value = row.url?.match(/\/(\d+)(?:\?.*)?$/u)?.[1];
   return value ? Number(value) : undefined;
@@ -348,19 +395,29 @@ export class BrowserCollector {
   constructor({
     browserLaunchOptions,
     browserRuntime,
+    budgetMs = 3 * 60 * 1000,
+    concurrency = 4,
     logger,
     maxTelegramPages = 200,
+    navigationTimeoutMs = NAVIGATION_TIMEOUT_MS,
     now,
     rateProvider,
     rates,
     scheduler,
+    sourceTimeoutMs = 90 * 1000,
     store,
+    telegramPageReserveMs = 15 * 1000,
     traceRecorder,
   } = {}) {
     this.browserLaunchOptions = browserLaunchOptions || {};
     this.browserRuntime = browserRuntime;
+    this.budgetMs = budgetMs;
+    this.concurrency = concurrency;
+    this.sourceTimeoutMs = sourceTimeoutMs;
+    this.telegramPageReserveMs = telegramPageReserveMs;
     this.logger = logger || { debug: () => {} };
     this.maxTelegramPages = maxTelegramPages;
+    this.navigationTimeoutMs = navigationTimeoutMs;
     this.now = now || (() => new Date());
     this.rateProvider = rateProvider;
     this.rates = rates || { VND: 1 };
@@ -372,7 +429,7 @@ export class BrowserCollector {
   async navigate(commander, url, { signal } = {}) {
     await this.scheduler.run(
       url,
-      () => commander.goto({ url, waitForNetworkIdle: false }),
+      () => gotoPage(commander, url, this.navigationTimeoutMs),
       { signal }
     );
   }
@@ -387,7 +444,7 @@ export class BrowserCollector {
     return this.scheduler.run(
       url,
       async () => {
-        await commander.goto({ url, waitForNetworkIdle: false });
+        await gotoPage(commander, url, this.navigationTimeoutMs);
         const rows =
           (await commander.evaluate(
             extractPageListings,
@@ -429,11 +486,41 @@ export class BrowserCollector {
     return classification;
   }
 
-  async collectTelegramRows(commander, source, query, { signal } = {}) {
+  // Navigates to `url`, or resolves false when `deadline` (epoch
+  // milliseconds) passes first. The caller's own signal still rejects.
+  async #navigatePage(commander, url, { deadline, signal }) {
+    if (!Number.isFinite(deadline)) {
+      await this.navigate(commander, url, { signal });
+      return true;
+    }
+    const paging = AbortSignal.timeout(Math.max(0, deadline - Date.now()));
+    try {
+      await this.navigate(commander, url, {
+        signal: AbortSignal.any([paging, signal].filter(Boolean)),
+      });
+      return true;
+    } catch (error) {
+      if (!paging.aborted || signal?.aborted) {
+        throw error;
+      }
+      return false;
+    }
+  }
+
+  // Paging stops at `deadline` (epoch milliseconds) and keeps the pages
+  // already read, so a channel deeper than the time left still yields its
+  // newest posts. The first page has no such limit.
+  async collectTelegramRows(
+    commander,
+    source,
+    query,
+    { deadline = Infinity, signal } = {}
+  ) {
     const firstUrl = buildSearchUrl(source, query);
     const rowsByUrl = new Map();
     const visited = new Set();
     const cutoff = cutoffDate(this.now());
+    let pageDeadline = Infinity;
     let url = firstUrl;
 
     for (
@@ -442,13 +529,23 @@ export class BrowserCollector {
       page += 1
     ) {
       visited.add(url);
-      await this.navigate(commander, url, { signal });
+      const reached = await this.#navigatePage(commander, url, {
+        deadline: pageDeadline,
+        signal,
+      });
+      if (!reached) {
+        this.logger.debug(
+          `Stopped paging ${source.id} at the paging deadline after ${page} pages`
+        );
+        break;
+      }
       const rows =
         (await commander.evaluate(extractPageListings, 'telegram')) || [];
       for (const row of rows) {
         const key = row.url || `${row.date || ''}\n${row.text || ''}`;
         rowsByUrl.set(key, row);
       }
+      pageDeadline = deadline;
       if (!rows.length) {
         break;
       }
@@ -476,7 +573,13 @@ export class BrowserCollector {
   }
 
   // eslint-disable-next-line complexity -- Source collection keeps transport, paging, and parser failure boundaries together.
-  async collectSource(commander, source, query, rates, { signal } = {}) {
+  async collectSource(
+    commander,
+    source,
+    query,
+    rates,
+    { deadline, signal } = {}
+  ) {
     const requestedUrl = buildSearchUrl(source, query);
     const adapter = browserAdapterFor(requestedUrl);
     if (!adapter.enabled) {
@@ -485,6 +588,7 @@ export class BrowserCollector {
     let rows;
     if (source.type === 'telegram') {
       rows = await this.collectTelegramRows(commander, source, query, {
+        deadline,
         signal,
       });
     } else {
@@ -517,6 +621,12 @@ export class BrowserCollector {
           continue;
         }
         raw.relevance = relevance;
+      } else if (
+        WEB_EXCLUDED_LABELS.has(
+          classifyTelegramPost(row.text, { targetLocation: null }).label
+        )
+      ) {
+        continue;
       }
       const offer =
         source.type === 'telegram'
@@ -535,7 +645,7 @@ export class BrowserCollector {
                 sourceId: source.id,
                 sourceType: source.type,
               },
-              { now: this.now(), rates }
+              { locationHint: webLocationHint(source), now: this.now(), rates }
             );
       if (Number.isFinite(offer?.priceVnd) || offer?.officialUrl) {
         offer.provenance = {
@@ -572,7 +682,7 @@ export class BrowserCollector {
         const row = await this.scheduler.run(
           url,
           async () => {
-            await commander.goto({ url, waitForNetworkIdle: false });
+            await gotoPage(commander, url, this.navigationTimeoutMs);
             const extracted =
               (await commander.evaluate(extractOfficialListing)) || {};
             await this.assertListingPage(commander, url, 1, {
@@ -619,112 +729,320 @@ export class BrowserCollector {
     return officialOffers;
   }
 
-  // eslint-disable-next-line complexity -- The collection coordinator owns the complete browser lifecycle and trace outcome.
-  async collect(
+  // Opens one commander per worker. The first worker reuses the launched
+  // page; further workers need `browser.newPage()`, so a runtime without it
+  // collects serially.
+  #workerFactory(runtime, browser, page) {
+    const live = new Set();
+    let launchedPageFree = true;
+    const open = async () => {
+      let workerPage;
+      if (launchedPageFree) {
+        launchedPageFree = false;
+        workerPage = page;
+      } else if (typeof browser.newPage === 'function') {
+        try {
+          workerPage = await browser.newPage();
+        } catch (error) {
+          // The pool keeps running on the workers it already has.
+          this.logger.debug('Opening another browser page failed', error);
+          return undefined;
+        }
+      } else {
+        return undefined;
+      }
+      const worker = {
+        commander: openCommander(runtime, workerPage),
+        page: workerPage,
+      };
+      live.add(worker);
+      return worker;
+    };
+    const retire = async (worker) => {
+      live.delete(worker);
+      await settleCleanup(
+        [
+          () => worker.commander.destroy(),
+          () => (worker.page === page ? undefined : worker.page?.close?.()),
+        ],
+        'Browser worker cleanup was incomplete.'
+      );
+    };
+    return { live, open, retire };
+  }
+
+  #recordOutcome(trace, runId, outcome) {
+    const success = [SOURCE_STATUSES.OFFERS, SOURCE_STATUSES.EMPTY].includes(
+      outcome.status
+    );
+    const status = success
+      ? 'success'
+      : outcome.status === SOURCE_STATUSES.CANCELLED
+        ? 'cancelled'
+        : 'failure';
+    const metadata = success
+      ? { durationMs: outcome.durationMs, offers: outcome.offers }
+      : {
+          category: outcome.category,
+          durationMs: outcome.durationMs,
+          message: outcome.message,
+          outcome: outcome.status,
+          retry: 'source-stopped',
+        };
+    for (const stage of ['normalization', 'collection']) {
+      trace.record({
+        runId,
+        sourceId: outcome.sourceId,
+        stage,
+        status,
+        metadata: success
+          ? metadata
+          : stage === 'collection'
+            ? metadata
+            : { category: outcome.category, outcome: outcome.status },
+      });
+    }
+  }
+
+  async #officialOffers(
+    workers,
+    offers,
+    query,
+    rates,
+    { remainingMs, signal }
+  ) {
+    const [worker] = workers.live;
+    if (!worker || !(remainingMs > 0)) {
+      return [];
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remainingMs);
+    timer.unref?.();
+    const relay = () => controller.abort(signal.reason);
+    signal?.addEventListener('abort', relay, { once: true });
+    try {
+      return await untilAborted(
+        this.collectOfficialOffers(worker.commander, offers, query, rates, {
+          signal: controller.signal,
+        }),
+        controller.signal
+      );
+    } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
+      this.logger.debug('Official price checks stopped at the budget', error);
+      return [];
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', relay);
+    }
+  }
+
+  async #launch() {
+    const runtime = this.browserRuntime || (await loadDefaultBrowserRuntime());
+    const { browser, page } = await runtime.launchBrowser(
+      launchSettings(this.browserLaunchOptions)
+    );
+    return { browser, page, runtime };
+  }
+
+  // Launches the browser exactly as a search does, renders a `data:` page,
+  // and returns its title. Deploy and CI checks call this so a browser that
+  // cannot start fails them the same way it would fail a search.
+  async checkLaunch() {
+    const { browser, page, runtime } = await this.#launch();
+    const commander = openCommander(runtime, page);
+    try {
+      await commander.goto({
+        url: 'data:text/html,<title>browser-check</title>',
+        waitForNetworkIdle: false,
+      });
+      return await commander.evaluate(() => globalThis.document.title);
+    } finally {
+      await settleCleanup(
+        [() => commander.destroy(), () => browser.close()],
+        'Browser check cleanup was incomplete.'
+      );
+    }
+  }
+
+  // Paging ends a reserve before the source or search deadline so the pages
+  // read so far are parsed and kept.
+  #pagingDeadline(startedAt) {
+    return (
+      Math.min(Date.now() + this.sourceTimeoutMs, startedAt + this.budgetMs) -
+      this.telegramPageReserveMs
+    );
+  }
+
+  #saveSource(trace, onSourceComplete, completed) {
+    return Promise.resolve()
+      .then(() => onSourceComplete?.(completed))
+      .then(() => trace.persist())
+      .catch((error) =>
+        this.logger.debug(
+          `Persisting ${completed.outcome.sourceId} results failed`,
+          error
+        )
+      );
+  }
+
+  async collect(sources, query = '', options = {}) {
+    return (await this.collectWithReport(sources, query, options)).offers;
+  }
+
+  // Collects every enabled source through a bounded worker pool. Each
+  // finished source is traced, persisted through `onSourceComplete`, and
+  // reported with its outcome, so an interrupted run keeps finished work.
+  async collectWithReport(
     sources,
     query = '',
-    { runId: parentRunId, signal, traceRecorder } = {}
+    { onSourceComplete, runId: parentRunId, signal, traceRecorder } = {}
   ) {
     const trace = traceRecorder || this.trace;
-    const runtime = this.browserRuntime || (await loadDefaultBrowserRuntime());
     const rates = this.rateProvider
       ? await this.rateProvider.getRates()
       : this.rates;
-    const { browser, page } = await runtime.launchBrowser({
-      engine: 'playwright',
-      headless: true,
-      ...this.browserLaunchOptions,
-    });
-    const commander = runtime.makeBrowserCommander({ page });
+    const startedAt = Date.now();
+    const { browser, page, runtime } = await this.#launch();
+    const workers = this.#workerFactory(runtime, browser, page);
     const offers = [];
+    const runIds = new Map();
+    const runIdFor = (source) => {
+      if (!runIds.has(source.id)) {
+        runIds.set(
+          source.id,
+          parentRunId || `browser:${source.id}:${this.now().toISOString()}`
+        );
+      }
+      return runIds.get(source.id);
+    };
+    const enabled = sources.filter(({ enabled }) => enabled !== false);
+    // Each finished source is saved, photo downloads included, beside the
+    // pool, so a slow save never holds a worker back from the next source.
+    // The deadline tells saves to stop downloading photos when the search
+    // budget is spent.
+    const deadline = AbortSignal.any(
+      [AbortSignal.timeout(this.budgetMs), signal].filter(Boolean)
+    );
+    const saves = [];
+    const save = (outcome, collected) =>
+      this.#saveSource(trace, onSourceComplete, {
+        offers: collected,
+        outcome,
+        signal: deadline,
+      });
 
     try {
-      for (const source of sources.filter(({ enabled }) => enabled !== false)) {
-        const runId =
-          parentRunId || `browser:${source.id}:${this.now().toISOString()}`;
-        trace.record({
-          runId,
-          sourceId: source.id,
-          stage: 'collection',
-          status: 'start',
-        });
-        try {
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'normalization',
-            status: 'start',
-          });
-          const collected = await this.collectSource(
-            commander,
-            source,
-            query,
-            rates,
-            { signal }
-          );
+      const pool = await runSourcePool(enabled, {
+        budgetMs: this.budgetMs,
+        concurrency: this.concurrency,
+        isWorkerLost: isLostPageError,
+        onSettled: (outcome, value) => {
+          const collected = Array.isArray(value) ? value : [];
           offers.push(...collected);
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'normalization',
-            status: 'success',
-            metadata: { offers: collected.length },
-          });
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'collection',
-            status: 'success',
-            metadata: { offers: collected.length },
-          });
-        } catch (error) {
-          const cancelled =
-            signal?.aborted ||
-            error?.name === 'AbortError' ||
-            error?.code === 'ABORT_ERR';
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'collection',
-            status: cancelled ? 'cancelled' : 'failure',
-            metadata: {
-              category:
-                error?.classification || error?.code || 'collection-failure',
-              message: error?.message,
-              retry: 'source-stopped',
-            },
-          });
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'normalization',
-            status: cancelled ? 'cancelled' : 'failure',
-            metadata: {
-              category:
-                error?.classification || error?.code || 'normalization-failure',
-            },
-          });
-          this.logger.debug(`Collection failed for ${source.id}`, error);
-          if (cancelled) {
-            throw error;
+          this.#recordOutcome(
+            trace,
+            runIdFor({ id: outcome.sourceId }),
+            outcome
+          );
+          if (!Array.isArray(value)) {
+            this.logger.debug(
+              `Collection failed for ${outcome.sourceId}`,
+              value
+            );
           }
+          saves.push(save(outcome, collected));
+        },
+        openWorker: () => workers.open(),
+        retireWorker: (worker) =>
+          workers
+            .retire(worker)
+            .catch((error) =>
+              this.logger.debug('Retiring a browser worker failed', error)
+            ),
+        run: (source, { signal: sourceSignal, worker }) => {
+          const runId = runIdFor(source);
+          for (const stage of ['collection', 'normalization']) {
+            trace.record({
+              runId,
+              sourceId: source.id,
+              stage,
+              status: 'start',
+            });
+          }
+          return this.collectSource(worker.commander, source, query, rates, {
+            deadline: this.#pagingDeadline(startedAt),
+            signal: sourceSignal,
+          });
+        },
+        signal,
+        sourceTimeoutMs: this.sourceTimeoutMs,
+      });
+      for (const outcome of pool.outcomes) {
+        if (outcome.status === SOURCE_STATUSES.PENDING) {
+          trace.record({
+            runId: runIdFor({ id: outcome.sourceId }),
+            sourceId: outcome.sourceId,
+            stage: 'collection',
+            status: 'degraded',
+            metadata: { category: outcome.category, outcome: outcome.status },
+          });
         }
       }
-      offers.push(
-        ...(await this.collectOfficialOffers(commander, offers, query, rates, {
+      const summary = summarizeOutcomes(pool.outcomes);
+      trace.record({
+        runId: parentRunId || `browser:${this.now().toISOString()}`,
+        stage: 'collection-summary',
+        status: summary.allFailed
+          ? 'failure'
+          : summary.failed
+            ? 'degraded'
+            : 'success',
+        metadata: {
+          budgetElapsed: pool.budgetElapsed,
+          byStatus: summary.byStatus,
+          failedCategories: summary.failedCategories,
+          total: summary.total,
+        },
+      });
+      const official = await this.#officialOffers(
+        workers,
+        offers,
+        query,
+        rates,
+        {
+          remainingMs: pool.budgetElapsed
+            ? 0
+            : this.budgetMs - (Date.now() - startedAt),
           signal,
-        }))
+        }
       );
+      offers.push(...official);
+      if (official.length) {
+        await onSourceComplete?.({
+          offers: official,
+          outcome: undefined,
+          signal: deadline,
+        });
+      }
+      return {
+        budgetElapsed: pool.budgetElapsed,
+        offers,
+        outcomes: pool.outcomes,
+        summary,
+      };
     } finally {
+      await Promise.all(saves);
       await settleCleanup(
         [
           () => trace.persist(),
-          () => commander.destroy(),
+          ...[...workers.live].map((worker) => () => workers.retire(worker)),
           () => browser.close(),
         ],
         'Browser collection cleanup was incomplete.'
       );
     }
-    return offers;
   }
 }

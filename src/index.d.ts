@@ -2,6 +2,8 @@ export interface Price {
   amount: number;
   currency: string;
   period: 'night' | 'week' | 'month' | 'year';
+  /** Lowest and highest rent when a post lists several options. */
+  range?: { min: number; max: number };
 }
 
 export interface PopularityEvidence {
@@ -57,6 +59,7 @@ export interface AccommodationAttributes {
   deposit?: Price;
   prepaymentMonths?: number;
   prepayment?: Price;
+  availability?: 'available' | 'unavailable';
   availableNow?: boolean;
   furnished?: boolean;
   petsAllowed?: boolean;
@@ -180,6 +183,8 @@ export interface AccommodationOffer {
 export interface SearchOptions {
   cheapest?: boolean;
   filters?: Record<string, boolean | number | string>;
+  /** Also return sold-out, rented, and occupied offers. */
+  includeUnavailable?: boolean;
   limit?: number;
   maxPerBedVnd?: number;
   maxPerRoomVnd?: number;

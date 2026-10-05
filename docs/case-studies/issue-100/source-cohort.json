@@ -1,0 +1,929 @@
+{
+  "query": "Nha Trang",
+  "runs": [
+    "2026-10-05T04:52:57.380Z",
+    "2026-10-05T05:00:26.618Z",
+    "2026-10-05T05:14:39.036Z",
+    "2026-10-05T05:23:37.446Z",
+    "2026-10-05T05:32:28.659Z"
+  ],
+  "sources": [
+    {
+      "enabled": false,
+      "id": "booking",
+      "reason": "live-cohort-empty",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "airbnb",
+      "reason": "live-cohort-landing",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "agoda",
+      "reason": "live-cohort-landing",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "traveloka",
+      "reason": "live-cohort-empty",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "expedia",
+      "reason": "live-cohort-empty",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "hotels",
+      "reason": "live-cohort-collection-failure",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "error",
+          "category": "collection-failure",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "error",
+          "category": "collection-failure",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "trip",
+      "reason": "live-cohort-empty",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "hostelworld",
+      "reason": "live-cohort-landing",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "google-hotels",
+      "reason": "live-cohort-consent-wall",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "challenge",
+          "category": "consent-wall",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "challenge",
+          "category": "consent-wall",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "challenge",
+          "category": "consent-wall",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "challenge",
+          "category": "consent-wall",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "tripadvisor",
+      "reason": "live-cohort-empty",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "vrbo",
+      "reason": "live-cohort-empty",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "klook",
+      "reason": "live-cohort-empty",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "empty",
+          "category": "empty",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "kayak",
+      "reason": "live-cohort-landing",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "trivago",
+      "reason": "live-cohort-challenge",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "challenge",
+          "category": "challenge",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "challenge",
+          "category": "challenge",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "challenge",
+          "category": "challenge",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "challenge",
+          "category": "challenge",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "skyscanner",
+      "reason": "live-cohort-challenge",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "timeout",
+          "category": "SOURCE_TIMEOUT",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "challenge",
+          "category": "challenge",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "timeout",
+          "category": "SOURCE_TIMEOUT",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "timeout",
+          "category": "SOURCE_TIMEOUT",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "vntrip",
+      "reason": "live-cohort-empty",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "timeout",
+          "category": "SOURCE_TIMEOUT",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "empty",
+          "category": "empty",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "timeout",
+          "category": "SOURCE_TIMEOUT",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "timeout",
+          "category": "SOURCE_TIMEOUT",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "ivivu",
+      "reason": "live-cohort-landing",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "error",
+          "category": "landing",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "error",
+          "category": "collection-failure",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "error",
+          "category": "landing",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "mytour",
+      "reason": "live-cohort-collection-failure",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "error",
+          "category": "collection-failure",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "error",
+          "category": "collection-failure",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "batdongsan",
+      "reason": "rental-route-disabled-after-access-challenge",
+      "runs": []
+    },
+    {
+      "enabled": true,
+      "id": "homedy",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "offers",
+          "storedOffers": 18
+        },
+        {
+          "startedAt": "2026-10-05T05:14:39.036Z",
+          "status": "offers",
+          "collectedOffers": 18,
+          "storedOffers": 18
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "offers",
+          "collectedOffers": 18,
+          "storedOffers": 18
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "offers",
+          "collectedOffers": 18,
+          "storedOffers": 18
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "id": "nhatrangland",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "offers",
+          "storedOffers": 12
+        },
+        {
+          "startedAt": "2026-10-05T05:14:39.036Z",
+          "status": "offers",
+          "collectedOffers": 12,
+          "storedOffers": 12
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "offers",
+          "collectedOffers": 12,
+          "storedOffers": 12
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "offers",
+          "collectedOffers": 12,
+          "storedOffers": 12
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "id": "newhome",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "offers",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:14:39.036Z",
+          "status": "offers",
+          "collectedOffers": 6,
+          "storedOffers": 6
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "offers",
+          "collectedOffers": 6,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "offers",
+          "collectedOffers": 6,
+          "storedOffers": 6
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "id": "nha-trang-vn",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "offers",
+          "storedOffers": 23
+        },
+        {
+          "startedAt": "2026-10-05T05:14:39.036Z",
+          "status": "offers",
+          "collectedOffers": 23,
+          "storedOffers": 23
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "offers",
+          "collectedOffers": 23,
+          "storedOffers": 23
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "offers",
+          "collectedOffers": 23,
+          "storedOffers": 23
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "id": "yourhome",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "offers",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:14:39.036Z",
+          "status": "offers",
+          "collectedOffers": 9,
+          "storedOffers": 9
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "offers",
+          "collectedOffers": 9,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "offers",
+          "collectedOffers": 9,
+          "storedOffers": 9
+        }
+      ]
+    },
+    {
+      "enabled": false,
+      "id": "chotot",
+      "reason": "rental-route-disabled-after-access-challenge",
+      "runs": []
+    },
+    {
+      "enabled": false,
+      "id": "hotel-mix",
+      "reason": "live-cohort-collection-failure",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "error",
+          "category": "collection-failure",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "error",
+          "category": "collection-failure",
+          "collectedOffers": 0,
+          "storedOffers": 0
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "id": "alonhadat-nha-trang",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "error",
+          "category": "collection-failure",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "offers",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:14:39.036Z",
+          "status": "offers",
+          "collectedOffers": 15,
+          "storedOffers": 3
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "offers",
+          "collectedOffers": 15,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "offers",
+          "collectedOffers": 15,
+          "storedOffers": 15
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "id": "be-jib-nha-trang",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "offers",
+          "storedOffers": 2
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "offers",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:14:39.036Z",
+          "status": "offers",
+          "collectedOffers": 4,
+          "storedOffers": 2
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "offers",
+          "collectedOffers": 4,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "offers",
+          "collectedOffers": 4,
+          "storedOffers": 2
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "id": "nha-trang-renting",
+      "runs": [
+        {
+          "startedAt": "2026-10-05T04:52:57.380Z",
+          "status": "offers",
+          "storedOffers": 22
+        },
+        {
+          "startedAt": "2026-10-05T05:00:26.618Z",
+          "status": "offers",
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:14:39.036Z",
+          "status": "offers",
+          "collectedOffers": 22,
+          "storedOffers": 22
+        },
+        {
+          "startedAt": "2026-10-05T05:23:37.446Z",
+          "status": "offers",
+          "collectedOffers": 22,
+          "storedOffers": 0
+        },
+        {
+          "startedAt": "2026-10-05T05:32:28.659Z",
+          "status": "offers",
+          "collectedOffers": 22,
+          "storedOffers": 22
+        }
+      ]
+    }
+  ]
+}

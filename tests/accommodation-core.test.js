@@ -66,6 +66,21 @@ describe('accommodation offer normalization', () => {
     expect(offer.priceVnd).toBe(1020000);
     expect(offer.price.period).toBe('night');
   });
+
+  it('keeps the place of a card location slot and nothing else', async () => {
+    const card = (location, text = '$420/mo') =>
+      normalizeOffer(
+        { location, sourceId: 'nha-trang-renting', text },
+        { locationHint: 'Nha Trang, Vietnam', rates: { USD: 26000 } }
+      );
+
+    expect((await card('Location: North')).location).toBe('North');
+    expect((await card('Area m²: 60')).location).toBe(undefined);
+    expect(
+      (await card('Area m²: 60', '$360/mo\nSea view in Gold Coast')).location
+    ).toBe('Gold Coast, Nha Trang');
+    expect((await card('Phước Hải')).location).toBe('Phước Hải');
+  });
 });
 
 describe('Telegram listing parsing', () => {

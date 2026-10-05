@@ -1,0 +1,290 @@
+{
+  "query": "Nha Trang apartment for rent",
+  "ranAt": "2026-10-05",
+  "elapsedMs": 193306,
+  "returned": 10,
+  "summary": {
+    "allFailed": false,
+    "byStatus": {
+      "offers": 15,
+      "empty": 6,
+      "timeout": 4,
+      "pending": 23
+    },
+    "failed": 27,
+    "failedCategories": {
+      "SEARCH_BUDGET_ELAPSED": 27
+    },
+    "succeeded": 21,
+    "total": 48
+  },
+  "outcomes": [
+    {
+      "sourceId": "alonhadat-nha-trang",
+      "status": "offers",
+      "offers": 15
+    },
+    {
+      "sourceId": "be-jib-nha-trang",
+      "status": "offers",
+      "offers": 2
+    },
+    {
+      "sourceId": "nha-trang-renting",
+      "status": "offers",
+      "offers": 22
+    },
+    {
+      "sourceId": "homedy",
+      "status": "offers",
+      "offers": 18
+    },
+    {
+      "sourceId": "nhatrangland",
+      "status": "offers",
+      "offers": 12
+    },
+    {
+      "sourceId": "newhome",
+      "status": "offers",
+      "offers": 6
+    },
+    {
+      "sourceId": "nha-trang-vn",
+      "status": "offers",
+      "offers": 23
+    },
+    {
+      "sourceId": "yourhome",
+      "status": "offers",
+      "offers": 9
+    },
+    {
+      "sourceId": "telegram:arenda_v_nyachang",
+      "status": "empty",
+      "offers": 0
+    },
+    {
+      "sourceId": "telegram:vetnam_arenda",
+      "status": "empty",
+      "offers": 0
+    },
+    {
+      "sourceId": "telegram:arenda_nyachangg",
+      "status": "empty",
+      "offers": 0
+    },
+    {
+      "sourceId": "telegram:arenda_vetnam",
+      "status": "empty",
+      "offers": 0
+    },
+    {
+      "sourceId": "telegram:nhatrang_newarenda",
+      "status": "offers",
+      "offers": 7
+    },
+    {
+      "sourceId": "telegram:obyavlenia_vetnam",
+      "status": "empty",
+      "offers": 0
+    },
+    {
+      "sourceId": "telegram:arenda_nyachang_zhilye",
+      "status": "offers",
+      "offers": 4
+    },
+    {
+      "sourceId": "telegram:rentnhatrang",
+      "status": "offers",
+      "offers": 5
+    },
+    {
+      "sourceId": "telegram:nyachangarenda",
+      "status": "offers",
+      "offers": 8
+    },
+    {
+      "sourceId": "telegram:forrentnhatrang",
+      "status": "offers",
+      "offers": 6
+    },
+    {
+      "sourceId": "telegram:nhatrang_pro_house",
+      "status": "empty",
+      "offers": 0
+    },
+    {
+      "sourceId": "telegram:lowrentnt",
+      "status": "offers",
+      "offers": 3
+    },
+    {
+      "sourceId": "telegram:nyachang_arenda_kvartir",
+      "status": "offers",
+      "offers": 2
+    },
+    {
+      "sourceId": "telegram:nhatranghouses",
+      "status": "timeout",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:nachangap",
+      "status": "timeout",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:arendaotshahnoza",
+      "status": "timeout",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:oceanusarenda",
+      "status": "timeout",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:nhatrang_dsrent",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:nhatrangrental",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:nhatrang_rent_sale",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:viet_life_niachang",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:danangrentaflat",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:nyachang_arendavn",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:danang_arend",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:nhatrang_rental",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:apartmentforrentdanang",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:vietnamstay",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:nhatrangapartment",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:phuquoc_realestate",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:nhatrangapartment_rental",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:vietnam_rent",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:phuquoc_rental",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:phuquocrealestate_chat",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:danang_home",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:danangcityapartment",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:bdsvnco",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:vietnam_chat_ru",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:muine_rent",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:hanoi_apartments",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    },
+    {
+      "sourceId": "telegram:saigon_apartments",
+      "status": "pending",
+      "offers": 0,
+      "category": "SEARCH_BUDGET_ELAPSED"
+    }
+  ]
+}

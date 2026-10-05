@@ -1,4 +1,9 @@
-import { settleCleanup } from './utils.js';
+import {
+  gotoPage,
+  launchSettings,
+  openCommander,
+  settleCleanup,
+} from './utils.js';
 import { TELEGRAM_DISCOVERY_QUERIES } from './telegram-discovery.js';
 import { DomainScheduler } from './browser-adapters.js';
 
@@ -56,11 +61,7 @@ export class BrowserSourceDiscoverer {
   }
 
   navigate(commander, url, { signal } = {}) {
-    return this.scheduler.run(
-      url,
-      () => commander.goto({ url, waitForNetworkIdle: false }),
-      { signal }
-    );
+    return this.scheduler.run(url, () => gotoPage(commander, url), { signal });
   }
 
   async rankWeb(commander, candidates, { signal } = {}) {
@@ -178,12 +179,10 @@ export class BrowserSourceDiscoverer {
 
   async discover(type, { candidates, focus, signal } = {}) {
     const runtime = await loadRuntime(this.browserRuntime);
-    const { browser, page } = await runtime.launchBrowser({
-      engine: 'playwright',
-      headless: true,
-      ...this.browserLaunchOptions,
-    });
-    const commander = runtime.makeBrowserCommander({ page });
+    const { browser, page } = await runtime.launchBrowser(
+      launchSettings(this.browserLaunchOptions)
+    );
+    const commander = openCommander(runtime, page);
     try {
       return type === 'telegram'
         ? await this.rankTelegram(commander, candidates, { focus, signal })

@@ -78,6 +78,28 @@ describe('in-page listing extraction', () => {
     }
   });
 
+  it('leaves unmatched semantic fields out of the listing text', () => {
+    const previous = globalThis.document;
+    const card = {
+      innerText: 'Studio for rent, 8,000,000 VND/month',
+      getAttribute: () => null,
+      querySelector: (selector) =>
+        selector === 'h3' ? { textContent: 'Studio for rent' } : null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [listing] = extractPageListings('web', {
+        cards: '.card',
+        title: 'h3',
+      });
+      expect(listing.text).toBe(card.innerText);
+      expect(listing.text.includes('undefined')).toBe(false);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('uses a source-scoped city when an individual card omits its address', () => {
     const previous = globalThis.document;
     const card = {
@@ -171,6 +193,78 @@ describe('in-page listing extraction', () => {
       const cards = extractPageListings('web', adapter.selectors);
       expect(cards.length).toBe(1);
       expect(cards[0].attributes.propertyId).toBe('Нячанг');
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('takes a listing id from the link, not from the card text after it', () => {
+    const previous = globalThis.document;
+    const adapter = browserAdapterFor(
+      'https://alonhadat.com.vn/cho-thue-nha/khanh-hoa/nha-trang'
+    );
+    const card = (href, title) => {
+      const nodes = new Map([
+        [adapter.selectors.link, { href }],
+        [adapter.selectors.title, { textContent: title }],
+      ]);
+      return {
+        getAttribute: () => null,
+        innerText: `${title}\nHôm nay`,
+        querySelector: (selector) => nodes.get(selector) || null,
+        querySelectorAll: (selector) =>
+          nodes.has(selector) ? [nodes.get(selector)] : [],
+      };
+    };
+    globalThis.document = {
+      querySelectorAll: () => [
+        card(
+          'https://alonhadat.com.vn/cho-thue-nha-duong-thai-nguyen-13735772.html',
+          'CHO THUÊ NHÀ NGUYÊN CĂN ĐƯỜNG THÁI NGUYÊN'
+        ),
+        card(
+          'https://alonhadat.com.vn/cho-thue-nha-ngang-15m-15025837.html',
+          'CHO THUÊ NHÀ NGUYÊN CĂN THỐNG NHẤT'
+        ),
+        card('https://rent.example/house.html', 'Idea house by the beach'),
+      ],
+    };
+    try {
+      const cards = extractPageListings('web', adapter.selectors);
+      expect(cards.map(({ attributes }) => attributes?.propertyId)).toEqual([
+        '13735772',
+        '15025837',
+        undefined,
+      ]);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('reads a studio card whose facts state the area as no bedrooms', () => {
+    const previous = globalThis.document;
+    const adapter = browserAdapterFor(
+      'https://be-jib.com/ru/nha-trang/rentals'
+    );
+    const card = (facts) => {
+      const nodes = new Map([[adapter.selectors.fields.bedrooms, facts]]);
+      return {
+        getAttribute: () => null,
+        innerText: facts,
+        querySelector: (selector) =>
+          nodes.has(selector) ? { textContent: nodes.get(selector) } : null,
+        querySelectorAll: (selector) =>
+          nodes.has(selector) ? [{ textContent: nodes.get(selector) }] : [],
+      };
+    };
+    globalThis.document = {
+      querySelectorAll: () => [card('Студия · 35㎡'), card('2BR · 70㎡')],
+    };
+    try {
+      const cards = extractPageListings('web', adapter.selectors);
+      expect(cards.map(({ attributes }) => attributes.bedrooms)).toEqual([
+        0, 2,
+      ]);
     } finally {
       globalThis.document = previous;
     }

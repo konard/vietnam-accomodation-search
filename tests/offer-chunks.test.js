@@ -18,10 +18,12 @@ import {
 import { snapshotState } from '../scripts/deploy-state.mjs';
 import {
   partitionOfferEntries,
+  readOfferCollection,
   writeOfferCollection,
 } from '../src/offer-chunks.js';
 import {
   LinksStore,
+  deserializeOffers,
   serializeOfferBounded,
   serializeOffers,
 } from '../src/links-store.js';
@@ -441,6 +443,56 @@ describe('bounded offer persistence', () => {
       await store.saveRecords('offers', syntheticOffers(2));
       expect((await store.listOffers()).length).toBe(2);
       expect((await store.loadRecords('offers')).length).toBe(2);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('reads back the offers it wrote without parsing their text again', async () => {
+    if (isDeno) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'offer-parsed-cache-'));
+    try {
+      const parsed = new Map();
+      const options = {
+        directory,
+        maxBytes: 50_000_000,
+        maxShardBytes: 32_000,
+        offersPath: join(directory, 'offers.lino'),
+        parsed,
+      };
+      await writeOfferCollection({ ...options, offers: syntheticOffers(2) });
+      const single = await readFile(options.offersPath, 'utf8');
+      expect([...parsed.keys()]).toEqual([single]);
+      expect(parsed.get(single)).toEqual(deserializeOffers(single));
+
+      parsed.set(single, [{ id: 'cached' }]);
+      const cached = await readOfferCollection(options);
+      expect(cached).toEqual([{ id: 'cached' }]);
+      cached[0].id = 'changed';
+      expect(parsed.get(single)).toEqual([{ id: 'cached' }]);
+
+      await writeOfferCollection({ ...options, offers: syntheticOffers(30) });
+      const index = JSON.parse(
+        await readFile(join(directory, 'offers.index.json'), 'utf8')
+      );
+      const shards = await Promise.all(
+        index.shards.map(({ sha256 }) =>
+          readFile(
+            join(directory, 'offers.chunks', sha256, 'offers.lino'),
+            'utf8'
+          )
+        )
+      );
+      expect(shards.length > 1).toBe(true);
+      expect([...parsed.keys()].sort()).toEqual([...shards].sort());
+      const fresh = await readOfferCollection({
+        ...options,
+        parsed: undefined,
+      });
+      expect(await readOfferCollection(options)).toEqual(fresh);
+      expect(parsed.size).toBe(shards.length);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

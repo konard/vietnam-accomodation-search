@@ -72,6 +72,13 @@ export {
 export { PresetService, SubscriptionScheduler } from './presets.js';
 export { SearchService } from './search-service.js';
 export {
+  SOURCE_STATUSES,
+  describeFailures,
+  describeUncollected,
+  runSourcePool,
+  summarizeOutcomes,
+} from './source-pool.js';
+export {
   SearchPresetService,
   TelegramSubscriptionService,
   mergeSearchOptions,
@@ -96,6 +103,7 @@ export {
 export {
   createTelegramBot,
   deliverSubscriptionOffers,
+  formatSearchFailures,
   formatSearchResults,
   registerTelegramHandlers,
   telegramDeduplicationMiddleware,

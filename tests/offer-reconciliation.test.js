@@ -191,6 +191,31 @@ describe('cross-source accommodation reconciliation', () => {
     expect(offers.length).toBe(2);
   });
 
+  it('does not merge same-sized units whose cards open with a section label', () => {
+    const unit = (id, priceVnd) =>
+      webOffer({
+        attributes: { areaM2: 25, bedrooms: 1 },
+        id,
+        location: 'Phường Nam Nha Trang, Khánh Hòa',
+        officialUrl: undefined,
+        priceVnd,
+        sourceId: 'yourhome',
+        title: 'CHO THUÊ',
+        url: `https://yourhome.example/cho-thue-${id}`,
+      });
+    const offers = deduplicateOffers([
+      unit('ch-0056', 14_500_000),
+      unit('ch-0057', 13_000_000),
+    ]);
+
+    expect(offers.map(({ id }) => id)).toEqual(['ch-0056', 'ch-0057']);
+    expect(
+      offerIdentityKeys(unit('ch-0056', 14_500_000)).some((key) =>
+        key.startsWith('fingerprint:')
+      )
+    ).toBe(false);
+  });
+
   it('retains an official URL when a newer marketplace-only update arrives', () => {
     const first = deduplicateOffers([
       webOffer({

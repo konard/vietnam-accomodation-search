@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'test-anywhere';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -99,6 +99,30 @@ describe('bounded photo cache', () => {
       expect(result.removed).toEqual([media]);
       expect(offer.cachedPhotos).toEqual([]);
       expect(offer.photos).toEqual(['https://img.example/photo.jpg']);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('skips a file renamed away while the budget walks the directory', async () => {
+    if (typeof Deno !== 'undefined') {
+      return;
+    }
+
+    const directory = await mkdtemp(join(tmpdir(), 'accommodation-cache-'));
+    try {
+      await writeFile(join(directory, 'offers.lino'), '123456');
+      // A dangling link is listed by readdir and gone for stat, as is a
+      // trace temporary file another save renames meanwhile.
+      await symlink(
+        join(directory, 'renamed'),
+        join(directory, 'traces.lino.1.2.tmp')
+      );
+      const offer = { photos: [] };
+
+      const cached = await new MediaCache({ directory }).cacheOffers([offer]);
+
+      expect(cached).toEqual([{ cachedPhotos: [], photos: [] }]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

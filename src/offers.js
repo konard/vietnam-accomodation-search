@@ -1,4 +1,4 @@
-import { parseListingText } from './listing-parser.js';
+import { cardLocation, parseListingText } from './listing-parser.js';
 import {
   PRICE_HISTORY_LIMIT,
   VARIANT_LIMIT,
@@ -56,6 +56,14 @@ function mergeAttributes(offers) {
       }
     }
   }
+  // Availability describes the latest copy only: an older "sold out" edit
+  // must not hide a listing that is posted again.
+  const latest = offers.at(-1).attributes || {};
+  for (const key of ['availability', 'availableNow']) {
+    if (latest[key] === undefined) {
+      delete merged[key];
+    }
+  }
   return Object.keys(merged).length ? merged : undefined;
 }
 
@@ -90,6 +98,13 @@ function normalizedIdentifier(value) {
     .replace(/\s+/gu, '-');
 }
 
+// A one- or two-word title such as "CHO THUÊ" or "Căn hộ" is a section
+// label shared by every card of a listing site, not a name of the unit.
+function distinctiveTitle(value) {
+  const title = normalizedIdentityValue(value);
+  return title.split(' ').length >= 3 ? title : undefined;
+}
+
 function fingerprintKey(offer) {
   const location = normalizedIdentityValue(offer.location);
   if (!location) {
@@ -110,7 +125,7 @@ function fingerprintKey(offer) {
     Number.isFinite(area) && Number.isFinite(bedrooms)
       ? `${area}:${bedrooms}`
       : undefined;
-  const title = normalizedIdentityValue(offer.title);
+  const title = distinctiveTitle(offer.title);
   const discriminator = contact
     ? `${contact}\n${firstPresent(structure, title)}`
     : structure && title
@@ -199,7 +214,9 @@ function mergeParsedContacts(parsed, explicit) {
 
 export function normalizeOffer(input, options = {}) {
   const text = firstPresent(compact(input.text), compact(input.title), '');
-  const parsed = parseListingText(text);
+  const parsed = parseListingText(text, {
+    locationHint: options.locationHint,
+  });
   const price = firstPresent(input.price, parsePrice(text));
   const rates = firstPresent(options.rates, { VND: 1 });
   const url = canonicalizeOfferUrl(compact(input.url));
@@ -228,7 +245,7 @@ export function normalizeOffer(input, options = {}) {
     ...optional('language', firstPresent(input.language, parsed.language)),
     ...optional(
       'location',
-      firstPresent(compact(input.location), parsed.location)
+      firstPresent(cardLocation(compact(input.location)), parsed.location)
     ),
     ...optional(
       'locationProvenance',

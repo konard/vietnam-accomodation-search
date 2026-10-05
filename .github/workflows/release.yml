@@ -257,6 +257,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Reject lint warnings anywhere in the repository
+        run: npx eslint . --max-warnings=0
+
       - name: Check formatting
         run: npm run format:check
 
@@ -506,11 +509,11 @@ jobs:
         run: |
           docker run --rm --entrypoint node "pr-check:${{ github.sha }}" bin/vietnam-accomodation-search.js --help
           docker run --rm --entrypoint clink "pr-check:${{ github.sha }}" --help
-          docker run --rm --entrypoint node "pr-check:${{ github.sha }}" --input-type=module -e "
-            import { chromium } from 'playwright';
-            const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
-            await browser.close();
-          "
+          # The browser checks use compose.yaml's security options and the
+          # app's own launch path, so they fail when a search would.
+          hardened=(--rm --read-only --tmpfs /tmp:mode=1777 --shm-size 1g --cap-drop ALL --security-opt no-new-privileges:true -e BROWSER_NO_SANDBOX=1 --entrypoint node)
+          docker run "${hardened[@]}" "pr-check:${{ github.sha }}" bin/vietnam-accomodation-search.js self-check browser
+          docker run "${hardened[@]}" "pr-check:${{ github.sha }}" bin/vietnam-accomodation-search.js self-check search
           docker run --rm --entrypoint node "pr-check:${{ github.sha }}" --input-type=module -e "
             import { mkdtemp, rm } from 'node:fs/promises';
             import { tmpdir } from 'node:os';

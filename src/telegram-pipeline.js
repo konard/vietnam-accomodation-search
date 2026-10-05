@@ -5,18 +5,40 @@ export { mediaIdentity };
 const REQUEST =
   /\b(?:looking\s+for|wanted|need(?:ed)?|seeking)\b|ищу|cần\s+(?:tìm|thuê)/iu;
 const SALE =
-  /\b(?:for\s+sale|selling|sell)\b|продам|продаж[аи]|bán\s+(?:căn|nhà|đất|phòng)/iu;
+  /\b(?:for\s+sale|selling|sell)\b|прода(?:м|[её]тся)|продаж[аи]|будущ\p{L}*\s+владел\p{L}*|bán\s+(?:căn|nhà|đất|phòng)|sang\s+nhượng|出售|[轉转]售|售[價价]|[萬万]美[金元]/iu;
+// "Căn hộ dịch vụ" is a serviced apartment, not a service advertisement.
 const SERVICE =
-  /\b(?:visa|immigration|cleaning|moving|brokerage)\s+service\b|dịch\s+vụ|визов\p{L}*\s+услуг/iu;
+  /\b(?:visa|immigration|cleaning|moving|brokerage)\s+service\b|(?<!(?:căn\s+hộ|phòng|nhà)\s+)dịch\s+vụ|визов\p{L}*\s+услуг/iu;
 const RENTAL =
-  /\b(?:for\s+rent|rent(?:al|ing)?|lease)\b|аренд\p{L}*|сда[её]т|cho\s+thuê|thuê\s+(?:nhà|phòng|căn)/iu;
+  /\b(?:for\s+rent|rent(?:al|ing)?|lease)\b|аренд\p{L}*|сда[её]т|cho\s+thuê|thuê\s+(?:nhà|phòng|căn)|出租|租金/iu;
 const PROPERTY =
-  /apartment|studio|room|house|villa|hotel|căn\s+hộ|phòng|nhà|квартир|комнат|вилл/iu;
-const PRICE = /(?:VND|VNĐ|₫|USD|EUR|GBP|triệu|million|tỷ|\$|€|£)/iu;
+  /apartment|studio|room|house|villa|hotel|bedroom|\d\s*(?:BR|BHK|PN)\b|căn\s+hộ|phòng|nhà|квартир|комнат|вилл|студи|спальн|(?<!\p{L})дом(?!\p{L})/iu;
+const PRICE =
+  /(?:VND|VNĐ|₫|USD|EUR|GBP|triệu|million|tỷ|\$|€|£|млн|млрд|美元|美金|越盾)/iu;
+const BOOKING = /бронирован\p{L}*|\bbooking\b|đặt\s+phòng/iu;
 const OTHER_VIETNAM_CITY =
   /da\s*nang|đà\s*nẵng|hanoi|hà\s*nội|ho\s*chi\s*minh|hồ\s*chí\s*minh|saigon|sài\s*gòn|phu\s*quoc|phú\s*quốc|далат|дананг|ханой/iu;
 const NON_HOUSING_SERVICE =
   /sim[-\s]*card|sim-карт|currency\s+exchange|обмен\s+валют/iu;
+const COMMERCIAL =
+  /cho\s+thuê\s+mặt\s*bằng|mặt\s*bằng\s+kinh\s+doanh|\bMBKD\b|коммерческ\p{L}*\s+помещени\p{L}*|только\s+для\s+(?:легального\s+|чистого\s+)?бизнеса|(?:отел\p{L}*|hotel|khách\s*sạn)\s+(?:на\s+)?\d+\s*(?:номер\p{L}*|rooms|phòng)|комплекс\p{L}*\s+бунгало|店面|辦公室|办公室/iu;
+
+// The headline of a rental post decides its intent; agencies append service
+// adverts such as currency exchange below the listing.
+function headline(text) {
+  return text
+    .split('\n')
+    .filter((line) => line.trim())
+    .slice(0, 3)
+    .join('\n');
+}
+
+function advertisesService(text) {
+  return (
+    (SERVICE.test(text) || NON_HOUSING_SERVICE.test(text)) &&
+    !RENTAL.test(headline(text))
+  );
+}
 
 export const TELEGRAM_LABELS = new Set([
   'offer',
@@ -26,6 +48,7 @@ export const TELEGRAM_LABELS = new Set([
   'wrong-location',
   'duplicate',
   'service',
+  'commercial',
   'uncertain',
 ]);
 
@@ -52,7 +75,7 @@ export function classifyTelegramPost(
   if (SALE.test(text)) {
     return { eligible: false, label: 'sale', reason: 'sale-intent' };
   }
-  if (SERVICE.test(text) || NON_HOUSING_SERVICE.test(text)) {
+  if (advertisesService(text)) {
     return {
       eligible: false,
       label: 'service',
@@ -66,7 +89,17 @@ export function classifyTelegramPost(
       reason: 'explicit-other-city',
     };
   }
-  if (RENTAL.test(text) || (PROPERTY.test(text) && PRICE.test(text))) {
+  if (COMMERCIAL.test(text)) {
+    return {
+      eligible: false,
+      label: 'commercial',
+      reason: 'commercial-premises',
+    };
+  }
+  if (
+    RENTAL.test(text) ||
+    (PROPERTY.test(text) && (PRICE.test(text) || BOOKING.test(text)))
+  ) {
     return { eligible: true, label: 'offer', reason: 'rental-evidence' };
   }
   if (PROPERTY.test(text) || PRICE.test(text)) {

@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -16,8 +16,8 @@ import {
   GRAMJS_SESSION_FORMAT,
   LinkCliMirror,
   LinksStore,
-  classifyTelegramPost,
 } from '../src/index.js';
+import { fieldMetrics, loadCorpus } from './field-corpus-metrics.mjs';
 import {
   auditTelegramBatch,
   collectTelegramWindow,
@@ -224,51 +224,6 @@ function mediaOcr(client, messages, command) {
     }
     const bytes = await client.downloadMedia(media);
     return tesseract(command, bytes);
-  };
-}
-
-async function corpusClassificationMetrics() {
-  const corpus = JSON.parse(
-    await readFile(
-      new globalThis.URL(
-        './fixtures/telegram-accommodation-parser-cases.json',
-        import.meta.url
-      ),
-      'utf8'
-    )
-  );
-  const counters = {
-    falseNegative: 0,
-    falsePositive: 0,
-    trueNegative: 0,
-    truePositive: 0,
-  };
-  for (const testCase of corpus.cases.filter(({ input }) => input.text)) {
-    const expected = testCase.expected.relevant;
-    const actual = classifyTelegramPost(testCase.input.text).eligible;
-    const key = actual
-      ? expected
-        ? 'truePositive'
-        : 'falsePositive'
-      : expected
-        ? 'falseNegative'
-        : 'trueNegative';
-    counters[key] += 1;
-  }
-  const precisionDenominator = counters.truePositive + counters.falsePositive;
-  const recallDenominator = counters.truePositive + counters.falseNegative;
-  return {
-    ...counters,
-    corpusSchemaVersion: corpus.schemaVersion,
-    languages: [
-      ...new Set(corpus.cases.map(({ language }) => language)),
-    ].sort(),
-    precision: precisionDenominator
-      ? counters.truePositive / precisionDenominator
-      : null,
-    recall: recallDenominator
-      ? counters.truePositive / recallDenominator
-      : null,
   };
 }
 
@@ -871,7 +826,11 @@ export async function runAudit(options) {
           roundTrip: false,
         };
     await auditStore.saveOffers(offers);
-    report.classification = await corpusClassificationMetrics();
+    // Per-field precision and recall on the reviewed live corpus; the list of
+    // individual misses stays in `node experiments/field-corpus-metrics.mjs
+    // --misses`.
+    const { misses, ...fields } = await fieldMetrics(await loadCorpus());
+    report.fieldAccuracy = { ...fields, misses: misses.length };
     const fieldProblems = countBy(
       audits.flatMap((audit) =>
         Object.entries(audit.missingDetails).flatMap(([key, count]) =>
@@ -976,8 +935,7 @@ export async function runAudit(options) {
         noTerminalErrors: (terminalMaterials.error || 0) === 0,
         noSegmentErrors: (report.parser.segments.error || 0) === 0,
         sourceLimitRespected: sources.length <= 40,
-        reviewedPrecision: report.classification.precision === 1,
-        reviewedRecall: report.classification.recall === 1,
+        reviewedFieldAccuracy: report.fieldAccuracy.pass,
         terminalMaterials: report.mediaHandling.unaccounted === 0,
         unresolvedMediaOnly: report.mediaHandling.unresolvedMediaOnly === 0,
         userIdentity: report.user.active === true,

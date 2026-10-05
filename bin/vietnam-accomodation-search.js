@@ -8,6 +8,7 @@ import {
   TelegramAuthService,
   TelegramRuntime,
   createApplication,
+  formatSearchFailures,
   formatSearchResults,
   parseSearchCommand,
   preflightTelegram,
@@ -16,6 +17,7 @@ import {
   validateTelegramConfiguration,
 } from '../src/index.js';
 import { secretPrompt } from '../src/secret-prompt.js';
+import { checkBrowser, runFixtureSearch } from '../src/self-check.js';
 
 const packageVersion = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8')
@@ -30,6 +32,7 @@ function usage() {
     '  search [--cheapest [N]] Q  Search and cache accommodation offers',
     '  update-sources              Refresh all ranked source cohorts',
     '  check-availability ID [@U] Send an availability inquiry as a user',
+    '  self-check browser|search   Launch the browser, or search a local fixture page',
     '  telegram preflight          Validate storage and Telegram identities',
     '  telegram ingest             Backfill and monitor configured Telegram sources',
     '  telegram auth login|status|validate|rotate|logout',
@@ -40,13 +43,61 @@ function usage() {
   ].join('\n');
 }
 
+// Runs one search with SIGINT/SIGTERM wired to an abort signal, so an
+// interrupted search closes its browser before the process exits.
+async function runSearchCommand(application, options, io) {
+  const { processRef, stderr, stdout } = io;
+  const controller = new AbortController();
+  const abort = (signal) =>
+    controller.abort(
+      Object.assign(new Error(`Search interrupted by ${signal}.`), {
+        name: 'AbortError',
+      })
+    );
+  const signals = ['SIGINT', 'SIGTERM'].map((signal) => {
+    const handler = () => abort(signal);
+    processRef.once(signal, handler);
+    return [signal, handler];
+  });
+  try {
+    const service = application.service;
+    const { offers, report } = service.searchWithReport
+      ? await service.searchWithReport({
+          ...options,
+          signal: controller.signal,
+        })
+      : { offers: await service.search(options) };
+    const failures = formatSearchFailures(report);
+    const nothingCollected = report?.summary.allFailed && !offers.length;
+    if (!nothingCollected) {
+      stdout(formatSearchResults(offers));
+    }
+    if (failures) {
+      stderr(failures);
+    }
+    return nothingCollected ? 1 : 0;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      stderr(controller.signal.reason.message);
+      return 130;
+    }
+    throw error;
+  } finally {
+    for (const [signal, handler] of signals) {
+      processRef.off(signal, handler);
+    }
+  }
+}
+
 // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- Command dispatch centralizes validation before dependency construction.
 export async function runCli(
   argv,
   {
     application,
+    applicationFactory = createApplication,
     authFactory = (options) => new TelegramAuthService(options),
     env = process.env,
+    processRef = process,
     prompt = secretPrompt,
     stderr = console.error,
     stdout = console.log,
@@ -293,8 +344,30 @@ export async function runCli(
     if (command === 'search') {
       application ||= createApplication({ environment: env });
       const options = parseSearchCommand(`/search ${rest.join(' ')}`);
-      stdout(formatSearchResults(await application.service.search(options)));
+      return await runSearchCommand(application, options, {
+        processRef,
+        stderr,
+        stdout,
+      });
+    }
+    if (command === 'self-check' && rest[0] === 'browser') {
+      application ||= applicationFactory({ environment: env });
+      stdout(JSON.stringify(await checkBrowser(application)));
       return 0;
+    }
+    if (command === 'self-check' && rest[0] === 'search') {
+      stdout(
+        JSON.stringify(
+          await runFixtureSearch({
+            createApplication: applicationFactory,
+            environment: env,
+          })
+        )
+      );
+      return 0;
+    }
+    if (command === 'self-check') {
+      throw new Error('Usage: self-check browser|search');
     }
     if (command === 'update-sources') {
       const credentials = await resolveTelegramSecrets(env);
