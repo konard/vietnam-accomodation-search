@@ -14,6 +14,7 @@ import { boundStoredOffer } from './offer-bounds.js';
 import {
   deserializeOffers,
   isCurrentSchema,
+  readBackRecord,
   serializeOfferBounded,
   serializeOffers,
 } from './links-store.js';
@@ -107,6 +108,35 @@ export function partitionOfferEntries(
     );
 }
 
+// Parsing Links Notation dominates the time a search spends in the store, and
+// every save reads the collection the previous save wrote. `parsed` maps the
+// exact text of each offer file this process wrote or read to its offers, so
+// equal text is parsed once; callers get copies they may change.
+function parsedOffers(notation, parsed, used) {
+  used?.add(notation);
+  const known = parsed?.get(notation);
+  if (known) {
+    return globalThis.structuredClone(known);
+  }
+  const offers = deserializeOffers(notation);
+  parsed?.set(notation, globalThis.structuredClone(offers));
+  return offers;
+}
+
+// Keeps only the texts of the collection last read or written.
+function retainParsed(parsed, used) {
+  for (const notation of parsed?.keys() || []) {
+    if (!used.has(notation)) {
+      parsed.delete(notation);
+    }
+  }
+}
+
+function rememberWritten(parsed, used, notation, offers) {
+  used.add(notation);
+  parsed?.set(notation, offers.map(readBackRecord));
+}
+
 function validateIndex(index) {
   if (
     index?.version !== 1 ||
@@ -131,7 +161,10 @@ function validateIndex(index) {
   }
 }
 
-async function readLegacyOffers({ directory, mirror, offersPath }) {
+async function readLegacyOffers(
+  { directory, mirror, offersPath, parsed },
+  used
+) {
   let notation = await readOrEmpty(offersPath);
   if (mirror && notation.trim() && !isCurrentSchema('offer', notation)) {
     notation = serializeOffers(deserializeOffers(notation));
@@ -140,10 +173,10 @@ async function readLegacyOffers({ directory, mirror, offersPath }) {
     await staged.activate();
   }
   await mirror?.ensure?.({ directory, kind: 'offers', notation });
-  return deserializeOffers(notation);
+  return parsedOffers(notation, parsed, used);
 }
 
-async function readIndexedOffers(index, { directory, mirror }) {
+async function readIndexedOffers(index, { directory, mirror, parsed }, used) {
   validateIndex(index);
   const offers = [];
   let bytes = 0;
@@ -164,7 +197,7 @@ async function readIndexedOffers(index, { directory, mirror }) {
       kind: 'offers',
       notation,
     });
-    const records = deserializeOffers(notation);
+    const records = parsedOffers(notation, parsed, used);
     if (records.length !== shard.count) {
       throw new Error('Canonical offer shard count does not match its index.');
     }
@@ -190,6 +223,7 @@ async function readIndexedOffers(index, { directory, mirror }) {
 }
 
 export async function readOfferCollection(options) {
+  const used = new Set();
   let index;
   try {
     index = JSON.parse(
@@ -197,11 +231,15 @@ export async function readOfferCollection(options) {
     );
   } catch (error) {
     if (error.code === 'ENOENT') {
-      return readLegacyOffers(options);
+      const offers = await readLegacyOffers(options, used);
+      retainParsed(options.parsed, used);
+      return offers;
     }
     throw error;
   }
-  return readIndexedOffers(index, options);
+  const offers = await readIndexedOffers(index, options, used);
+  retainParsed(options.parsed, used);
+  return offers;
 }
 
 export async function writeOfferCollection({
@@ -211,6 +249,7 @@ export async function writeOfferCollection({
   mirror,
   offers,
   offersPath,
+  parsed,
   removeStaleChunk = rm,
 }) {
   // Every write persists the bounded shape, whatever its caller passed.
@@ -222,8 +261,10 @@ export async function writeOfferCollection({
   const indexPath = join(directory, INDEX_NAME);
   const existingIndex = await readOrEmpty(indexPath);
   const chunksPath = join(directory, CHUNK_DIRECTORY);
+  const used = new Set();
   if (!existingIndex && total <= maxShardBytes) {
-    const notation = serializeOffers(prepared.map(({ offer }) => offer));
+    const written = prepared.map(({ offer }) => offer);
+    const notation = serializeOffers(written);
     const staged = await mirror?.stage?.({
       directory,
       kind: 'offers',
@@ -231,6 +272,8 @@ export async function writeOfferCollection({
     });
     await durableWrite(offersPath, notation);
     await staged?.activate();
+    rememberWritten(parsed, used, notation, written);
+    retainParsed(parsed, used);
     // Without an index no chunk is referenced; interrupted saves may have
     // left some behind.
     await pruneChunks(chunksPath, new Set(), removeStaleChunk);
@@ -255,6 +298,8 @@ export async function writeOfferCollection({
       directory,
       groups,
       mirror,
+      remember: (notation, written) =>
+        rememberWritten(parsed, used, notation, written),
     });
     const index = {
       bytes: shards.reduce((sum, shard) => sum + shard.bytes, 0),
@@ -266,6 +311,7 @@ export async function writeOfferCollection({
     await mkdir(chunksPath, { recursive: true, mode: 0o700 });
     await markIndexedSchema(directory);
     await durableWrite(indexPath, `${JSON.stringify(index)}\n`);
+    retainParsed(parsed, used);
   } catch (error) {
     // A failed save removes the chunks it created before any index used them.
     await removeChunks(created, chunksPath, removeStaleChunk);
@@ -295,14 +341,23 @@ async function unchangedChunk(chunkDirectory, sha256) {
   return digest(notation) === sha256;
 }
 
-async function writeShards({ committed, created, directory, groups, mirror }) {
+async function writeShards({
+  committed,
+  created,
+  directory,
+  groups,
+  mirror,
+  remember,
+}) {
   const shards = [];
   const reuse = reusableShardRoots(directory, committed);
   for (const { entries } of groups) {
     if (!entries.length) {
       continue;
     }
-    const notation = serializeOffers(entries.map(({ offer }) => offer));
+    const written = entries.map(({ offer }) => offer);
+    const notation = serializeOffers(written);
+    remember(notation, written);
     const bytes = Buffer.byteLength(notation);
     const sha256 = digest(notation);
     const chunkDirectory = join(directory, CHUNK_DIRECTORY, sha256);

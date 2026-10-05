@@ -120,6 +120,20 @@ function assignPath(root, path, value) {
   }
 }
 
+// The record its serialized text reads back as: the same flattened fields
+// assigned in the same order, without formatting or parsing any text.
+export function readBackRecord(input) {
+  let root;
+  for (const [path, value] of flatten(normalized(input))) {
+    if (path) {
+      assignPath(root, path, scalarValue(value));
+    } else {
+      root = scalarValue(value);
+    }
+  }
+  return root;
+}
+
 export const RECORDS_SCHEMA = 'schema:associative-records-v3';
 const SCHEMA_V2 = 'schema:associative-records-v2';
 
@@ -433,6 +447,13 @@ export async function staleLock(path, statPath = stat) {
 }
 
 export class LinksStore {
+  // Offers of the offer files this store last read or wrote, by exact text.
+  #parsedOffers = new Map();
+
+  // The text and records of each single-file record collection this store
+  // last read or wrote, so an append does not parse what the last one wrote.
+  #parsedRecords = new Map();
+
   constructor({
     binaryMirror = false,
     directory = '.vietnam-accomodation-search',
@@ -555,8 +576,35 @@ export class LinksStore {
       return this.listOffers();
     }
     return await this.#readRecords(collection, readIndexedRecords, (notation) =>
-      deserializeRecords(singular(collection), notation)
+      this.#recordsOf(collection, notation)
     );
+  }
+
+  #recordsOf(collection, notation) {
+    const known = this.#parsedRecords.get(collection);
+    if (known?.notation === notation) {
+      return globalThis.structuredClone(known.records);
+    }
+    const records = deserializeRecords(singular(collection), notation);
+    this.#parsedRecords.set(collection, {
+      notation,
+      records: globalThis.structuredClone(records),
+    });
+    return records;
+  }
+
+  // Text holding two records with one id reads back as merged records, so
+  // only text with distinct ids is remembered without parsing it.
+  #rememberRecords(collection, notation, records) {
+    const ids = records.map(
+      (record, index) => `${normalized(record).id ?? index}`
+    );
+    if (new Set(ids).size === ids.length) {
+      this.#parsedRecords.set(collection, {
+        notation,
+        records: records.map(readBackRecord),
+      });
+    }
   }
 
   async queryRecords(kind, query) {
@@ -647,8 +695,8 @@ export class LinksStore {
     const index = await this.#indexFor(collection, true);
     return index
       ? readIndexedRecords(this.#chunkContext(collection), index, false)
-      : deserializeRecords(
-          singular(collection),
+      : this.#recordsOf(
+          collection,
           await readOrEmpty(this.pathFor(collection))
         );
   }
@@ -659,12 +707,11 @@ export class LinksStore {
     }
     return writeRecordCollection(this.#chunkContext(collection), records, {
       maxBytes,
-      writeSingle: () =>
-        this.#commit(
-          collection,
-          this.pathFor(collection),
-          serializeRecords(singular(collection), records)
-        ),
+      writeSingle: async () => {
+        const notation = serializeRecords(singular(collection), records);
+        await this.#commit(collection, this.pathFor(collection), notation);
+        this.#rememberRecords(collection, notation, records);
+      },
     });
   }
 
@@ -735,6 +782,7 @@ export class LinksStore {
       directory: this.directory,
       mirror,
       offersPath: this.offersPath,
+      parsed: this.#parsedOffers,
     });
     const offers = stored.map(boundStoredOffer);
     const migrated = offers.filter((offer, index) => offer !== stored[index]);
@@ -772,6 +820,7 @@ export class LinksStore {
       mirror: this.mirror,
       offers,
       offersPath: this.offersPath,
+      parsed: this.#parsedOffers,
     });
   }
 
