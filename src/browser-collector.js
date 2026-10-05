@@ -23,6 +23,15 @@ import {
   classifyListingPage,
 } from './browser-adapters.js';
 
+// Web search pages already list rentals, so only clear non-rental intent
+// drops a card; a card without rental words is still kept.
+const WEB_EXCLUDED_LABELS = new Set([
+  'commercial',
+  'request',
+  'sale',
+  'service',
+]);
+
 export function buildSearchUrl(source, query = '') {
   return source.searchUrl.replaceAll('{query}', encodeURIComponent(query));
 }
@@ -588,6 +597,12 @@ export class BrowserCollector {
           continue;
         }
         raw.relevance = relevance;
+      } else if (
+        WEB_EXCLUDED_LABELS.has(
+          classifyTelegramPost(row.text, { targetLocation: null }).label
+        )
+      ) {
+        continue;
       }
       const offer =
         source.type === 'telegram'

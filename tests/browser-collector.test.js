@@ -156,6 +156,54 @@ describe('browser-driven collection', () => {
     ]);
   });
 
+  it('does not emit web cards for commercial premises or sales', async () => {
+    const collector = new BrowserCollector({
+      browserRuntime: {
+        launchBrowser: async () => ({
+          browser: { close: async () => {} },
+          page: {},
+        }),
+        makeBrowserCommander: () => ({
+          destroy: async () => {},
+          goto: async () => {},
+          evaluate: async (operation) =>
+            operation.name === 'extractPageState'
+              ? { status: 200, url: 'https://rent.example/results' }
+              : [
+                  {
+                    attributes: { propertyId: 'shop' },
+                    text: 'CHO THUÊ MẶT BẰNG KINH DOANH 25 triệu/tháng',
+                    url: 'https://rent.example/shop',
+                  },
+                  {
+                    attributes: { propertyId: 'spa' },
+                    text: 'CHO THUÊ NHÀ HOẶC SANG NHƯỢNG SPA 35 triệu/tháng',
+                    url: 'https://rent.example/spa',
+                  },
+                  {
+                    attributes: { propertyId: 'serviced' },
+                    text: 'Cho thuê căn hộ dịch vụ 5 triệu/tháng',
+                    url: 'https://rent.example/serviced',
+                  },
+                ],
+        }),
+      },
+      rates: { VND: 1 },
+    });
+
+    const offers = await collector.collect([
+      {
+        id: 'rent',
+        searchUrl: 'https://rent.example/results',
+        type: 'web',
+      },
+    ]);
+
+    expect(offers.map(({ attributes }) => attributes.propertyId)).toEqual([
+      'serviced',
+    ]);
+  });
+
   it('attempts every browser cleanup and aggregates cleanup failures', async () => {
     let browserCloseAttempted = false;
     const collector = new BrowserCollector({
