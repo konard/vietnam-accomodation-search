@@ -257,6 +257,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Reject lint warnings anywhere in the repository
+        run: npx eslint . --max-warnings=0
+
       - name: Check formatting
         run: npm run format:check
 

@@ -242,3 +242,20 @@ describe('loadCommandStream shell semantics', () => {
     expect(useModule).toContain('shell.errexit(true)');
   });
 });
+
+describe('version-and-commit.mjs passes the commit message as one argument', () => {
+  it('lets command-stream quote the message without manual escaping', () => {
+    expect(script).toContain('await $`git commit -m ${commitMessage}`');
+    expect(script).not.toContain('escapedMessage');
+  });
+
+  it('keeps quotes, backslashes, and substitutions literal', async () => {
+    const message = `v1.0.0 "q" $(echo pwned) \`id\` \\ 's`;
+    const { $ } = await loadCommandStream();
+    const result = await $`printf %s ${message}`.run({
+      capture: true,
+      mirror: false,
+    });
+    expect(await result.text()).toBe(message);
+  });
+});

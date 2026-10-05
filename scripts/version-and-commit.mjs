@@ -282,10 +282,10 @@ async function main() {
       // A failure here aborts the release before anything is written.
       await checkStagedFormatting();
 
-      // Commit with version number as message
+      // Commit with version number as message; command-stream quotes the
+      // interpolated value as one shell argument.
       const commitMessage = newVersion;
-      const escapedMessage = commitMessage.replace(/"/g, '\\"');
-      await $`git commit -m "${escapedMessage}"`;
+      await $`git commit -m ${commitMessage}`;
 
       // Push directly to main, rebasing and retrying if another main writer won
       // the race between this commit and the push, and landing the commit

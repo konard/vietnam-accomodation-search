@@ -32,8 +32,8 @@
  *   - should_release: 'true' if a release should be created
  *   - skip_bump: 'true' if version bump should be skipped (version not yet published)
  *
- * Addresses issues documented in:
- * - Issue #36: Release job silently skips when PRs merge without changesets
+ * The release job therefore runs for merged changes that carry no changeset
+ * whenever the current version is still missing from npm.
  */
 
 import { appendFileSync } from 'fs';
