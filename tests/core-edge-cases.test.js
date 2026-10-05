@@ -90,6 +90,19 @@ describe('parser validation edges', () => {
     expect(parsed.attributes.latitude).toBe(undefined);
   });
 
+  it('reads a property id only from a coded token after its label', () => {
+    const id = (text) => parseListingText(text).attributes.propertyId;
+
+    expect(id('ID: A2293 квартира')).toBe('A2293');
+    expect(id('Căn hộ mã căn A12, 8 triệu/tháng')).toBe('A12');
+    expect(id('Код объекта 515, студия')).toBe('515');
+    expect(id('🆔 Код квартиры: LĐH-57302 (LX)')).toBe('LĐH-57302');
+    expect(id('Код квартиры: GHTN-TT')).toBe('GHTN-TT');
+    expect(id('КОД КВАРТИРЫ: проверим')).toBe(undefined);
+    expect(id('Idea house near the beach')).toBe(undefined);
+    expect(id('Mã căn đẹp, view biển')).toBe(undefined);
+  });
+
   it('rejects empty recent Telegram posts and non-web URLs', () => {
     expect(
       parseTelegramOffer(

@@ -6,6 +6,7 @@ import {
   fieldMetrics,
   loadCorpus,
 } from '../experiments/field-corpus-metrics.mjs';
+import { propertyIdMerges } from '../experiments/issue-94-property-id-merges.mjs';
 
 const corpus = await loadCorpus();
 
@@ -110,5 +111,12 @@ describe('field accuracy on the reviewed live corpus', () => {
         id: 'wrong-price',
       },
     ]);
+  });
+
+  it('keeps every reviewed offer apart by its source property id', () => {
+    const { merged, offers } = propertyIdMerges(corpus);
+
+    expect(offers >= 200).toBe(true);
+    expect(merged).toBe(0);
   });
 });

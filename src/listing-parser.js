@@ -272,8 +272,11 @@ function fees(fields) {
 }
 
 function extractAttributes(text, fields, referenceDate) {
+  // "ID: A2293", "mã căn A12", "Код квартиры: ALAB": the label may name what
+  // it codes, and the id is a token with a digit or in capitals, so a plain
+  // word after the label ("Idea", "mã căn đẹp") is no id.
   const propertyId = text.match(
-    /(?:\bID|код|mã)\s{0,8}[#:№-]?\s{0,8}([\p{L}\d][\p{L}\d_-]{0,31})/iu
+    /(?:\b[Ii][Dd]|(?<!\p{L})(?:[Кк]од|КОД|[Mm]ã|MÃ))(?!\p{L})(?:\s+(?:\p{Ll}{2,12}|\p{Lu}{2,12}(?=\s*[:#№])))?\s{0,8}[#:№-]?\s{0,8}((?=[\p{L}_-]{0,31}\d)[\p{L}\d][\p{L}\d_-]{0,31}|\p{Lu}[\p{Lu}\d_-]{1,31})(?![\p{L}\d_-]|\s*[:#№])/u
   )?.[1];
   const bedrooms = bedroomCount(text);
   const bathrooms = matchedNumber(text, [
