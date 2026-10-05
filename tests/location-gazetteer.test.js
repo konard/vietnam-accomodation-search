@@ -60,6 +60,24 @@ describe('Nha Trang place names without a location label', () => {
     );
   });
 
+  it('reads numbered Chinese district names as Ho Chi Minh City', () => {
+    expect(located('九郡 大都市Vinhomes Grand Park两房公寓出租').location).toBe(
+      'Ho Chi Minh City'
+    );
+    expect(located('北江 DIAMOND HILL三房出租').location).toBe(undefined);
+  });
+
+  it('reads a bare "(Центр)" in a Nha Trang post as the city centre', () => {
+    expect(
+      located('📍  Квартира (Центр) \n\n3 гостя, 1 спальня', {
+        locationHint: 'Nha Trang, Vietnam',
+      }).location
+    ).toBe('Central Nha Trang');
+    expect(located('📍  Квартира (Центр) \n\n3 гостя').location).toBe(
+      undefined
+    );
+  });
+
   it('keeps common street names out of posts about other cities', () => {
     expect(located('Готовый объект на улице Tran Hung Dao, Фукуок')).toEqual({
       location: 'Phu Quoc',

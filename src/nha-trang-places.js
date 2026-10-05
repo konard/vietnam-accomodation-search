@@ -108,6 +108,8 @@ const AREAS = [
 ];
 
 const NHA_TRANG = /nha\s*trang|ngatrang|нячанг/u;
+// "Квартира (Центр)" names the centre only of the city the post is about.
+const LOCAL_CENTRE = /\(\s*(?:центр|cent(?:er|re)|trung\s+tam)\s*\)/u;
 // Cities a post may name when it names no place in them. Chinese names
 // have no word boundaries, so their patterns carry none.
 const CITIES = [
@@ -116,7 +118,7 @@ const CITIES = [
   ['Hanoi', /ha\s*noi|hanoi|ханой|河內|河内/u],
   [
     'Ho Chi Minh City',
-    /ho\s*chi\s*minh|sai\s*gon|saigon|хошимин|сайгон|胡志明/u,
+    /ho\s*chi\s*minh|sai\s*gon|saigon|хошимин|сайгон|胡志明|[一二三四五六七八九十]{1,2}郡/u,
   ],
   ['Phu Quoc', /phu\s*quoc|фукуок|富國/u],
   ['Da Lat', /da\s*lat|dalat|далат|大叻/u],
@@ -197,5 +199,9 @@ export function nhaTrangPlace(value, { hint = '' } = {}) {
       return `${name}, Nha Trang`;
     }
   }
-  return AREAS.find(([, pattern]) => pattern.test(text))?.[0] ?? city;
+  const area = AREAS.find(([, pattern]) => pattern.test(text))?.[0];
+  if (area) {
+    return area;
+  }
+  return local && LOCAL_CENTRE.test(text) ? 'Central Nha Trang' : city;
 }
