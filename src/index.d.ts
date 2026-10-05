@@ -2,6 +2,8 @@ export interface Price {
   amount: number;
   currency: string;
   period: 'night' | 'week' | 'month' | 'year';
+  /** Lowest and highest rent when a post lists several options. */
+  range?: { min: number; max: number };
 }
 
 export interface PopularityEvidence {
