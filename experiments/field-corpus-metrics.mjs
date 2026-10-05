@@ -128,13 +128,18 @@ function ratio(numerator, denominator) {
   return denominator ? numerator / denominator : null;
 }
 
-export async function fieldMetrics(corpus, { rates = corpus.rates } = {}) {
+// `predict` maps one corpus case to the stored fields; the default runs the
+// parser directly, and the search-service audit reads them from the store.
+export async function fieldMetrics(
+  corpus,
+  { predict = predictCase, rates = corpus.rates } = {}
+) {
   const counts = Object.fromEntries(
     FIELDS.map((field) => [field, { fn: 0, fp: 0, tp: 0 }])
   );
   const misses = [];
   for (const testCase of corpus.cases) {
-    const actual = await predictCase(testCase, { rates });
+    const actual = await predict(testCase, { rates });
     // Offer fields are reviewed only on offers; other posts score "offer".
     const fields = testCase.expected.offer ? FIELDS : ['offer'];
     for (const field of fields) {
@@ -166,7 +171,10 @@ export async function fieldMetrics(corpus, { rates = corpus.rates } = {}) {
         {
           falseNegative: fn,
           falsePositive: fp,
-          pass: precision >= threshold.precision && recall >= threshold.recall,
+          // A field no case states nor predicts has nothing to score.
+          pass:
+            (precision ?? 1) >= threshold.precision &&
+            (recall ?? 1) >= threshold.recall,
           precision,
           recall,
           threshold,
