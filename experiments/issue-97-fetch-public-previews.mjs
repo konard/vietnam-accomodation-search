@@ -10,25 +10,11 @@ import {
   DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
   DEFAULT_TELEGRAM_SOURCES,
 } from '../src/index.js';
+import { previewText } from './telegram-preview-text.mjs';
 
 const directory = process.argv[2] || '/tmp/tg-previews';
 const pages = Number(process.env.PAGES || 2);
 await mkdir(directory, { recursive: true });
-
-const decode = (html) =>
-  html
-    .replace(/<br\s*\/?>/giu, '\n')
-    .replace(/<[^>]+>/gu, '')
-    .replace(/&nbsp;/gu, ' ')
-    .replace(/&quot;/gu, '"')
-    .replace(/&#39;/gu, "'")
-    .replace(/&lt;/gu, '<')
-    .replace(/&gt;/gu, '>')
-    .replace(/&#(\d+);/gu, (_entity, code) =>
-      String.fromCodePoint(Number(code))
-    )
-    .replace(/&amp;/gu, '&')
-    .trim();
 
 function posts(html) {
   const result = [];
@@ -41,7 +27,7 @@ function posts(html) {
     )?.[1];
     const date = block.match(/<time datetime="([^"]+)"/u)?.[1];
     if (id && text) {
-      result.push({ date, id, text: decode(text) });
+      result.push({ date, id, text: previewText(text) });
     }
   }
   return result;
