@@ -6,6 +6,7 @@ import {
   parseListingText,
   parseSearchCommand,
   SearchService,
+  SubscriptionScheduler,
 } from '../src/index.js';
 
 const availability = (text) => {
@@ -136,6 +137,26 @@ describe('search hides unavailable offers', () => {
       refresh: false,
     });
     expect(found.map(({ id }) => id)).toEqual(['sold', 'rented-card', 'open']);
+  });
+
+  it('delivers only available offers to a subscription', async () => {
+    const delivered = [];
+    const scheduler = new SubscriptionScheduler({
+      deliver: async (_userId, found) => delivered.push(...found),
+      now: () => new Date('2026-09-21T01:00:00Z'),
+      presets: {
+        listSubscriptions: async () => [
+          { options: { cheapest: true, refresh: false }, userId: '1' },
+        ],
+        markDelivered: async () => {},
+        markSuccessfulRun: async () => {},
+        unseen: async (_userId, found) => found,
+      },
+      search: (options) => service().search(options),
+      traceRecorder: { persist: async () => {}, record: () => {} },
+    });
+    await scheduler.tick();
+    expect(delivered.map(({ id }) => id)).toEqual(['open']);
   });
 });
 
