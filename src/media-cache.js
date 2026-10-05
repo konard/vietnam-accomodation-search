@@ -2,23 +2,27 @@ import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { stableHash } from './utils.js';
 
+// Concurrent saves rename their temporary files while the budget walks the
+// data directory, so a listed entry may be gone by the time it is read.
+function unlessGone(error) {
+  if (error.code === 'ENOENT') {
+    return undefined;
+  }
+  throw error;
+}
+
 async function filesBelow(directory) {
   const files = [];
-  let entries;
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return files;
-    }
-    throw error;
-  }
+  const entries =
+    (await readdir(directory, { withFileTypes: true }).catch(unlessGone)) || [];
   for (const entry of entries) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       files.push(...(await filesBelow(path)));
-    } else {
-      const details = await stat(path);
+      continue;
+    }
+    const details = await stat(path).catch(unlessGone);
+    if (details) {
       files.push({ path, size: details.size, modifiedAt: details.mtimeMs });
     }
   }
@@ -96,7 +100,7 @@ export class MediaCache {
       if (usage <= this.maxBytes) {
         break;
       }
-      await unlink(file.path);
+      await unlink(file.path).catch(unlessGone);
       usage -= file.size;
       removed.add(file.path);
     }
