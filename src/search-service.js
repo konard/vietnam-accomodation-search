@@ -173,6 +173,22 @@ function sourceCoverageIsComplete(offers, sources, query) {
   return sources.every((source) => covered.has(source.id));
 }
 
+// Sources without a fresh offer for the query go first, so a refresh that
+// stops at its budget still extends coverage on the next search.
+function refreshOrder(offers, sources, query, now, maxAgeMs) {
+  const fresh = new Set(
+    offers
+      .filter(
+        (offer) => isForQuery(offer, query) && isFresh(offer, now, maxAgeMs)
+      )
+      .flatMap((offer) => offer.sourceIds || [offer.sourceId])
+  );
+  return [
+    ...sources.filter((source) => !fresh.has(source.id)),
+    ...sources.filter((source) => fresh.has(source.id)),
+  ];
+}
+
 export class SearchService {
   constructor({
     collector,
@@ -205,14 +221,55 @@ export class SearchService {
     );
   }
 
-  // eslint-disable-next-line complexity -- Search owns one correlated lifecycle across refresh, cache, ranking, and trace outcomes.
   async search(options = {}) {
+    return (await this.searchWithReport(options)).offers;
+  }
+
+  // Saves each finished source as it completes, so an interrupted refresh
+  // keeps finished work; writes are chained to keep them ordered.
+  #sourcePersister() {
+    let chain = Promise.resolve();
+    const persist = async ({ offers }) => {
+      if (!offers.length) {
+        return;
+      }
+      const cached = this.mediaCache
+        ? await this.mediaCache.cacheOffers(offers)
+        : offers;
+      await this.store.saveOffers(cached);
+    };
+    return (completion) => {
+      chain = chain.then(() => persist(completion));
+      return chain;
+    };
+  }
+
+  async #refresh(sources, query, { runId, signal }) {
+    const options = { runId, signal, traceRecorder: this.trace };
+    if (typeof this.collector.collectWithReport !== 'function') {
+      let collected = await this.collector.collect(sources, query, options);
+      if (this.mediaCache) {
+        collected = await this.mediaCache.cacheOffers(collected);
+      }
+      await this.store.saveOffers(collected);
+      return { collected, report: undefined };
+    }
+    const report = await this.collector.collectWithReport(sources, query, {
+      ...options,
+      onSourceComplete: this.#sourcePersister(),
+    });
+    return { collected: report.offers, report };
+  }
+
+  // eslint-disable-next-line complexity -- Search owns one correlated lifecycle across refresh, cache, ranking, and trace outcomes.
+  async searchWithReport(options = {}) {
     const {
       cheapest = false,
       filters = {},
       limit = 10,
       query = '',
       refresh,
+      signal,
       traceRunId,
     } = options;
     const runId =
@@ -223,19 +280,26 @@ export class SearchService {
       let offers = await this.store.listOffers();
       const sources = await this.registry.list();
       const shouldRefresh = this.shouldRefresh(offers, sources, refresh, query);
+      let report;
 
       if (shouldRefresh) {
-        let collected = await this.collector.collect(sources, query, {
+        const ordered = refreshOrder(
+          offers,
+          sources,
+          query,
+          this.now(),
+          this.maxAgeMs
+        );
+        const refreshed = await this.#refresh(ordered, query, {
           runId,
-          traceRecorder: this.trace,
+          signal,
         });
-        if (this.mediaCache) {
-          collected = await this.mediaCache.cacheOffers(collected);
-        }
-        await this.store.saveOffers(collected);
-        const budget = await this.mediaCache?.enforceBudget(collected);
+        report = refreshed.report;
+        const budget = await this.mediaCache?.enforceBudget(
+          refreshed.collected
+        );
         if (budget?.removed.length) {
-          await this.store.saveOffers(collected);
+          await this.store.saveOffers(refreshed.collected);
         }
         offers = await this.store.listOffers();
       }
@@ -257,15 +321,23 @@ export class SearchService {
       this.trace.record({
         runId,
         stage: 'search',
-        status: 'success',
+        status: report?.summary.allFailed ? 'degraded' : 'success',
         metadata: {
           candidates: unique.length,
+          failedSources: report?.summary.failed,
           refresh: shouldRefresh,
           returned: result.length,
           sources: sources.length,
         },
       });
-      return result;
+      return {
+        offers: result,
+        report: report && {
+          budgetElapsed: report.budgetElapsed,
+          outcomes: report.outcomes,
+          summary: report.summary,
+        },
+      };
     } catch (error) {
       this.trace.record({
         runId,

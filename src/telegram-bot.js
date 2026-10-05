@@ -1,11 +1,33 @@
 import { parseSearchCommand } from './commands.js';
 import { SubscriptionScheduler } from './presets.js';
+import { describeFailures } from './source-pool.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { stableHash } from './utils.js';
 
 const SEARCH_USAGE =
   'Usage: /search [--cheapest [1-50]] [--filter field=value] [location]';
 const SEARCH_FAILURE = 'Search could not be completed. Please try again later.';
+const NO_FRESH_OFFERS = 'No fresh offers could be collected.';
+
+// Searches through the report-aware API when the service offers one, so the
+// reply can say whether sources failed or simply had nothing to offer.
+async function searchWithOptionalReport(service, options) {
+  if (typeof service.searchWithReport === 'function') {
+    return service.searchWithReport(options);
+  }
+  return { offers: await service.search(options) };
+}
+
+export function formatSearchFailures(report) {
+  const summary = report?.summary;
+  if (!summary?.failed) {
+    return undefined;
+  }
+  if (summary.allFailed) {
+    return `${NO_FRESH_OFFERS} ${describeFailures(summary)}`;
+  }
+  return `${summary.failed} of ${summary.total} sources failed or did not finish.`;
+}
 
 function formatPrice(offer) {
   const period = offer.price?.period ? `/${offer.price.period}` : '';
@@ -160,6 +182,7 @@ export function registerTelegramHandlers(bot, dependencies) {
     presetService,
     rateProvider,
     registry,
+    searchSignal,
     service,
     store,
     subscriptionScheduler,
@@ -218,9 +241,21 @@ export function registerTelegramHandlers(bot, dependencies) {
       const options = presetService
         ? await presetService.resolveSearch(owner, overrides)
         : overrides;
-      offers = await service.search(options);
+      const searched = await searchWithOptionalReport(
+        service,
+        searchSignal ? { ...options, signal: searchSignal } : options
+      );
+      offers = searched.offers;
+      const failures = formatSearchFailures(searched.report);
       if (!offers.length) {
-        await replyBounded(context, formatSearchResults(offers));
+        await replyBounded(
+          context,
+          searched.report?.summary.allFailed
+            ? failures
+            : formatSearchResults(offers)
+        );
+      } else if (failures) {
+        await context.reply(failures);
       }
     } catch (error) {
       await recordSearchFailure({
@@ -471,6 +506,21 @@ export async function createTelegramBot(token, dependencies) {
     dependencies.createAvailabilityService?.(bot.api) ||
     dependencies.availabilityService;
   bot.resources = availabilityService ? [availabilityService] : [];
+  // Stopping the bot aborts in-flight searches, so shutdown does not wait
+  // for a browser refresh to reach its own budget.
+  const searchController = new AbortController();
+  const abortSearches = () => {
+    if (!searchController.signal.aborted) {
+      const reason = new Error('Search interrupted by bot shutdown.');
+      reason.name = 'AbortError';
+      searchController.abort(reason);
+    }
+  };
+  const stopPolling = bot.stop.bind(bot);
+  bot.stop = (...arguments_) => {
+    abortSearches();
+    return stopPolling(...arguments_);
+  };
   bot.use(telegramRuntimeMiddleware(bot));
   if (dependencies.updateDeduplicator) {
     bot.use(telegramDeduplicationMiddleware(dependencies.updateDeduplicator));
@@ -484,14 +534,26 @@ export async function createTelegramBot(token, dependencies) {
       intervalMs: dependencies.subscriptionIntervalMs,
       logger: dependencies.logger,
       presets: dependencies.presetService,
-      search: (options) => dependencies.service.search(options),
+      search: (options) =>
+        dependencies.service.search({
+          ...options,
+          signal: searchController.signal,
+        }),
       store: dependencies.store,
       traceRecorder: dependencies.traceRecorder,
     });
+    const stopScheduler = bot.subscriptionScheduler.stop.bind(
+      bot.subscriptionScheduler
+    );
+    bot.subscriptionScheduler.stop = () => {
+      abortSearches();
+      return stopScheduler();
+    };
   }
   registerTelegramHandlers(bot, {
     ...dependencies,
     availabilityService,
+    searchSignal: searchController.signal,
     subscriptionScheduler: bot.subscriptionScheduler,
   });
   return bot;

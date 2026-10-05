@@ -35,6 +35,13 @@ function noSandboxRequested(environment) {
   return environment.BROWSER_NO_SANDBOX === '1';
 }
 
+// Reads a positive number from the environment and keeps the fallback for
+// missing, zero, negative, or non-numeric values.
+export function positiveSetting(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
 // eslint-disable-next-line complexity, max-lines-per-function -- The composition root keeps all injectable production dependencies visible in one audit boundary.
 export function createApplication(options = {}) {
   const environment =
@@ -74,6 +81,9 @@ export function createApplication(options = {}) {
       allowedUserIds: [environment.TELEGRAM_ALLOWED_USER_IDS],
       mode: environment.TELEGRAM_ACCESS_MODE || 'private',
     });
+  const browserConcurrency = Math.floor(
+    positiveSetting(environment.BROWSER_CONCURRENCY, 4)
+  );
   const rateProvider =
     options.rateProvider ||
     new ExchangeRateProvider({ fetchImpl: options.fetchImpl });
@@ -82,8 +92,14 @@ export function createApplication(options = {}) {
     new BrowserCollector({
       browserLaunchOptions,
       browserRuntime: options.browserRuntime,
+      budgetMs: positiveSetting(environment.SEARCH_BUDGET_MS, 3 * 60 * 1000),
+      concurrency: browserConcurrency,
       logger: options.logger,
       rateProvider,
+      sourceTimeoutMs: positiveSetting(
+        environment.BROWSER_SOURCE_TIMEOUT_MS,
+        90 * 1000
+      ),
       store,
       traceRecorder,
       scheduler:
@@ -92,7 +108,7 @@ export function createApplication(options = {}) {
           maxCooldownMs: Number(
             environment.BROWSER_MAX_COOLDOWN_MS || 60 * 60 * 1000
           ),
-          maxConcurrentDomains: 3,
+          maxConcurrentDomains: browserConcurrency,
           maxDelayMs: Number(environment.BROWSER_MAX_INTERVAL_MS || 8_000),
           minDelayMs: Number(environment.BROWSER_MIN_INTERVAL_MS || 3_000),
           store,

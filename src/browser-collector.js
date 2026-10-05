@@ -4,6 +4,12 @@ import { classifyTelegramPost } from './telegram-pipeline.js';
 import { TraceRecorder } from './trace.js';
 import { settleCleanup } from './utils.js';
 import {
+  SOURCE_STATUSES,
+  runSourcePool,
+  summarizeOutcomes,
+  untilAborted,
+} from './source-pool.js';
+import {
   DomainScheduler,
   PAGE_CLASSIFICATIONS,
   browserAdapterFor,
@@ -348,17 +354,23 @@ export class BrowserCollector {
   constructor({
     browserLaunchOptions,
     browserRuntime,
+    budgetMs = 3 * 60 * 1000,
+    concurrency = 4,
     logger,
     maxTelegramPages = 200,
     now,
     rateProvider,
     rates,
     scheduler,
+    sourceTimeoutMs = 90 * 1000,
     store,
     traceRecorder,
   } = {}) {
     this.browserLaunchOptions = browserLaunchOptions || {};
     this.browserRuntime = browserRuntime;
+    this.budgetMs = budgetMs;
+    this.concurrency = concurrency;
+    this.sourceTimeoutMs = sourceTimeoutMs;
     this.logger = logger || { debug: () => {} };
     this.maxTelegramPages = maxTelegramPages;
     this.now = now || (() => new Date());
@@ -619,112 +631,263 @@ export class BrowserCollector {
     return officialOffers;
   }
 
-  // eslint-disable-next-line complexity -- The collection coordinator owns the complete browser lifecycle and trace outcome.
-  async collect(
+  // Opens one commander per worker. The first worker reuses the launched
+  // page; further workers need `browser.newPage()`, so a runtime without it
+  // collects serially.
+  #workerFactory(runtime, browser, page) {
+    const live = new Set();
+    let launchedPageFree = true;
+    const open = async () => {
+      let workerPage;
+      if (launchedPageFree) {
+        launchedPageFree = false;
+        workerPage = page;
+      } else if (typeof browser.newPage === 'function') {
+        try {
+          workerPage = await browser.newPage();
+        } catch (error) {
+          // The pool keeps running on the workers it already has.
+          this.logger.debug('Opening another browser page failed', error);
+          return undefined;
+        }
+      } else {
+        return undefined;
+      }
+      const worker = {
+        commander: runtime.makeBrowserCommander({ page: workerPage }),
+        page: workerPage,
+      };
+      live.add(worker);
+      return worker;
+    };
+    const retire = async (worker) => {
+      live.delete(worker);
+      await settleCleanup(
+        [
+          () => worker.commander.destroy(),
+          () => (worker.page === page ? undefined : worker.page?.close?.()),
+        ],
+        'Browser worker cleanup was incomplete.'
+      );
+    };
+    return { live, open, retire };
+  }
+
+  #recordOutcome(trace, runId, outcome) {
+    const success = [SOURCE_STATUSES.OFFERS, SOURCE_STATUSES.EMPTY].includes(
+      outcome.status
+    );
+    const status = success
+      ? 'success'
+      : outcome.status === SOURCE_STATUSES.CANCELLED
+        ? 'cancelled'
+        : 'failure';
+    const metadata = success
+      ? { durationMs: outcome.durationMs, offers: outcome.offers }
+      : {
+          category: outcome.category,
+          durationMs: outcome.durationMs,
+          message: outcome.message,
+          outcome: outcome.status,
+          retry: 'source-stopped',
+        };
+    for (const stage of ['normalization', 'collection']) {
+      trace.record({
+        runId,
+        sourceId: outcome.sourceId,
+        stage,
+        status,
+        metadata: success
+          ? metadata
+          : stage === 'collection'
+            ? metadata
+            : { category: outcome.category, outcome: outcome.status },
+      });
+    }
+  }
+
+  async #officialOffers(
+    workers,
+    offers,
+    query,
+    rates,
+    { remainingMs, signal }
+  ) {
+    const [worker] = workers.live;
+    if (!worker || !(remainingMs > 0)) {
+      return [];
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remainingMs);
+    timer.unref?.();
+    const relay = () => controller.abort(signal.reason);
+    signal?.addEventListener('abort', relay, { once: true });
+    try {
+      return await untilAborted(
+        this.collectOfficialOffers(worker.commander, offers, query, rates, {
+          signal: controller.signal,
+        }),
+        controller.signal
+      );
+    } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
+      this.logger.debug('Official price checks stopped at the budget', error);
+      return [];
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', relay);
+    }
+  }
+
+  async collect(sources, query = '', options = {}) {
+    return (await this.collectWithReport(sources, query, options)).offers;
+  }
+
+  // Collects every enabled source through a bounded worker pool. Each
+  // finished source is traced, persisted through `onSourceComplete`, and
+  // reported with its outcome, so an interrupted run keeps finished work.
+  async collectWithReport(
     sources,
     query = '',
-    { runId: parentRunId, signal, traceRecorder } = {}
+    { onSourceComplete, runId: parentRunId, signal, traceRecorder } = {}
   ) {
     const trace = traceRecorder || this.trace;
     const runtime = this.browserRuntime || (await loadDefaultBrowserRuntime());
     const rates = this.rateProvider
       ? await this.rateProvider.getRates()
       : this.rates;
+    const startedAt = Date.now();
     const { browser, page } = await runtime.launchBrowser({
       engine: 'playwright',
       headless: true,
       ...this.browserLaunchOptions,
     });
-    const commander = runtime.makeBrowserCommander({ page });
+    const workers = this.#workerFactory(runtime, browser, page);
     const offers = [];
+    const runIds = new Map();
+    const runIdFor = (source) => {
+      if (!runIds.has(source.id)) {
+        runIds.set(
+          source.id,
+          parentRunId || `browser:${source.id}:${this.now().toISOString()}`
+        );
+      }
+      return runIds.get(source.id);
+    };
+    const enabled = sources.filter(({ enabled }) => enabled !== false);
 
     try {
-      for (const source of sources.filter(({ enabled }) => enabled !== false)) {
-        const runId =
-          parentRunId || `browser:${source.id}:${this.now().toISOString()}`;
-        trace.record({
-          runId,
-          sourceId: source.id,
-          stage: 'collection',
-          status: 'start',
-        });
-        try {
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'normalization',
-            status: 'start',
-          });
-          const collected = await this.collectSource(
-            commander,
-            source,
-            query,
-            rates,
-            { signal }
-          );
+      const pool = await runSourcePool(enabled, {
+        budgetMs: this.budgetMs,
+        concurrency: this.concurrency,
+        onSettled: async (outcome, value) => {
+          const collected = Array.isArray(value) ? value : [];
           offers.push(...collected);
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'normalization',
-            status: 'success',
-            metadata: { offers: collected.length },
-          });
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'collection',
-            status: 'success',
-            metadata: { offers: collected.length },
-          });
-        } catch (error) {
-          const cancelled =
-            signal?.aborted ||
-            error?.name === 'AbortError' ||
-            error?.code === 'ABORT_ERR';
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'collection',
-            status: cancelled ? 'cancelled' : 'failure',
-            metadata: {
-              category:
-                error?.classification || error?.code || 'collection-failure',
-              message: error?.message,
-              retry: 'source-stopped',
-            },
-          });
-          trace.record({
-            runId,
-            sourceId: source.id,
-            stage: 'normalization',
-            status: cancelled ? 'cancelled' : 'failure',
-            metadata: {
-              category:
-                error?.classification || error?.code || 'normalization-failure',
-            },
-          });
-          this.logger.debug(`Collection failed for ${source.id}`, error);
-          if (cancelled) {
-            throw error;
+          this.#recordOutcome(
+            trace,
+            runIdFor({ id: outcome.sourceId }),
+            outcome
+          );
+          if (!Array.isArray(value)) {
+            this.logger.debug(
+              `Collection failed for ${outcome.sourceId}`,
+              value
+            );
           }
+          try {
+            await onSourceComplete?.({ offers: collected, outcome });
+            await trace.persist();
+          } catch (error) {
+            this.logger.debug(
+              `Persisting ${outcome.sourceId} results failed`,
+              error
+            );
+          }
+        },
+        openWorker: () => workers.open(),
+        retireWorker: (worker) =>
+          workers
+            .retire(worker)
+            .catch((error) =>
+              this.logger.debug('Retiring a browser worker failed', error)
+            ),
+        run: (source, { signal: sourceSignal, worker }) => {
+          const runId = runIdFor(source);
+          for (const stage of ['collection', 'normalization']) {
+            trace.record({
+              runId,
+              sourceId: source.id,
+              stage,
+              status: 'start',
+            });
+          }
+          return this.collectSource(worker.commander, source, query, rates, {
+            signal: sourceSignal,
+          });
+        },
+        signal,
+        sourceTimeoutMs: this.sourceTimeoutMs,
+      });
+      for (const outcome of pool.outcomes) {
+        if (outcome.status === SOURCE_STATUSES.PENDING) {
+          trace.record({
+            runId: runIdFor({ id: outcome.sourceId }),
+            sourceId: outcome.sourceId,
+            stage: 'collection',
+            status: 'degraded',
+            metadata: { category: outcome.category, outcome: outcome.status },
+          });
         }
       }
-      offers.push(
-        ...(await this.collectOfficialOffers(commander, offers, query, rates, {
+      const summary = summarizeOutcomes(pool.outcomes);
+      trace.record({
+        runId: parentRunId || `browser:${this.now().toISOString()}`,
+        stage: 'collection-summary',
+        status: summary.allFailed
+          ? 'failure'
+          : summary.failed
+            ? 'degraded'
+            : 'success',
+        metadata: {
+          budgetElapsed: pool.budgetElapsed,
+          byStatus: summary.byStatus,
+          failedCategories: summary.failedCategories,
+          total: summary.total,
+        },
+      });
+      const official = await this.#officialOffers(
+        workers,
+        offers,
+        query,
+        rates,
+        {
+          remainingMs: pool.budgetElapsed
+            ? 0
+            : this.budgetMs - (Date.now() - startedAt),
           signal,
-        }))
+        }
       );
+      offers.push(...official);
+      if (official.length) {
+        await onSourceComplete?.({ offers: official, outcome: undefined });
+      }
+      return {
+        budgetElapsed: pool.budgetElapsed,
+        offers,
+        outcomes: pool.outcomes,
+        summary,
+      };
     } finally {
       await settleCleanup(
         [
           () => trace.persist(),
-          () => commander.destroy(),
+          ...[...workers.live].map((worker) => () => workers.retire(worker)),
           () => browser.close(),
         ],
         'Browser collection cleanup was incomplete.'
       );
     }
-    return offers;
   }
 }
