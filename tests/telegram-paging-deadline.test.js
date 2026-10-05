@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'test-anywhere';
+import { describe, expect } from 'test-anywhere';
 
 import { BrowserCollector, DomainScheduler } from '../src/index.js';
+import { it } from './fixtures/held-it.mjs';
 
 function hold(milliseconds) {
   return new Promise((resolve) => {

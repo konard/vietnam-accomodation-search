@@ -34,6 +34,10 @@ async function collectionNames() {
 }
 
 async function withStore(run) {
+  // Deno runs with read access only; these cases write a temp directory.
+  if (typeof globalThis.Deno !== 'undefined') {
+    return undefined;
+  }
   const directory = await mkdtemp(join(tmpdir(), 'issue-94-'));
   try {
     return await run(new LinksStore({ directory }), directory);

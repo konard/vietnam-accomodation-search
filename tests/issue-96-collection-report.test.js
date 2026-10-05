@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'test-anywhere';
+import { describe, expect } from 'test-anywhere';
 import { URL } from 'node:url';
 
 import { BrowserCollector } from '../src/index.js';
+import { it } from './fixtures/held-it.mjs';
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));

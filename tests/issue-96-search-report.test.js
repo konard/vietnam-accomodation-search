@@ -17,6 +17,10 @@ import { positiveSetting } from '../src/application.js';
 const NOW = new Date('2026-10-05T00:00:00Z');
 
 async function withDirectory(run) {
+  // Deno runs with read access only; these cases write a temp directory.
+  if (typeof globalThis.Deno !== 'undefined') {
+    return undefined;
+  }
   const directory = await mkdtemp(join(tmpdir(), 'issue-96-'));
   try {
     return await run(directory);

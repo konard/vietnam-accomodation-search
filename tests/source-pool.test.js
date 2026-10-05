@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'test-anywhere';
+import { describe, expect } from 'test-anywhere';
 
 import {
   SOURCE_STATUSES,
@@ -11,6 +11,7 @@ import {
   summarizeOutcomes,
   untilAborted,
 } from '../src/source-pool.js';
+import { it } from './fixtures/held-it.mjs';
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
