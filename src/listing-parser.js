@@ -192,6 +192,51 @@ function wordNumber(text, expressions) {
   return undefined;
 }
 
+const CHINESE_DIGITS = { 一: 1, 二: 2, 兩: 2, 两: 2, 三: 3, 四: 4, 五: 5 };
+const RUSSIAN_ROOM_WORDS = [
+  [1, /одно/iu],
+  [2, /двух/iu],
+  [3, /тр[её]х/iu],
+  [4, /четыр[её]х/iu],
+];
+
+// "Комнатная" counts the rooms besides the kitchen; local agencies use it for
+// the bedroom count, so it applies only when no bedroom count is stated.
+function roomAdjectiveCount(text) {
+  const digit = matchedNumber(text, [/(?<!\d)(\d)\s*-\s*комнатн/iu]);
+  if (digit !== undefined) {
+    return digit;
+  }
+  const word = text.match(/(\p{L}+)комнатн/iu)?.[1];
+  return word
+    ? RUSSIAN_ROOM_WORDS.find(([, pattern]) => pattern.test(word))?.[0]
+    : undefined;
+}
+
+// A navigation footer such as "КВАРТИРЫ И СТУДИИ" names the agency's other
+// listings, so only a singular "studio" marks the listing itself.
+const STUDIO = /\bstudio\b|студи(?:я|ю|ей)(?!\p{L})/iu;
+
+function bedroomCount(text) {
+  const numeric = matchedNumber(text, [
+    /(\d{1,2})\s*(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)/iu,
+    /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
+    /(?<![\d.,])(\d{1,2})\s*(?:BR|BHK|PN)\b/u,
+  ]);
+  const chinese = text.match(/([一二兩两三四五])房/u)?.[1];
+  return (
+    numeric ??
+    wordNumber(text, [
+      /([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)[ \t]+(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)/iu,
+      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+(?:с|with)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
+      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
+    ]) ??
+    roomAdjectiveCount(text) ??
+    (chinese ? CHINESE_DIGITS[chinese] : undefined) ??
+    (STUDIO.test(text) ? 0 : undefined)
+  );
+}
+
 function moneyAfterLabel(text, label) {
   const value = text.match(
     new RegExp(`(?:${label})\\s{0,12}[:#-]?\\s{0,12}([^\\n]{1,100})`, 'iu')
@@ -225,20 +270,7 @@ function extractAttributes(text, fields, referenceDate) {
   const propertyId = text.match(
     /(?:\bID|код|mã)\s{0,8}[#:№-]?\s{0,8}([\p{L}\d][\p{L}\d_-]{0,31})/iu
   )?.[1];
-  const studio = /\bstudio\b|студи\p{L}*|căn\s*hộ\s*studio/iu.test(text);
-  const numericBedrooms = studio
-    ? 0
-    : matchedNumber(text, [
-        /(\d{1,2})\s*(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)/iu,
-        /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-      ]);
-  const bedrooms =
-    numericBedrooms ??
-    wordNumber(text, [
-      /([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)[ \t]+(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)/iu,
-      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+(?:с|with)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
-      /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]+([\p{L}]{1,16}(?:-[\p{L}]{1,16})?)/iu,
-    ]);
+  const bedrooms = bedroomCount(text);
   const bathrooms = matchedNumber(text, [
     /(\d{1,2})\s*(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)/iu,
     /(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
