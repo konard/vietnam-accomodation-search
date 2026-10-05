@@ -39,6 +39,11 @@ spelling, so the executable and npm package are named
 - Marks sold-out, rented, and occupied posts (`Sold out`, `сдана`, `занята`,
   `đã cho thuê`, `hết phòng`, and similar) as unavailable. Search and
   subscriptions skip them; `/search --include-unavailable` shows them.
+- Reads the location from labels (`Локация:`, `Vị trí:`, `Address:`), the
+  bullets under an empty label, or a `📍` line. Posts without one get a known
+  Nha Trang complex, street, ward, or part of the city, then the one city the
+  post names. `locationProvenance.method` tells which (`labeled-text`,
+  `gazetteer`, `not-mentioned`).
 - Keeps complete raw records in a `.lino` link store for future parsers.
 - Caches at most ten photos per offer under a shared 10 GiB budget. Eviction
   removes only local files; the original photo URL stays in the offer record.

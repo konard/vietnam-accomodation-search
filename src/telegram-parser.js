@@ -40,7 +40,10 @@ export function parseTelegramOffer(message, options = {}) {
   }
 
   const username = message.chat?.username;
-  const details = parseListingText(text, { referenceDate: postedAt });
+  const details = parseListingText(text, {
+    locationHint: message.inheritedLocation,
+    referenceDate: postedAt,
+  });
   const location = details.location || message.inheritedLocation;
   const locationProvenance = details.location
     ? details.locationProvenance

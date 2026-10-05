@@ -1,5 +1,6 @@
 import { canonicalizeUrl } from './utils.js';
 import { detectListingLanguage } from './language.js';
+import { namesPlace, nhaTrangPlace } from './nha-trang-places.js';
 import { parsePrice } from './pricing.js';
 
 function matchedNumber(text, patterns) {
@@ -390,26 +391,78 @@ function trimTrailingCharacters(value, characters) {
   return value.slice(0, end);
 }
 
-function detectLocation(text, fields) {
-  const location =
-    firstLabeledValue(fields, [
-      'address',
-      'location',
-      'district',
-      'địa chỉ',
-      'khu vực',
-      'quận',
-      'адрес',
-      'район',
-    ]) ||
-    text
-      .match(
-        /(?:address|location|district|địa\s*chỉ|khu\s*vực|quận|адрес|район)\s*:\s*([^\n\r]+)/iu
-      )?.[1]
-      ?.trim();
-  return location
-    ? trimTrailingCharacters(location.trim(), '.,;!').trim()
-    : location;
+const LOCATION_LABELS = [
+  'address',
+  'location',
+  'district',
+  'địa chỉ',
+  'vị trí',
+  'khu vực',
+  'quận',
+  'адрес',
+  'район',
+  'локация',
+  'местоположение',
+  'расположение',
+];
+const LOCATION_LABEL =
+  /(?:address|location|district|địa\s*chỉ|vị\s*trí|khu\s*vực|quận|адрес|район|локация|местоположение|расположение)\s*:[ \t]*([^\n\r]*)/iu;
+const BULLET = /^\s*[•·▪◦‣\-–]\s*(\S.*)$/u;
+// Bullets such as "≈ 5 минут пешком до моря" give a distance, not a place.
+const DISTANCE = /^≈|\d\s*(?:минут|мин|min|phút)/iu;
+
+const PINNED_LINES = /^\s*📍.*$/gmu;
+// A pinned line ends at "|" or at the next emoji: "📍 Центр – Лок Тхо 🌊 500 м".
+const PIN_END = /\s*(?:\||\p{Extended_Pictographic})/u;
+// A label with nothing after it ("📍 Локация:") lists the place in the
+// bullets below it.
+function bulletsAfter(lines, index) {
+  const items = [];
+  for (const line of lines.slice(index + 1)) {
+    const item = line.match(BULLET)?.[1].trim();
+    if (!item) {
+      break;
+    }
+    if (!DISTANCE.test(item)) {
+      items.push(item);
+    }
+  }
+  return items.slice(0, 2).join(', ') || undefined;
+}
+
+function labeledLocation(text) {
+  const lines = text.split(/\r?\n/u);
+  for (const [index, line] of lines.entries()) {
+    const label = line.match(LOCATION_LABEL);
+    const value = label && (label[1].trim() || bulletsAfter(lines, index));
+    if (value) {
+      return value;
+    }
+  }
+  return text
+    .match(PINNED_LINES)
+    ?.map((line) =>
+      line
+        .replace(/^\s*📍\s*/u, '')
+        .split(PIN_END)[0]
+        .trim()
+    )
+    .find((line) => namesPlace(line));
+}
+
+function detectLocation(text, fields, hint) {
+  const labeled =
+    firstLabeledValue(fields, LOCATION_LABELS) || labeledLocation(text);
+  if (labeled) {
+    return {
+      location: trimTrailingCharacters(labeled.trim(), '.,;!').trim(),
+      method: 'labeled-text',
+    };
+  }
+  const place = nhaTrangPlace(text, { hint });
+  return place
+    ? { location: place, method: 'gazetteer' }
+    : { location: undefined, method: 'not-mentioned' };
 }
 
 function trimTrailingUrlPunctuation(value) {
@@ -439,19 +492,20 @@ function officialUrl(text) {
   return undefined;
 }
 
-export function parseListingText(value = '', { referenceDate } = {}) {
+export function parseListingText(
+  value = '',
+  { locationHint, referenceDate } = {}
+) {
   const text = String(value);
   const fields = parseLabeledFields(text);
-  const location = detectLocation(text, fields);
+  const { location, method } = detectLocation(text, fields, locationHint);
   return {
     attributes: extractAttributes(text, fields, referenceDate),
     contacts: extractContacts(text),
     kind: detectKind(text),
     language: detectListingLanguage(text),
     location,
-    locationProvenance: location
-      ? { method: 'labeled-text', source: 'message-text' }
-      : { method: 'not-mentioned', source: 'message-text' },
+    locationProvenance: { method, source: 'message-text' },
     officialUrl: officialUrl(text),
   };
 }
