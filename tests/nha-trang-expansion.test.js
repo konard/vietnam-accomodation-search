@@ -12,6 +12,10 @@ import {
   parseTelegramOffer,
 } from '../src/index.js';
 
+const ENABLED_WEB_SEEDS = DEFAULT_WEB_SOURCES.filter(
+  ({ enabled }) => enabled
+).length;
+
 describe('Nha Trang source coverage', () => {
   it('adds twenty focused sources including the requested communities', () => {
     const ids = new Set(
@@ -28,14 +32,16 @@ describe('Nha Trang source coverage', () => {
     }
   });
 
-  it('keeps twenty sources in each configured cohort', async () => {
+  it('keeps every enabled web seed and twenty sources in each Telegram cohort', async () => {
     const registry = new SourceRegistry({
       store: { loadSources: async () => [] },
     });
 
     const sources = await registry.list();
 
-    expect(sources.filter((source) => source.type === 'web').length).toBe(20);
+    expect(sources.filter((source) => source.type === 'web').length).toBe(
+      ENABLED_WEB_SEEDS
+    );
     expect(
       sources.filter((source) => source.type === 'telegram' && !source.focus)
         .length
@@ -105,10 +111,10 @@ describe('Nha Trang source coverage', () => {
 
     const updated = await registry.update();
 
-    expect(updated.web.length).toBe(20);
+    expect(updated.web.length).toBe(ENABLED_WEB_SEEDS);
     expect(updated.telegram.length).toBe(40);
     expect(updated.telegram.filter((source) => source.focus).length).toBe(20);
-    expect(saved[0].length).toBe(60);
+    expect(saved[0].length).toBe(ENABLED_WEB_SEEDS + 40);
   });
 
   it('keeps the existing seed cohorts independent', () => {

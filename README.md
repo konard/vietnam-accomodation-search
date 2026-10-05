@@ -13,10 +13,14 @@ spelling, so the executable and npm package are named
 
 ## What it does
 
-- Starts with 20 ranked web services, 20 nationwide Telegram communities, and
-  up to 40 additional Nha Trang-focused Telegram communities.
+- Ships 29 ranked web services, 20 nationwide Telegram communities, and up to
+  40 additional Nha Trang-focused Telegram communities. Searches use only the
+  web services that returned reviewed rental cards in a live acceptance run;
+  the others stay listed as disabled candidates with the reason they failed
+  (`live-cohort-empty`, `live-cohort-landing`, `live-cohort-challenge`, and so
+  on). A stored registry cannot re-enable a disabled seed.
 - Refreshes all three rankings with `/update_sources`, independently keeping
-  20 web, 20 nationwide Telegram, and up to 40 Nha Trang Telegram sources while
+  up to 20 web, 20 nationwide Telegram, and up to 40 Nha Trang Telegram sources while
   searching in English, Russian, and Vietnamese.
 - Navigates each configured source's web UI rather than calling a private
   accommodation API.
@@ -175,7 +179,7 @@ for Vietnam accommodation services plus multilingual Nha Trang Telegram
 communities. Website candidates are reranked by their result position.
 Telegram candidates discovered in the search UI are combined with their seed
 cohort, then each public `t.me` preview is visited to read its current member or
-subscriber count. The highest 20 web and nationwide Telegram records and up to
+subscriber count. The highest 20 enabled web and nationwide Telegram records and up to
 40 independently ranked Nha Trang Telegram records are saved.
 
 Popularity changes constantly, so the bundled list is a bootstrap candidate

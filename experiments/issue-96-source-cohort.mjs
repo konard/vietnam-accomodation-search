@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Live outcome of every enabled default web source through the product
+// Live outcome of every enabled (or every named) default web source through the product
 // collector, without the registry's top-20 cut.
 //
 //   BROWSER_NO_SANDBOX=1 COHORT_SOURCES=homedy,yourhome \
@@ -25,9 +25,10 @@ const [summaryFile, samplesFile = '/tmp/cohort-samples.json'] =
 const only = new Set(
   (process.env.COHORT_SOURCES || '').split(',').filter(Boolean)
 );
-const sources = DEFAULT_WEB_SOURCES.filter(
-  ({ enabled, id }) => enabled !== false && (!only.size || only.has(id))
-);
+// Named sources run even when disabled, so a disabled seed can be re-tested.
+const sources = DEFAULT_WEB_SOURCES.filter(({ enabled, id }) =>
+  only.size ? only.has(id) : enabled !== false
+).map((source) => ({ ...source, enabled: true }));
 const directory = await mkdtemp(join(tmpdir(), 'vac-cohort-'));
 try {
   const application = createApplication({

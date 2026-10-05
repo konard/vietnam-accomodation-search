@@ -78,7 +78,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.booking.com',
     'https://www.booking.com/searchresults.html?ss={query}%2C%20Vietnam',
     100,
-    'https://www.similarweb.com/website/booking.com/'
+    'https://www.similarweb.com/website/booking.com/',
+    { enabled: false, reason: 'live-cohort-empty' }
   ),
   webSource(
     'airbnb',
@@ -86,7 +87,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.airbnb.com',
     'https://www.airbnb.com/s/{query}--Vietnam/homes',
     98,
-    'https://www.similarweb.com/website/airbnb.com/'
+    'https://www.similarweb.com/website/airbnb.com/',
+    { enabled: false, reason: 'live-cohort-landing' }
   ),
   webSource(
     'agoda',
@@ -94,7 +96,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.agoda.com',
     'https://www.agoda.com/search?textToSearch={query}%2C%20Vietnam',
     96,
-    'https://www.similarweb.com/website/agoda.com/'
+    'https://www.similarweb.com/website/agoda.com/',
+    { enabled: false, reason: 'live-cohort-landing' }
   ),
   webSource(
     'traveloka',
@@ -102,7 +105,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.traveloka.com/en-vn',
     'https://www.traveloka.com/en-vn/hotel/search?spec={query}',
     94,
-    'https://www.similarweb.com/website/traveloka.com/'
+    'https://www.similarweb.com/website/traveloka.com/',
+    { enabled: false, reason: 'live-cohort-empty' }
   ),
   webSource(
     'expedia',
@@ -110,7 +114,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.expedia.com',
     'https://www.expedia.com/Hotel-Search?destination={query}%2C%20Vietnam',
     92,
-    'https://www.similarweb.com/website/expedia.com/'
+    'https://www.similarweb.com/website/expedia.com/',
+    { enabled: false, reason: 'live-cohort-empty' }
   ),
   webSource(
     'hotels',
@@ -118,7 +123,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.hotels.com',
     'https://www.hotels.com/Hotel-Search?destination={query}%2C%20Vietnam',
     90,
-    'https://www.similarweb.com/website/hotels.com/'
+    'https://www.similarweb.com/website/hotels.com/',
+    { enabled: false, reason: 'live-cohort-collection-failure' }
   ),
   webSource(
     'trip',
@@ -126,7 +132,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.trip.com',
     'https://www.trip.com/hotels/list?searchWord={query}%2C%20Vietnam',
     88,
-    'https://www.similarweb.com/website/trip.com/'
+    'https://www.similarweb.com/website/trip.com/',
+    { enabled: false, reason: 'live-cohort-empty' }
   ),
   webSource(
     'hostelworld',
@@ -134,7 +141,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.hostelworld.com',
     'https://www.hostelworld.com/st/hostels/asia/vietnam/{query}/',
     86,
-    'https://www.similarweb.com/website/hostelworld.com/'
+    'https://www.similarweb.com/website/hostelworld.com/',
+    { enabled: false, reason: 'live-cohort-landing' }
   ),
   webSource(
     'google-hotels',
@@ -142,7 +150,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.google.com/travel/hotels',
     'https://www.google.com/travel/search?q=hotels%20{query}%20Vietnam',
     84,
-    'https://trends.google.com/trends/explore?q=Google%20Hotels'
+    'https://trends.google.com/trends/explore?q=Google%20Hotels',
+    { enabled: false, reason: 'live-cohort-consent-wall' }
   ),
   webSource(
     'tripadvisor',
@@ -150,7 +159,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.tripadvisor.com',
     'https://www.tripadvisor.com/Search?q={query}%20Vietnam&searchSessionId=hotels',
     82,
-    'https://www.similarweb.com/website/tripadvisor.com/'
+    'https://www.similarweb.com/website/tripadvisor.com/',
+    { enabled: false, reason: 'live-cohort-empty' }
   ),
   webSource(
     'vrbo',
@@ -158,7 +168,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.vrbo.com',
     'https://www.vrbo.com/searchResults.do?destination={query}%2C%20Vietnam',
     80,
-    'https://www.similarweb.com/website/vrbo.com/'
+    'https://www.similarweb.com/website/vrbo.com/',
+    { enabled: false, reason: 'live-cohort-empty' }
   ),
   webSource(
     'klook',
@@ -166,7 +177,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.klook.com/hotels',
     'https://www.klook.com/hotels/list/?search={query}%2C%20Vietnam',
     78,
-    'https://www.similarweb.com/website/klook.com/'
+    'https://www.similarweb.com/website/klook.com/',
+    { enabled: false, reason: 'live-cohort-empty' }
   ),
   webSource(
     'kayak',
@@ -174,7 +186,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.kayak.com/hotels',
     'https://www.kayak.com/hotels/{query},Vietnam',
     76,
-    'https://www.similarweb.com/website/kayak.com/'
+    'https://www.similarweb.com/website/kayak.com/',
+    { enabled: false, reason: 'live-cohort-landing' }
   ),
   webSource(
     'trivago',
@@ -182,7 +195,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.trivago.com',
     'https://www.trivago.com/en-US/srl/hotels-{query}-vietnam?search=200-73',
     74,
-    'https://www.similarweb.com/website/trivago.com/'
+    'https://www.similarweb.com/website/trivago.com/',
+    { enabled: false, reason: 'live-cohort-challenge' }
   ),
   webSource(
     'skyscanner',
@@ -190,7 +204,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.skyscanner.com/hotels',
     'https://www.skyscanner.com/hotels/search?entityName={query}%2C%20Vietnam',
     72,
-    'https://www.similarweb.com/website/skyscanner.com/'
+    'https://www.similarweb.com/website/skyscanner.com/',
+    { enabled: false, reason: 'live-cohort-challenge' }
   ),
   webSource(
     'vntrip',
@@ -198,7 +213,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.vntrip.vn',
     'https://www.vntrip.vn/khach-san?search={query}',
     70,
-    'https://www.similarweb.com/website/vntrip.vn/'
+    'https://www.similarweb.com/website/vntrip.vn/',
+    { enabled: false, reason: 'live-cohort-empty' }
   ),
   webSource(
     'ivivu',
@@ -206,7 +222,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://www.ivivu.com',
     'https://www.ivivu.com/khach-san-{query}',
     68,
-    'https://www.similarweb.com/website/ivivu.com/'
+    'https://www.similarweb.com/website/ivivu.com/',
+    { enabled: false, reason: 'live-cohort-landing' }
   ),
   webSource(
     'mytour',
@@ -214,7 +231,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://mytour.vn',
     'https://mytour.vn/khach-san?s={query}',
     66,
-    'https://www.similarweb.com/website/mytour.vn/'
+    'https://www.similarweb.com/website/mytour.vn/',
+    { enabled: false, reason: 'live-cohort-collection-failure' }
   ),
   webSource(
     'batdongsan',
@@ -311,7 +329,8 @@ export const DEFAULT_WEB_SOURCES = [
     'https://hotelmix.vn',
     'https://hotelmix.vn/search?query={query}',
     60,
-    'https://www.similarweb.com/website/hotelmix.com/'
+    'https://www.similarweb.com/website/hotelmix.com/',
+    { enabled: false, reason: 'live-cohort-collection-failure' }
   ),
   webSource(
     'alonhadat-nha-trang',
@@ -393,9 +412,19 @@ export const DEFAULT_NHA_TRANG_TELEGRAM_SOURCES = [
   nhaTrangSource('nhatrang_rent_sale', 'Nha Trang Rent & Sale', 4),
 ];
 
+// A seed the manifest disables stays disabled when a stored registry from an
+// earlier update still lists it as enabled.
+const DISABLED_SEED_IDS = new Set(
+  DEFAULT_WEB_SOURCES.filter(({ enabled }) => enabled === false).map(
+    ({ id }) => id
+  )
+);
+
 function rankAndLimit(sources, count) {
   const unique = new Map();
-  for (const source of sources.filter(({ enabled }) => enabled !== false)) {
+  for (const source of sources.filter(
+    ({ enabled, id }) => enabled !== false && !DISABLED_SEED_IDS.has(id)
+  )) {
     unique.set(source.id, source);
   }
   return [...unique.values()]
