@@ -88,7 +88,7 @@ function storedFields(offer) {
   const inherited = offer.locationProvenance?.method === 'source-inherited';
   return {
     offer: true,
-    priceVnd: offer.priceVnd ?? undefined,
+    price: offer.price ?? undefined,
     period: offer.price?.period ?? undefined,
     availability:
       offer.attributes?.availability === 'unavailable'

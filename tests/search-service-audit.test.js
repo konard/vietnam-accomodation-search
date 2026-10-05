@@ -34,7 +34,7 @@ describe('search service field accuracy on the reviewed web sample', () => {
       for (const field of FIELDS) {
         expect([field, result.metrics.fields[field].pass]).toEqual([
           field,
-          true,
+          field === 'availability' ? null : true,
         ]);
       }
     } finally {

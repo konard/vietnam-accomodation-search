@@ -406,7 +406,7 @@ function extractAttributes(text, fields, referenceDate) {
 // Channels edit a post after renting it ("❌Sold out‼️") and leave the
 // original "free now" text below, so a marker outranks every open signal.
 const UNAVAILABLE =
-  /sold\s*out|rented\s*out|already\s+(?:rented|taken|booked)|no\s+longer\s+available|not\s+available\s+anymore|(?<!\p{L})(?:уже\s+)?сдан[аыо]?(?!\p{L})(?!\s+в\s+эксплуатац)|(?<!\p{L}|не\s)занят[аыо]?(?!\p{L})|(?<!\p{L})(?:не\s*актуальн\p{L}*|больше\s+не\s+сда[её]тся)|đã\s*(?:cho\s*)?thuê|đã\s*có\s*(?:người|khách)\s*thuê|hết\s*phòng|không\s+còn\s+(?:phòng\s+)?trống/iu;
+  /sold\s*out|rented\s*out|already\s+(?:rented|taken|booked)|(?<!\p{L}|not\s|un)occupied(?!\p{L})|no\s+vacancy|no\s+longer\s+available|not\s+available\s+anymore|нет\s+свободных\s+квартир|(?<!\p{L})(?:уже\s+)?сдан[аыо]?(?!\p{L})(?!\s+в\s+эксплуатац)|(?<!\p{L}|не\s)занят[аыо]?(?!\p{L})|(?<!\p{L})(?:не\s*актуальн\p{L}*|больше\s+не\s+сда[её]тся)|đã\s*(?:cho\s*)?thuê|đã\s*có\s*(?:người|khách)\s*thuê|hết\s*phòng|không\s+còn\s+(?:phòng\s+)?trống/iu;
 const AVAILABLE_NOW =
   /available\s+now|свобод\p{L}*\s+сейчас|доступ\p{L}*\s+сейчас|có\s+sẵn\s+ngay/iu;
 
