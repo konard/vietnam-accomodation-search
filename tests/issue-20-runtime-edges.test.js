@@ -234,8 +234,9 @@ describe('issue 20 browser, release, auth, and history runtime edges', () => {
         addEventListener: () => {},
         get aborted() {
           abortedReads += 1;
-          return abortedReads === 2;
+          return abortedReads === 3;
         },
+        removeEventListener: () => {},
         reason: new Error('cancelled before delay'),
       },
     });

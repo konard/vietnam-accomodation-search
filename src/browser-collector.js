@@ -370,6 +370,7 @@ export class BrowserCollector {
     scheduler,
     sourceTimeoutMs = 90 * 1000,
     store,
+    telegramPageReserveMs = 15 * 1000,
     traceRecorder,
   } = {}) {
     this.browserLaunchOptions = browserLaunchOptions || {};
@@ -377,6 +378,7 @@ export class BrowserCollector {
     this.budgetMs = budgetMs;
     this.concurrency = concurrency;
     this.sourceTimeoutMs = sourceTimeoutMs;
+    this.telegramPageReserveMs = telegramPageReserveMs;
     this.logger = logger || { debug: () => {} };
     this.maxTelegramPages = maxTelegramPages;
     this.now = now || (() => new Date());
@@ -447,11 +449,41 @@ export class BrowserCollector {
     return classification;
   }
 
-  async collectTelegramRows(commander, source, query, { signal } = {}) {
+  // Navigates to `url`, or resolves false when `deadline` (epoch
+  // milliseconds) passes first. The caller's own signal still rejects.
+  async #navigatePage(commander, url, { deadline, signal }) {
+    if (!Number.isFinite(deadline)) {
+      await this.navigate(commander, url, { signal });
+      return true;
+    }
+    const paging = AbortSignal.timeout(Math.max(0, deadline - Date.now()));
+    try {
+      await this.navigate(commander, url, {
+        signal: AbortSignal.any([paging, signal].filter(Boolean)),
+      });
+      return true;
+    } catch (error) {
+      if (!paging.aborted || signal?.aborted) {
+        throw error;
+      }
+      return false;
+    }
+  }
+
+  // Paging stops at `deadline` (epoch milliseconds) and keeps the pages
+  // already read, so a channel deeper than the time left still yields its
+  // newest posts. The first page has no such limit.
+  async collectTelegramRows(
+    commander,
+    source,
+    query,
+    { deadline = Infinity, signal } = {}
+  ) {
     const firstUrl = buildSearchUrl(source, query);
     const rowsByUrl = new Map();
     const visited = new Set();
     const cutoff = cutoffDate(this.now());
+    let pageDeadline = Infinity;
     let url = firstUrl;
 
     for (
@@ -460,13 +492,23 @@ export class BrowserCollector {
       page += 1
     ) {
       visited.add(url);
-      await this.navigate(commander, url, { signal });
+      const reached = await this.#navigatePage(commander, url, {
+        deadline: pageDeadline,
+        signal,
+      });
+      if (!reached) {
+        this.logger.debug(
+          `Stopped paging ${source.id} at the paging deadline after ${page} pages`
+        );
+        break;
+      }
       const rows =
         (await commander.evaluate(extractPageListings, 'telegram')) || [];
       for (const row of rows) {
         const key = row.url || `${row.date || ''}\n${row.text || ''}`;
         rowsByUrl.set(key, row);
       }
+      pageDeadline = deadline;
       if (!rows.length) {
         break;
       }
@@ -494,7 +536,13 @@ export class BrowserCollector {
   }
 
   // eslint-disable-next-line complexity -- Source collection keeps transport, paging, and parser failure boundaries together.
-  async collectSource(commander, source, query, rates, { signal } = {}) {
+  async collectSource(
+    commander,
+    source,
+    query,
+    rates,
+    { deadline, signal } = {}
+  ) {
     const requestedUrl = buildSearchUrl(source, query);
     const adapter = browserAdapterFor(requestedUrl);
     if (!adapter.enabled) {
@@ -503,6 +551,7 @@ export class BrowserCollector {
     let rows;
     if (source.type === 'telegram') {
       rows = await this.collectTelegramRows(commander, source, query, {
+        deadline,
         signal,
       });
     } else {
@@ -775,6 +824,27 @@ export class BrowserCollector {
     }
   }
 
+  // Paging ends a reserve before the source or search deadline so the pages
+  // read so far are parsed and kept.
+  #pagingDeadline(startedAt) {
+    return (
+      Math.min(Date.now() + this.sourceTimeoutMs, startedAt + this.budgetMs) -
+      this.telegramPageReserveMs
+    );
+  }
+
+  #saveSource(trace, onSourceComplete, completed) {
+    return Promise.resolve()
+      .then(() => onSourceComplete?.(completed))
+      .then(() => trace.persist())
+      .catch((error) =>
+        this.logger.debug(
+          `Persisting ${completed.outcome.sourceId} results failed`,
+          error
+        )
+      );
+  }
+
   async collect(sources, query = '', options = {}) {
     return (await this.collectWithReport(sources, query, options)).offers;
   }
@@ -815,17 +885,11 @@ export class BrowserCollector {
     );
     const saves = [];
     const save = (outcome, collected) =>
-      Promise.resolve()
-        .then(() =>
-          onSourceComplete?.({ offers: collected, outcome, signal: deadline })
-        )
-        .then(() => trace.persist())
-        .catch((error) =>
-          this.logger.debug(
-            `Persisting ${outcome.sourceId} results failed`,
-            error
-          )
-        );
+      this.#saveSource(trace, onSourceComplete, {
+        offers: collected,
+        outcome,
+        signal: deadline,
+      });
 
     try {
       const pool = await runSourcePool(enabled, {
@@ -866,6 +930,7 @@ export class BrowserCollector {
             });
           }
           return this.collectSource(worker.commander, source, query, rates, {
+            deadline: this.#pagingDeadline(startedAt),
             signal: sourceSignal,
           });
         },

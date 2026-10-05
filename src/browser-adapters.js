@@ -122,6 +122,26 @@ export function classifyBrowserFailure(error) {
   return { category: 'transient', retryable: true, stopDomain: false };
 }
 
+// Settles with `operation`, or rejects with the signal reason as soon as the
+// signal aborts, so work that ignores its signal cannot hold the caller.
+export async function untilAborted(operation, signal) {
+  const pending = Promise.resolve(operation);
+  pending.catch(() => {});
+  if (signal.aborted) {
+    throw signal.reason;
+  }
+  let listener;
+  const aborted = new Promise((_resolve, reject) => {
+    listener = () => reject(signal.reason);
+    signal.addEventListener('abort', listener, { once: true });
+  });
+  try {
+    return await Promise.race([pending, aborted]);
+  } finally {
+    signal.removeEventListener('abort', listener);
+  }
+}
+
 export class DomainScheduler {
   constructor({
     delay = cancellableDelay,
@@ -237,7 +257,7 @@ export class DomainScheduler {
   run(url, operation, { signal } = {}) {
     const domain = new globalThis.URL(url).hostname.toLocaleLowerCase('en');
     const previous = this.domainTails.get(domain) || Promise.resolve();
-    const current = previous
+    const work = previous
       .catch(() => {})
       // eslint-disable-next-line complexity -- The serialized run owns cancellation, cooldown, budget, retry, and cleanup boundaries.
       .then(async () => {
@@ -312,14 +332,16 @@ export class DomainScheduler {
           this.#releaseDomainSlot();
         }
       });
-    this.domainTails.set(domain, current);
+    // Later requests to the domain wait for this one's turn to settle, but
+    // the caller stops waiting as soon as its own signal aborts.
+    this.domainTails.set(domain, work);
     const releaseTail = () => {
-      if (this.domainTails.get(domain) === current) {
+      if (this.domainTails.get(domain) === work) {
         this.domainTails.delete(domain);
       }
     };
-    void current.then(releaseTail, releaseTail);
-    return current;
+    void work.then(releaseTail, releaseTail);
+    return signal ? untilAborted(work, signal) : work;
   }
 }
 

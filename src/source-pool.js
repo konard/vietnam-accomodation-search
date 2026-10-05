@@ -2,7 +2,9 @@
 // timeout and the whole run has a budget; when either expires the affected
 // sources are reported and the run returns whatever already finished.
 
-import { PAGE_CLASSIFICATIONS } from './browser-adapters.js';
+import { PAGE_CLASSIFICATIONS, untilAborted } from './browser-adapters.js';
+
+export { untilAborted };
 
 export const SOURCE_STATUSES = Object.freeze({
   BLOCKED: 'blocked',
@@ -75,26 +77,6 @@ export class SourceTimeoutError extends Error {
     );
     this.code = kind === 'budget' ? 'SEARCH_BUDGET_ELAPSED' : 'SOURCE_TIMEOUT';
     this.name = 'SourceTimeoutError';
-  }
-}
-
-// Settles with `operation`, or rejects with the signal reason as soon as the
-// signal aborts, so work that ignores its signal cannot hold the caller.
-export async function untilAborted(operation, signal) {
-  const pending = Promise.resolve(operation);
-  pending.catch(() => {});
-  if (signal.aborted) {
-    throw signal.reason;
-  }
-  let listener;
-  const aborted = new Promise((_resolve, reject) => {
-    listener = () => reject(signal.reason);
-    signal.addEventListener('abort', listener, { once: true });
-  });
-  try {
-    return await Promise.race([pending, aborted]);
-  } finally {
-    signal.removeEventListener('abort', listener);
   }
 }
 
