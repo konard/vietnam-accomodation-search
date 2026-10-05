@@ -1,4 +1,9 @@
-import { launchSettings, openCommander, settleCleanup } from './utils.js';
+import {
+  gotoPage,
+  launchSettings,
+  openCommander,
+  settleCleanup,
+} from './utils.js';
 import { TELEGRAM_DISCOVERY_QUERIES } from './telegram-discovery.js';
 import { DomainScheduler } from './browser-adapters.js';
 
@@ -56,11 +61,7 @@ export class BrowserSourceDiscoverer {
   }
 
   navigate(commander, url, { signal } = {}) {
-    return this.scheduler.run(
-      url,
-      () => commander.goto({ url, waitForNetworkIdle: false }),
-      { signal }
-    );
+    return this.scheduler.run(url, () => gotoPage(commander, url), { signal });
   }
 
   async rankWeb(commander, candidates, { signal } = {}) {

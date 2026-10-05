@@ -5,6 +5,8 @@ import { TraceRecorder } from './trace.js';
 import {
   isLostPageError,
   launchSettings,
+  NAVIGATION_TIMEOUT_MS,
+  gotoPage,
   openCommander,
   settleCleanup,
 } from './utils.js';
@@ -364,6 +366,7 @@ export class BrowserCollector {
     concurrency = 4,
     logger,
     maxTelegramPages = 200,
+    navigationTimeoutMs = NAVIGATION_TIMEOUT_MS,
     now,
     rateProvider,
     rates,
@@ -381,6 +384,7 @@ export class BrowserCollector {
     this.telegramPageReserveMs = telegramPageReserveMs;
     this.logger = logger || { debug: () => {} };
     this.maxTelegramPages = maxTelegramPages;
+    this.navigationTimeoutMs = navigationTimeoutMs;
     this.now = now || (() => new Date());
     this.rateProvider = rateProvider;
     this.rates = rates || { VND: 1 };
@@ -392,7 +396,7 @@ export class BrowserCollector {
   async navigate(commander, url, { signal } = {}) {
     await this.scheduler.run(
       url,
-      () => commander.goto({ url, waitForNetworkIdle: false }),
+      () => gotoPage(commander, url, this.navigationTimeoutMs),
       { signal }
     );
   }
@@ -407,7 +411,7 @@ export class BrowserCollector {
     return this.scheduler.run(
       url,
       async () => {
-        await commander.goto({ url, waitForNetworkIdle: false });
+        await gotoPage(commander, url, this.navigationTimeoutMs);
         const rows =
           (await commander.evaluate(
             extractPageListings,
@@ -639,7 +643,7 @@ export class BrowserCollector {
         const row = await this.scheduler.run(
           url,
           async () => {
-            await commander.goto({ url, waitForNetworkIdle: false });
+            await gotoPage(commander, url, this.navigationTimeoutMs);
             const extracted =
               (await commander.evaluate(extractOfficialListing)) || {};
             await this.assertListingPage(commander, url, 1, {

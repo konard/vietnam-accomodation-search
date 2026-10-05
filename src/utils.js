@@ -72,6 +72,15 @@ export function openCommander(runtime, page) {
   return runtime.makeBrowserCommander({ enableNetworkTracking: false, page });
 }
 
+// browser-commander's goto() waits up to 240 s for a page that never answers.
+// Requests to one domain run one at a time, so a single stalled response
+// would hold every later request to that domain.
+export const NAVIGATION_TIMEOUT_MS = 30_000;
+
+export function gotoPage(commander, url, timeout = NAVIGATION_TIMEOUT_MS) {
+  return commander.goto({ timeout, url, waitForNetworkIdle: false });
+}
+
 // Playwright's own Chromium launcher adds --disable-dev-shm-usage, but
 // browser-commander starts Chrome with a minimal command line. Containers give
 // /dev/shm 64 MB by default; heavy booking pages then exhaust it, the browser
