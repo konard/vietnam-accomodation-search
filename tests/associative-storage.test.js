@@ -574,6 +574,32 @@ describe('canonical associative storage', () => {
     }
   });
 
+  it('completes concurrent writes of one file within one millisecond', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'concurrent-write-'));
+    const now = Date.now;
+    Date.now = () => 1_000;
+    try {
+      const path = join(directory, 'offers.lino');
+      const writes = await Promise.allSettled(
+        ['first', 'second', 'third'].map((text) => durableWrite(path, text))
+      );
+      expect(writes.map(({ status }) => status)).toEqual([
+        'fulfilled',
+        'fulfilled',
+        'fulfilled',
+      ]);
+      expect(['first', 'second', 'third']).toContain(
+        await readFile(path, 'utf8')
+      );
+    } finally {
+      Date.now = now;
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('only tolerates unsupported directory fsync on Windows', async () => {
     const unsupported = Object.assign(new Error('operation not permitted'), {
       code: 'EPERM',
