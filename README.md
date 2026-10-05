@@ -36,6 +36,9 @@ spelling, so the executable and npm package are named
   currencies using a daily exchange-rate snapshot.
 - Returns one offer for `/search --cheapest` or up to 50 for
   `/search --cheapest N`.
+- Marks sold-out, rented, and occupied posts (`Sold out`, `сдана`, `занята`,
+  `đã cho thuê`, `hết phòng`, and similar) as unavailable. Search and
+  subscriptions skip them; `/search --include-unavailable` shows them.
 - Keeps complete raw records in a `.lino` link store for future parsers.
 - Caches at most ten photos per offer under a shared 10 GiB budget. Eviction
   removes only local files; the original photo URL stays in the offer record.

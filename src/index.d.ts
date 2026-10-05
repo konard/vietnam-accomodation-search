@@ -59,6 +59,7 @@ export interface AccommodationAttributes {
   deposit?: Price;
   prepaymentMonths?: number;
   prepayment?: Price;
+  availability?: 'available' | 'unavailable';
   availableNow?: boolean;
   furnished?: boolean;
   petsAllowed?: boolean;
@@ -182,6 +183,8 @@ export interface AccommodationOffer {
 export interface SearchOptions {
   cheapest?: boolean;
   filters?: Record<string, boolean | number | string>;
+  /** Also return sold-out, rented, and occupied offers. */
+  includeUnavailable?: boolean;
   limit?: number;
   maxPerBedVnd?: number;
   maxPerRoomVnd?: number;

@@ -161,6 +161,16 @@ function matchesNamedFilters(offer, options) {
   );
 }
 
+// Sold-out, rented, and occupied listings stay stored so a later copy can
+// update them, but search and subscriptions skip them unless asked.
+function isAvailable(offer, options) {
+  return (
+    options.includeUnavailable === true ||
+    (offer.attributes?.availability !== 'unavailable' &&
+      offer.attributes?.availableNow !== false)
+  );
+}
+
 function sourceCoverageIsComplete(offers, sources, query) {
   if (!sources.length) {
     return offers.length > 0;
@@ -307,6 +317,7 @@ export class SearchService {
       const unique = deduplicateOffers(offers).filter(
         (offer) =>
           Number.isFinite(offer.priceVnd) &&
+          isAvailable(offer, options) &&
           isForQuery(offer, query) &&
           telegramOfferMatches(offer, query) &&
           matchesFilters(offer, filters) &&

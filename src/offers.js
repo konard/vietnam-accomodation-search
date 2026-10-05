@@ -56,6 +56,14 @@ function mergeAttributes(offers) {
       }
     }
   }
+  // Availability describes the latest copy only: an older "sold out" edit
+  // must not hide a listing that is posted again.
+  const latest = offers.at(-1).attributes || {};
+  for (const key of ['availability', 'availableNow']) {
+    if (latest[key] === undefined) {
+      delete merged[key];
+    }
+  }
   return Object.keys(merged).length ? merged : undefined;
 }
 
