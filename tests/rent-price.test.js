@@ -155,4 +155,37 @@ describe('rent price selection', () => {
     );
     expect(offer.priceVnd).toBe(16_380_000);
   });
+
+  it('reads Chinese rents in dollars and in ten-thousands of dong', () => {
+    expect(parsePrice('👉 四房，面河\n租金 : 每月 1500美元')).toEqual({
+      amount: 1500,
+      currency: 'USD',
+      period: 'month',
+    });
+    expect(parsePrice('🌟三房兩衛浴,面積84.2平米\n租金每月1500萬越盾')).toEqual(
+      {
+        amount: 15_000_000,
+        currency: 'VND',
+        period: 'month',
+      }
+    );
+    expect(parsePrice('✅兩房，面積91平米\n租金：3000萬越盾')).toEqual({
+      amount: 30_000_000,
+      currency: 'VND',
+      period: 'month',
+    });
+    expect(parsePrice('租金: 400美金\n押金: 800美金')).toEqual({
+      amount: 400,
+      currency: 'USD',
+      period: 'month',
+    });
+  });
+
+  it('skips a scaled amount too small to be a rent', () => {
+    expect(
+      parsePrice(
+        'Giá thuê: 5.5 triệu/tháng. Tầng 3.\n 0,0055 Triệu/tháng\nprice: 0,0055 Triệu/tháng'
+      )
+    ).toEqual({ amount: 5_500_000, currency: 'VND', period: 'month' });
+  });
 });

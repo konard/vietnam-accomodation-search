@@ -9,18 +9,22 @@ const CURRENCY_ALIASES = new Map([
   ['ЕВРО', 'EUR'],
   ['£', 'GBP'],
   ['GBP', 'GBP'],
+  ['美元', 'USD'],
+  ['美金', 'USD'],
 ]);
 
 const CURRENCY =
-  'VND|VNĐ|донг(?:а|ов)?|đồng|₫|đ(?!\\p{L})|USD|US\\$|\\$|долл(?:ар\\p{L}{0,3})?|dollars?|EUR|€|евро|euros?|GBP|£';
+  'VND|VNĐ|донг(?:а|ов)?|đồng|₫|đ(?!\\p{L})|USD|US\\$|\\$|долл(?:ар\\p{L}{0,3})?|dollars?|EUR|€|евро|euros?|GBP|£|美元|美金|越盾';
 const NUMBER = '\\d{1,12}(?:[.,\\u00a0 ]\\d{3}){0,4}(?:[.,]\\d{1,4})?';
 const SCALE =
-  'triệu|tr|million|mio|mln|млн|мл|миллион\\p{L}{0,3}|tỷ|billion|млрд|миллиард\\p{L}{0,3}|k|к|тыс|nghìn|ngàn|thousand|m';
+  'triệu|tr|million|mio|mln|млн|мл|миллион\\p{L}{0,3}|tỷ|billion|млрд|миллиард\\p{L}{0,3}|k|к|тыс|nghìn|ngàn|thousand|m|萬|万';
 // A money token is a number or range with an optional scale word and a
 // currency on either side. The scale and currency must end at a word
-// boundary, so "60 Trần Phú" or "60 m²" never read as millions.
+// boundary, so "60 Trần Phú" or "60 m²" never read as millions. Chinese
+// text has no spaces, so a Han character next to a token is not a word.
+const LETTER = '(?!\\p{sc=Han})\\p{L}';
 const MONEY = new RegExp(
-  `(?<![\\p{L}\\d.,+])(?:(${CURRENCY})\\s?)?(${NUMBER})(?:\\s?[-–—]\\s?(${NUMBER}))?(?!\\d)(?:(\\s?)(${SCALE})(?![\\p{L}\\d²³]))?(?:\\.?\\s{0,6}\\/?\\s?(${CURRENCY})(?!\\p{L}))?`,
+  `(?<![\\d.,+]|${LETTER})(?:(${CURRENCY})\\s?)?(${NUMBER})(?:\\s?[-–—]\\s?(${NUMBER}))?(?!\\d)(?:(\\s?)(${SCALE})(?![\\d²³]|${LETTER}))?(?:\\.?\\s{0,6}\\/?\\s?(${CURRENCY})(?!${LETTER}))?`,
   'giu'
 );
 
@@ -30,7 +34,10 @@ const PERIODS = [
     /(?<!\p{L})(?:ноч\p{L}*|сут(?:ки|ок|ка)?|день|дн(?:я|ей)|nights?|days?|đêm|ngày)(?!\p{L})/iu,
   ],
   ['week', /(?<!\p{L})(?:недел\p{L}*|weeks?|tuần)(?!\p{L})/iu],
-  ['month', /(?<!\p{L})(?:месяц\p{L}*|мес|months?|tháng)(?!\p{L})/iu],
+  [
+    'month',
+    /(?<!\p{L})(?:месяц\p{L}*|мес|months?|tháng)(?!\p{L})|每月|月租|[個个]月/iu,
+  ],
   ['year', /(?<!\p{L})(?:год(?:а|ов)?|years?|năm)(?!\p{L})/iu],
 ];
 const PERIOD_WORDS = new RegExp(
@@ -41,12 +48,12 @@ const PERIOD_WORDS = new RegExp(
 // Labels that name the rent itself. An amount under one of them outranks
 // every unlabelled amount in the post.
 const RENT_LABEL =
-  /стоимост\p{L}*|цен[аыуе](?!\p{L})|аренд\p{L}*|price|rent|giá/iu;
+  /стоимост\p{L}*|цен[аыуе](?!\p{L})|аренд\p{L}*|price|rent|giá|租金/iu;
 // Labels for amounts that are not the rent: utilities, building fees,
 // deposits, extras, vehicle rental offered next to the apartment, and sale
 // prices.
 const FEE_LABEL =
-  /продаж\p{L}*|for\s+sale|sale\s+price|(?<!\p{L})giá\s+bán|электр\p{L}*|свет(?!\p{L})|вод[аыуе](?!\p{L})|интернет|wi-?fi|вай-?фай|управлен\p{L}*|обслужив\p{L}*|охран\p{L}*|услуг\p{L}*|сервис\p{L}*|депозит|залог|комисси\p{L}*|уборк\p{L}*|клининг|стирк\p{L}*|парков\p{L}*|питом\p{L}*|животн\p{L}*|доплат\p{L}*|газ(?!\p{L})|мусор|коммунал\p{L}*|байк\p{L}*|скутер\p{L}*|автомоб\p{L}*|трансфер|electric\p{L}*|water|internet|management|service|deposit|cleaning|laundry|parking|(?<!\p{L})pets?(?!\p{L})|commission|agency|utilit\p{L}*|motorbike|scooter|(?<!\p{L})bike|transfer|điện|nước|phí|cọc|dọn|giặt|gửi\s*xe|xe\s*máy/iu;
+  /продаж\p{L}*|for\s+sale|sale\s+price|(?<!\p{L})giá\s+bán|электр\p{L}*|свет(?!\p{L})|вод[аыуе](?!\p{L})|интернет|wi-?fi|вай-?фай|управлен\p{L}*|обслужив\p{L}*|охран\p{L}*|услуг\p{L}*|сервис\p{L}*|депозит|залог|комисси\p{L}*|уборк\p{L}*|клининг|стирк\p{L}*|парков\p{L}*|питом\p{L}*|животн\p{L}*|доплат\p{L}*|газ(?!\p{L})|мусор|коммунал\p{L}*|байк\p{L}*|скутер\p{L}*|автомоб\p{L}*|трансфер|electric\p{L}*|water|internet|management|service|deposit|cleaning|laundry|parking|(?<!\p{L})pets?(?!\p{L})|commission|agency|utilit\p{L}*|motorbike|scooter|(?<!\p{L})bike|transfer|điện|nước|phí|cọc|dọn|giặt|gửi\s*xe|xe\s*máy|押金|管理[費费]|水[電电]/iu;
 // Unit rates such as "4.500 VND / кВт⋅ч" or "100.000 VND / человек".
 const PER_UNIT =
   /^\s?(?:\/|за|per|mỗi|một)?\s?(?:кв?т|kwh|kw(?!\p{L})|số(?!\p{L})|человек\p{L}*|чел(?!\p{L})|person|pax|người|м³|m³|m3|куб\p{L}*|khối|кг|kg|ký(?!\p{L})|m²|m2|м²|м2)/iu;
@@ -89,6 +96,9 @@ function multiplier(scale) {
   }
   if (/^(?:k|к|тыс|nghìn|ngàn|thousand)$/u.test(unit)) {
     return 1_000;
+  }
+  if (/^[萬万]$/u.test(unit)) {
+    return 10_000;
   }
   return 1_000_000;
 }
@@ -157,6 +167,8 @@ function moneyTokens(clause) {
     if (
       !Number.isFinite(low) ||
       low <= 0 ||
+      // "0,0055 Triệu" is a card typo; no rent in dong is that small.
+      (scale && (currency || 'VND') === 'VND' && low < 50_000) ||
       (bare &&
         (low < 100_000 || !/[.,]\d{3}/u.test(match[2]) || /^0/u.test(match[2])))
     ) {
