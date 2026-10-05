@@ -16,6 +16,27 @@ const ENABLED_WEB_SEEDS = DEFAULT_WEB_SOURCES.filter(
   ({ enabled }) => enabled
 ).length;
 
+// Parses the posts once so the time covers matching, not the first
+// compilation of every pattern, then times a second pass.
+function timedParse(texts) {
+  const parse = () =>
+    texts.map((text, index) =>
+      parseTelegramOffer(
+        {
+          chat: { username: 'adversarial_input' },
+          date: '2026-09-20T00:00:00Z',
+          messageId: index + 1,
+          text,
+        },
+        { now: new Date('2026-09-21T00:00:00Z') }
+      )
+    );
+  parse();
+  const startedAt = globalThis.performance.now();
+  const offers = parse();
+  return { durationMs: globalThis.performance.now() - startedAt, offers };
+}
+
 describe('Nha Trang source coverage', () => {
   it('adds twenty focused sources including the requested communities', () => {
     const ids = new Set(
@@ -276,41 +297,19 @@ describe('complete recent Telegram parsing', () => {
   });
 
   it('parses adversarial whitespace in bounded time', () => {
-    const startedAt = globalThis.performance.now();
-    for (const prefix of ['этаж', 'mã']) {
-      parseTelegramOffer(
-        {
-          chat: { username: 'adversarial_input' },
-          date: '2026-09-20T00:00:00Z',
-          messageId: 1,
-          text: `${prefix}${' '.repeat(10_000)}!`,
-        },
-        { now: new Date('2026-09-21T00:00:00Z') }
-      );
-    }
-    const durationMs = globalThis.performance.now() - startedAt;
+    const { durationMs } = timedParse(
+      ['этаж', 'mã'].map((prefix) => `${prefix}${' '.repeat(10_000)}!`)
+    );
 
     expect(durationMs < 150).toBe(true);
   });
 
   it('parses adversarial word and location punctuation runs in bounded time', () => {
-    const startedAt = globalThis.performance.now();
-    for (const text of [
+    const { durationMs } = timedParse([
       `${'-'.repeat(20_000)} x`,
       `спальни${' '.repeat(20_000)}x`,
       `Address: Nha Trang${'!'.repeat(20_000)}x`,
-    ]) {
-      parseTelegramOffer(
-        {
-          chat: { username: 'adversarial_input' },
-          date: '2026-09-20T00:00:00Z',
-          messageId: 2,
-          text,
-        },
-        { now: new Date('2026-09-21T00:00:00Z') }
-      );
-    }
-    const durationMs = globalThis.performance.now() - startedAt;
+    ]);
 
     expect(durationMs < 500).toBe(true);
   });
@@ -375,26 +374,13 @@ describe('complete recent Telegram parsing', () => {
 
 describe('bounded official URL parsing', () => {
   it('trims punctuation without pathological backtracking', () => {
-    const startedAt = globalThis.performance.now();
-    const parsed = parseTelegramOffer(
-      {
-        chat: { username: 'adversarial_input' },
-        date: '2026-09-20T00:00:00Z',
-        messageId: 2,
-        text: `Official website: https://hotel.example/${'!'.repeat(20_000)}x`,
-      },
-      { now: new Date('2026-09-21T00:00:00Z') }
-    );
-    const parsedTrailing = parseTelegramOffer(
-      {
-        chat: { username: 'adversarial_input' },
-        date: '2026-09-20T00:00:00Z',
-        messageId: 3,
-        text: 'Official website: https://hotel.example/stay!!!',
-      },
-      { now: new Date('2026-09-21T00:00:00Z') }
-    );
-    const durationMs = globalThis.performance.now() - startedAt;
+    const {
+      durationMs,
+      offers: [parsed, parsedTrailing],
+    } = timedParse([
+      `Official website: https://hotel.example/${'!'.repeat(20_000)}x`,
+      'Official website: https://hotel.example/stay!!!',
+    ]);
 
     expect(parsed.officialUrl?.endsWith('x')).toBe(true);
     expect(parsedTrailing.officialUrl).toBe('https://hotel.example/stay');
