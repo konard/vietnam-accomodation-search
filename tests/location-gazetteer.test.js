@@ -27,6 +27,19 @@ describe('Nha Trang place names without a location label', () => {
     });
   });
 
+  it('names the Mường Thanh tower and Napoleon a listing card is in', () => {
+    expect(
+      located('Apartment for rent with sea view in Muong Thanh Khanh Hoa')
+        .location
+    ).toBe('Mường Thanh Khánh Hòa, Nha Trang');
+    expect(
+      located('Apartment for rent with sea view in Napoleon ID A896', {
+        locationHint: 'Nha Trang, Vietnam',
+      }).location
+    ).toBe('Napoleon Castle, Nha Trang');
+    expect(located('Napoleon apartment in Hanoi').location).toBe('Hanoi');
+  });
+
   it('prefers a complex over the street and ward around it', () => {
     expect(
       located('Квартира Hà Quang 1, Phước Hải, Нячанг. 8 млн VND').location

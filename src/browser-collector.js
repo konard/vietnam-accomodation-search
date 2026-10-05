@@ -326,6 +326,15 @@ function telegramMessage(item, source) {
   };
 }
 
+// A web source about Nha Trang lets a shared name such as "Gold Coast" on
+// its cards stand for the Nha Trang complex.
+function webLocationHint(source) {
+  return (
+    source.location ||
+    (source.geographicFocus === 'nha-trang' ? 'Nha Trang, Vietnam' : undefined)
+  );
+}
+
 function messageId(row) {
   const value = row.url?.match(/\/(\d+)(?:\?.*)?$/u)?.[1];
   return value ? Number(value) : undefined;
@@ -636,7 +645,7 @@ export class BrowserCollector {
                 sourceId: source.id,
                 sourceType: source.type,
               },
-              { now: this.now(), rates }
+              { locationHint: webLocationHint(source), now: this.now(), rates }
             );
       if (Number.isFinite(offer?.priceVnd) || offer?.officialUrl) {
         offer.provenance = {

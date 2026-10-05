@@ -6,6 +6,7 @@
 const COMPLEXES = [
   ['Mường Thanh Viễn Triều', 'muong thanh vien trieu', 'vien trieu'],
   ['Oceanus', 'oceanus', 'muong thanh oceanus', 'океанус'],
+  ['Mường Thanh Khánh Hòa', 'muong thanh khanh hoa'],
   ['Scenia Bay', 'scenia bay'],
   ['Napoleon Castle', 'napoleon castle'],
   ['Hà Quang', 'ha quang', 'kdt ha quang'],
@@ -23,6 +24,7 @@ const COMPLEXES = [
 // source is about Nha Trang.
 const SHARED_COMPLEXES = [
   ['Gold Coast', 'gold coast', 'голд кост'],
+  ['Napoleon Castle', 'napoleon', 'наполеон'],
   ['Panorama', 'panorama', 'панорама'],
   ['Ariyana', 'ariyana', 'ариана'],
   ['Virgo', 'virgo'],

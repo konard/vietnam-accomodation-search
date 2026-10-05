@@ -1,4 +1,4 @@
-import { parseListingText } from './listing-parser.js';
+import { cardLocation, parseListingText } from './listing-parser.js';
 import {
   PRICE_HISTORY_LIMIT,
   VARIANT_LIMIT,
@@ -214,7 +214,9 @@ function mergeParsedContacts(parsed, explicit) {
 
 export function normalizeOffer(input, options = {}) {
   const text = firstPresent(compact(input.text), compact(input.title), '');
-  const parsed = parseListingText(text);
+  const parsed = parseListingText(text, {
+    locationHint: options.locationHint,
+  });
   const price = firstPresent(input.price, parsePrice(text));
   const rates = firstPresent(options.rates, { VND: 1 });
   const url = canonicalizeOfferUrl(compact(input.url));
@@ -243,7 +245,7 @@ export function normalizeOffer(input, options = {}) {
     ...optional('language', firstPresent(input.language, parsed.language)),
     ...optional(
       'location',
-      firstPresent(compact(input.location), parsed.location)
+      firstPresent(cardLocation(compact(input.location)), parsed.location)
     ),
     ...optional(
       'locationProvenance',
