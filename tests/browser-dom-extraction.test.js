@@ -198,6 +198,78 @@ describe('in-page listing extraction', () => {
     }
   });
 
+  it('takes a listing id from the link, not from the card text after it', () => {
+    const previous = globalThis.document;
+    const adapter = browserAdapterFor(
+      'https://alonhadat.com.vn/cho-thue-nha/khanh-hoa/nha-trang'
+    );
+    const card = (href, title) => {
+      const nodes = new Map([
+        [adapter.selectors.link, { href }],
+        [adapter.selectors.title, { textContent: title }],
+      ]);
+      return {
+        getAttribute: () => null,
+        innerText: `${title}\nHôm nay`,
+        querySelector: (selector) => nodes.get(selector) || null,
+        querySelectorAll: (selector) =>
+          nodes.has(selector) ? [nodes.get(selector)] : [],
+      };
+    };
+    globalThis.document = {
+      querySelectorAll: () => [
+        card(
+          'https://alonhadat.com.vn/cho-thue-nha-duong-thai-nguyen-13735772.html',
+          'CHO THUÊ NHÀ NGUYÊN CĂN ĐƯỜNG THÁI NGUYÊN'
+        ),
+        card(
+          'https://alonhadat.com.vn/cho-thue-nha-ngang-15m-15025837.html',
+          'CHO THUÊ NHÀ NGUYÊN CĂN THỐNG NHẤT'
+        ),
+        card('https://rent.example/house.html', 'Idea house by the beach'),
+      ],
+    };
+    try {
+      const cards = extractPageListings('web', adapter.selectors);
+      expect(cards.map(({ attributes }) => attributes?.propertyId)).toEqual([
+        '13735772',
+        '15025837',
+        undefined,
+      ]);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('reads a studio card whose facts state the area as no bedrooms', () => {
+    const previous = globalThis.document;
+    const adapter = browserAdapterFor(
+      'https://be-jib.com/ru/nha-trang/rentals'
+    );
+    const card = (facts) => {
+      const nodes = new Map([[adapter.selectors.fields.bedrooms, facts]]);
+      return {
+        getAttribute: () => null,
+        innerText: facts,
+        querySelector: (selector) =>
+          nodes.has(selector) ? { textContent: nodes.get(selector) } : null,
+        querySelectorAll: (selector) =>
+          nodes.has(selector) ? [{ textContent: nodes.get(selector) }] : [],
+      };
+    };
+    globalThis.document = {
+      querySelectorAll: () => [card('Студия · 35㎡'), card('2BR · 70㎡')],
+    };
+    try {
+      const cards = extractPageListings('web', adapter.selectors);
+      expect(cards.map(({ attributes }) => attributes.bedrooms)).toEqual([
+        0, 2,
+      ]);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('accounts for an ICEKEM rental card without a stated availability', () => {
     const previous = globalThis.document;
     const adapter = browserAdapterFor('https://icekem.com/ru/s/rent-nhatrang');

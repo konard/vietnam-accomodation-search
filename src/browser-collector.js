@@ -100,6 +100,17 @@ export function extractPageListings(sourceType, selectors = {}) {
     const result = Number(match?.replace(',', '.'));
     return Number.isFinite(result) ? result : undefined;
   };
+  // A facts line such as "Студия · 35㎡" or "2BR · 70㎡" also states the
+  // area, so the area is no bedroom count and a studio has no bedroom.
+  const bedroomSemantic = (value) => {
+    const facts = String(value || '');
+    if (/\bstudio\b|студи(?:я|ю|ей)(?!\p{L})/iu.test(facts)) {
+      return 0;
+    }
+    return numericSemantic(
+      facts.replace(/\d+(?:[.,]\d+)?\s*(?:㎡|m²|m2|м²|кв\.?\s*м)/giu, '')
+    );
+  };
   const backgroundImage = (element) =>
     element?.style?.backgroundImage?.match(/url\(["']?(.*?)["']?\)/u)?.[1] ||
     element
@@ -129,13 +140,17 @@ export function extractPageListings(sourceType, selectors = {}) {
         return value;
       }
     }
-    const context = `${anchor?.href || ''}\n${element.innerText || ''}`;
+    const href = anchor?.href || '';
+    const context = `${href}\n${element.innerText || ''}`;
+    // A page such as ".../cho-thue-nha-13735772.html" names the listing id
+    // right before ".html"; the card text after the link holds no id.
     return (
-      anchor?.href.match(
+      href.match(
         /(?:\/rooms\/|[?&](?:hotel|property|listing)_id=)([\p{L}\d_-]{1,64})/iu
       )?.[1] ||
+      href.match(/[-_/](\d{3,64})\.html?(?:[?#]|$)/iu)?.[1] ||
       context.match(
-        /(?:\bID|\bpr-|\btg-|\bproperty[-_/]|\blisting[-_/]|\.html\D{0,8})([\p{L}\d_-]{2,64})/iu
+        /(?:\bID(?!\p{L})|\bpr-|\btg-|\bproperty[-_/]|\blisting[-_/])([\p{L}\d_-]{2,64})/iu
       )?.[1]
     );
   };
@@ -224,7 +239,7 @@ export function extractPageListings(sourceType, selectors = {}) {
     const semantic = semanticFor(element);
     const title = titleElement?.textContent?.trim();
     const propertyId = pageIdentity(element, anchor);
-    const bedrooms = numericSemantic(semantic.bedrooms);
+    const bedrooms = bedroomSemantic(semantic.bedrooms);
     const bathrooms = numericSemantic(semantic.bathrooms);
     const areaM2 = numericSemantic(semantic.area);
     const availableNow = availabilityState(semantic.availability);
