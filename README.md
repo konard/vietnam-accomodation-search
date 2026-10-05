@@ -96,7 +96,21 @@ Chromium sandboxing remains enabled by default. In a locked-down container
 where unprivileged user namespaces are unavailable, set
 `BROWSER_NO_SANDBOX=1` to pass the browser command-line fallback documented by
 browser-commander. Use that setting only when the surrounding container is the
-security boundary.
+security boundary. `compose.yaml` sets it, because the hardened container
+cannot start Chromium's sandbox; see
+[docs/deployment.md](docs/deployment.md#browser-sandbox) for the risk.
+
+`self-check browser` launches the browser exactly as a search does, and
+`self-check search` searches a fixture page served on `127.0.0.1` in a
+throwaway data directory and fails unless it finds an offer.
+
+A search opens up to `BROWSER_CONCURRENCY` pages (default 4), stops a source
+after `BROWSER_SOURCE_TIMEOUT_MS` (default 90000), and stops the whole search
+after `SEARCH_BUDGET_MS` (default 180000). Each finished source is saved as
+soon as it completes. The CLI and the bot report sources that failed, timed
+out, or were still pending at the budget. When no source produced offers, the
+CLI exits with status 1; an interrupted search (SIGINT/SIGTERM) closes its
+browser and exits with status 130.
 
 ## Telegram commands
 

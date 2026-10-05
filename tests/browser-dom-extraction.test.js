@@ -78,6 +78,28 @@ describe('in-page listing extraction', () => {
     }
   });
 
+  it('leaves unmatched semantic fields out of the listing text', () => {
+    const previous = globalThis.document;
+    const card = {
+      innerText: 'Studio for rent, 8,000,000 VND/month',
+      getAttribute: () => null,
+      querySelector: (selector) =>
+        selector === 'h3' ? { textContent: 'Studio for rent' } : null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = { querySelectorAll: () => [card] };
+    try {
+      const [listing] = extractPageListings('web', {
+        cards: '.card',
+        title: 'h3',
+      });
+      expect(listing.text).toBe(card.innerText);
+      expect(listing.text.includes('undefined')).toBe(false);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
   it('uses a source-scoped city when an individual card omits its address', () => {
     const previous = globalThis.document;
     const card = {

@@ -222,6 +222,7 @@ export function extractPageListings(sourceType, selectors = {}) {
       }).filter(([, value]) => value !== undefined)
     );
     const semanticText = Object.entries(semantic)
+      .filter(([, value]) => value !== undefined)
       .map(([field, value]) => `${field}: ${value}`)
       .join('\n');
     return {
@@ -741,6 +742,36 @@ export class BrowserCollector {
     }
   }
 
+  async #launch() {
+    const runtime = this.browserRuntime || (await loadDefaultBrowserRuntime());
+    const { browser, page } = await runtime.launchBrowser({
+      engine: 'playwright',
+      headless: true,
+      ...this.browserLaunchOptions,
+    });
+    return { browser, page, runtime };
+  }
+
+  // Launches the browser exactly as a search does, renders a `data:` page,
+  // and returns its title. Deploy and CI checks call this so a browser that
+  // cannot start fails them the same way it would fail a search.
+  async checkLaunch() {
+    const { browser, page, runtime } = await this.#launch();
+    const commander = runtime.makeBrowserCommander({ page });
+    try {
+      await commander.goto({
+        url: 'data:text/html,<title>browser-check</title>',
+        waitForNetworkIdle: false,
+      });
+      return await commander.evaluate(() => globalThis.document.title);
+    } finally {
+      await settleCleanup(
+        [() => commander.destroy(), () => browser.close()],
+        'Browser check cleanup was incomplete.'
+      );
+    }
+  }
+
   async collect(sources, query = '', options = {}) {
     return (await this.collectWithReport(sources, query, options)).offers;
   }
@@ -754,16 +785,11 @@ export class BrowserCollector {
     { onSourceComplete, runId: parentRunId, signal, traceRecorder } = {}
   ) {
     const trace = traceRecorder || this.trace;
-    const runtime = this.browserRuntime || (await loadDefaultBrowserRuntime());
     const rates = this.rateProvider
       ? await this.rateProvider.getRates()
       : this.rates;
     const startedAt = Date.now();
-    const { browser, page } = await runtime.launchBrowser({
-      engine: 'playwright',
-      headless: true,
-      ...this.browserLaunchOptions,
-    });
+    const { browser, page, runtime } = await this.#launch();
     const workers = this.#workerFactory(runtime, browser, page);
     const offers = [];
     const runIds = new Map();

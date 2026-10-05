@@ -17,6 +17,7 @@ import {
   validateTelegramConfiguration,
 } from '../src/index.js';
 import { secretPrompt } from '../src/secret-prompt.js';
+import { checkBrowser, runFixtureSearch } from '../src/self-check.js';
 
 const packageVersion = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8')
@@ -31,6 +32,7 @@ function usage() {
     '  search [--cheapest [N]] Q  Search and cache accommodation offers',
     '  update-sources              Refresh all ranked source cohorts',
     '  check-availability ID [@U] Send an availability inquiry as a user',
+    '  self-check browser|search   Launch the browser, or search a local fixture page',
     '  telegram preflight          Validate storage and Telegram identities',
     '  telegram ingest             Backfill and monitor configured Telegram sources',
     '  telegram auth login|status|validate|rotate|logout',
@@ -92,6 +94,7 @@ export async function runCli(
   argv,
   {
     application,
+    applicationFactory = createApplication,
     authFactory = (options) => new TelegramAuthService(options),
     env = process.env,
     processRef = process,
@@ -346,6 +349,25 @@ export async function runCli(
         stderr,
         stdout,
       });
+    }
+    if (command === 'self-check' && rest[0] === 'browser') {
+      application ||= applicationFactory({ environment: env });
+      stdout(JSON.stringify(await checkBrowser(application)));
+      return 0;
+    }
+    if (command === 'self-check' && rest[0] === 'search') {
+      stdout(
+        JSON.stringify(
+          await runFixtureSearch({
+            createApplication: applicationFactory,
+            environment: env,
+          })
+        )
+      );
+      return 0;
+    }
+    if (command === 'self-check') {
+      throw new Error('Usage: self-check browser|search');
     }
     if (command === 'update-sources') {
       const credentials = await resolveTelegramSecrets(env);

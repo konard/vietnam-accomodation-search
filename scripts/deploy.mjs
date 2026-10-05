@@ -284,9 +284,12 @@ async function prepareCandidate(config) {
   }
   await run`docker run --rm --entrypoint node ${image} bin/vietnam-accomodation-search.js --help`;
   await run`docker run --rm --entrypoint clink ${image} --help`;
-  const browserSmoke =
-    "import { chromium } from 'playwright'; const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] }); await browser.close();";
-  await run`docker run --rm --entrypoint node ${image} --input-type=module -e ${browserSmoke}`;
+  // The browser checks run through compose with the deployed environment and
+  // the app's own launch path, so they fail exactly when a search would.
+  progress.step = 'launching the browser as the app does';
+  await run`docker compose -f ${config.composeFile} -p ${config.projectName} run --rm --no-deps --entrypoint node app bin/vietnam-accomodation-search.js self-check browser`;
+  progress.step = 'searching a local fixture page';
+  await run`docker compose -f ${config.composeFile} -p ${config.projectName} run --rm --no-deps --entrypoint node app bin/vietnam-accomodation-search.js self-check search`;
   progress.step = 'checking storage and Telegram credentials';
   const storagePreflight =
     "import { open, rename, rm } from 'node:fs/promises'; const a='/data/.container-write-probe'; const b=a+'.renamed'; const f=await open(a,'wx',0o600); await f.writeFile('probe'); await f.sync(); await f.close(); await rename(a,b); await rm(b);";
