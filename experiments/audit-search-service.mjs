@@ -31,7 +31,7 @@ const cardUrl = (testCase) =>
 
 // A stub browser whose every listing page holds the reviewed cards of the
 // source the collector opened.
-function replayRuntime(cases) {
+export function replayRuntime(cases) {
   return {
     launchBrowser: () =>
       Promise.resolve({ browser: { close: () => Promise.resolve() } }),
@@ -67,7 +67,7 @@ function replayRuntime(cases) {
 }
 
 // Each replayed source keeps the city focus its reviewed cards came from.
-function replaySources(cases) {
+export function replaySources(cases) {
   const focus = new Map(
     cases.map(({ input }) => [input.sourceId, input.focus])
   );
@@ -139,8 +139,25 @@ export async function auditReplay({ corpus, directory }) {
   return { ...search, metrics, stored: search.stored.length };
 }
 
-export async function auditLive({ corpus, directory, environment }) {
-  const application = createApplication({ directory, environment });
+// `browserRuntime`, `rateProvider` and `sources` replace the real browser,
+// exchange rates and default web sources, so tests can run it offline.
+export async function auditLive({
+  browserRuntime,
+  corpus,
+  directory,
+  environment,
+  rateProvider,
+  sources,
+}) {
+  const application = createApplication({
+    browserRuntime,
+    directory,
+    environment,
+    rateProvider,
+  });
+  if (sources) {
+    application.registry.list = () => Promise.resolve(sources);
+  }
   const search = await searchAndReload({ application, directory });
   const byText = new Map(
     search.stored.map((offer) => [

@@ -8,6 +8,11 @@
  * diagnostics beneath a private temporary directory and never attempts to
  * solve or bypass a CAPTCHA.
  *
+ * After the route audit, the run searches "Nha Trang" through the product
+ * SearchService and store (experiments/audit-search-service.mjs) and scores
+ * the persisted offers against the reviewed live sample, reporting per-field
+ * precision and recall. `--skip-search-service` leaves that check out.
+ *
  * Example:
  *   node experiments/audit-browser-real-estate.mjs --max-sites 3
  */
@@ -21,6 +26,8 @@ import { fileURLToPath, URL } from 'node:url';
 import { launchBrowser, makeBrowserCommander } from 'browser-commander';
 import { browserAdapterFor } from '../src/browser-adapters.js';
 import { extractPageListings } from '../src/browser-collector.js';
+import { auditLive } from './audit-search-service.mjs';
+import { loadCorpus } from './field-corpus-metrics.mjs';
 
 import {
   assessSourceCoverage,
@@ -51,6 +58,7 @@ function parseArguments(argv) {
   const values = {
     concurrency: 3,
     headed: false,
+    searchService: true,
     manifest: DEFAULT_MANIFEST,
     maxDelayMs: 8_000,
     maxSites: Number.POSITIVE_INFINITY,
@@ -62,6 +70,10 @@ function parseArguments(argv) {
     const name = argv[index];
     if (name === '--headed') {
       values.headed = true;
+      continue;
+    }
+    if (name === '--skip-search-service') {
+      values.searchService = false;
       continue;
     }
     if (name === '--site' && argv[index + 1] !== undefined) {
@@ -322,6 +334,25 @@ async function auditSite({ options, pacer, site, writer }) {
   return result;
 }
 
+// Field precision and recall of the offers the product search path persisted.
+async function auditSearchService(outputDirectory) {
+  const directory = join(outputDirectory, 'search-service');
+  await mkdir(directory, { mode: 0o700, recursive: true });
+  const result = await auditLive({
+    corpus: await loadCorpus(),
+    directory,
+    environment: process.env,
+  });
+  return {
+    fields: result.metrics.fields,
+    matchedReviewedCards: result.matchedReviewedCards,
+    outcomes: result.outcomes,
+    // No matched card means nothing was scored.
+    pass: result.matchedReviewedCards > 0 && result.metrics.pass,
+    stored: result.stored,
+  };
+}
+
 async function main() {
   assertManualLocalRun(process.env);
   const options = parseArguments(process.argv.slice(2));
@@ -367,16 +398,24 @@ async function main() {
       results.filter((result) => result.outcome === outcome).length,
     ])
   );
-  await writer.write({ outcomes, stage: 'run.finished' });
+  const searchService = options.searchService
+    ? await auditSearchService(outputDirectory)
+    : undefined;
+  await writer.write({ outcomes, searchService, stage: 'run.finished' });
   console.log(
     JSON.stringify({
       manualLocalOnly: true,
       outcomes,
       outputDirectory,
+      searchService,
       trace: writer.path,
     })
   );
-  const exitCode = results.some(({ outcome }) => outcome !== 'success') ? 1 : 0;
+  const exitCode =
+    results.some(({ outcome }) => outcome !== 'success') ||
+    searchService?.pass === false
+      ? 1
+      : 0;
   process.exit(exitCode);
 }
 
