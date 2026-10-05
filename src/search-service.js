@@ -185,6 +185,13 @@ function sourceCoverageIsComplete(offers, sources, query) {
 
 // Sources without a fresh offer for the query go first, so a refresh that
 // stops at its budget still extends coverage on the next search.
+// "Nhà Trang apartment" → "nha-trang-apartment", the form of source focus.
+function citySlug(query) {
+  return normalizedValue(query)
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-|-$/gu, '');
+}
+
 function refreshOrder(offers, sources, query, now, maxAgeMs) {
   const fresh = new Set(
     offers
@@ -193,9 +200,20 @@ function refreshOrder(offers, sources, query, now, maxAgeMs) {
       )
       .flatMap((offer) => offer.sourceIds || [offer.sourceId])
   );
+  const city = citySlug(query);
+  const focused = (source) => {
+    const focus = source.focus || source.geographicFocus;
+    return Boolean(city && focus) && city.includes(focus);
+  };
+  // A search budget runs out before every source finishes; spend it on
+  // sources focused on the queried city first.
+  const byFocus = (list) => [
+    ...list.filter(focused),
+    ...list.filter((source) => !focused(source)),
+  ];
   return [
-    ...sources.filter((source) => !fresh.has(source.id)),
-    ...sources.filter((source) => fresh.has(source.id)),
+    ...byFocus(sources.filter((source) => !fresh.has(source.id))),
+    ...byFocus(sources.filter((source) => fresh.has(source.id))),
   ];
 }
 

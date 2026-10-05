@@ -137,6 +137,40 @@ describe('SearchService.searchWithReport', () => {
     expect(order).toEqual(['missing', 'covered']);
   });
 
+  it('refreshes sources focused on the queried city first', async () => {
+    const order = [];
+    const service = new SearchService({
+      collector: {
+        collectWithReport: async (sources) => {
+          order.push(sources.map((source) => source.id));
+          return { ...reportFor([]), offers: [] };
+        },
+      },
+      now: () => NOW,
+      registry: {
+        list: async () => [
+          { id: 'danang' },
+          { focus: 'nha-trang', id: 'covered' },
+          { focus: 'nha-trang', id: 'channel' },
+          { geographicFocus: 'nha-trang', id: 'site' },
+        ],
+      },
+      store: {
+        listOffers: async () => [
+          offer('old', 'covered', { searchQuery: 'Nha Trang apartment' }),
+        ],
+        saveOffers: async () => {},
+      },
+      traceRecorder: { persist: async () => {}, record: () => {} },
+    });
+    await service.search({ query: 'Nha Trang apartment', refresh: true });
+    await service.search({ query: 'Đà Nẵng', refresh: true });
+    expect(order).toEqual([
+      ['channel', 'site', 'danang', 'covered'],
+      ['danang', 'covered', 'channel', 'site'],
+    ]);
+  });
+
   it('traces a refresh where every source failed as degraded', async () => {
     const events = [];
     const service = new SearchService({
