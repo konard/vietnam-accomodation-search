@@ -146,10 +146,13 @@ browser and exits with status 130.
 /check_availability OFFER_ID [@owner]
 ```
 
-The first search, an explicit refresh, or a stale/incomplete cache triggers a
-browser pass over every configured source. Later searches use the cache for up
-to six hours. One inaccessible source is logged and skipped without discarding
-results from the other sources.
+Collection freshness is recorded per source and query for up to six hours,
+including successful empty results. Searches refresh only stale matching
+sources; sources left pending are prioritized on the next bounded pass. An
+explicit refresh also revisits fresh sources. Sources identified with another
+city are skipped. Bot searches deliver cached offers immediately and name the
+sources refreshing in the background. One inaccessible source is logged and
+skipped without discarding results from the other sources.
 
 The built-in `default` preset is empty and cannot be deleted. A named preset is
 global for that numeric Telegram user. Search arguments temporarily override

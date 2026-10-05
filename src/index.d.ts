@@ -181,6 +181,8 @@ export interface AccommodationOffer {
 }
 
 export interface SearchOptions {
+  /** Return cached results while stale sources refresh in the background. */
+  cacheFirst?: boolean;
   cheapest?: boolean;
   filters?: Record<string, boolean | number | string>;
   /** Also return sold-out, rented, and occupied offers. */
@@ -202,6 +204,7 @@ export interface SearchOptions {
   minTotalPriceVnd?: number;
   query?: string;
   refresh?: boolean;
+  signal?: AbortSignal;
   traceRunId?: string;
   types?: string[];
 }
@@ -800,6 +803,34 @@ export declare class BrowserSourceDiscoverer {
 export declare class SearchService {
   constructor(options: Record<string, unknown>);
   search(options?: SearchOptions): Promise<AccommodationOffer[]>;
+  searchWithReport(options?: SearchOptions): Promise<{
+    offers: AccommodationOffer[];
+    report?: {
+      refreshingSources?: string[];
+      budgetElapsed?: boolean;
+      outcomes?: SourceOutcome[];
+      summary?: SourceOutcomeSummary;
+    };
+  }>;
+  waitForRefresh(): Promise<void>;
+}
+
+export interface SourceOutcome {
+  sourceId: string;
+  status: string;
+  offers: number;
+  durationMs?: number;
+  category?: string;
+}
+
+export interface SourceOutcomeSummary {
+  allFailed: boolean;
+  failed: number;
+  succeeded: number;
+  byStatus: Record<string, number>;
+  failedCategories: Record<string, number>;
+  total: number;
+  pending?: number;
 }
 
 export declare function createAvailabilityMessage(

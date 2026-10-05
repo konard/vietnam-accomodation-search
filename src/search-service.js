@@ -1,5 +1,10 @@
 import { deduplicateOffers } from './offers.js';
 import { TraceRecorder } from './trace.js';
+import {
+  collectionKey,
+  matchingSources,
+  refreshSources,
+} from './search-refresh.js';
 
 function isFresh(offer, now, maxAgeMs) {
   const collectedAt = new Date(offer.collectedAt).getTime();
@@ -171,52 +176,6 @@ function isAvailable(offer, options) {
   );
 }
 
-function sourceCoverageIsComplete(offers, sources, query) {
-  if (!sources.length) {
-    return offers.length > 0;
-  }
-  const covered = new Set(
-    offers
-      .filter((offer) => isForQuery(offer, query))
-      .flatMap((offer) => offer.sourceIds || [offer.sourceId])
-  );
-  return sources.every((source) => covered.has(source.id));
-}
-
-// Sources without a fresh offer for the query go first, so a refresh that
-// stops at its budget still extends coverage on the next search.
-// "Nhà Trang apartment" → "nha-trang-apartment", the form of source focus.
-function citySlug(query) {
-  return normalizedValue(query)
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-|-$/gu, '');
-}
-
-function refreshOrder(offers, sources, query, now, maxAgeMs) {
-  const fresh = new Set(
-    offers
-      .filter(
-        (offer) => isForQuery(offer, query) && isFresh(offer, now, maxAgeMs)
-      )
-      .flatMap((offer) => offer.sourceIds || [offer.sourceId])
-  );
-  const city = citySlug(query);
-  const focused = (source) => {
-    const focus = source.focus || source.geographicFocus;
-    return Boolean(city && focus) && city.includes(focus);
-  };
-  // A search budget runs out before every source finishes; spend it on
-  // sources focused on the queried city first.
-  const byFocus = (list) => [
-    ...list.filter(focused),
-    ...list.filter((source) => !focused(source)),
-  ];
-  return [
-    ...byFocus(sources.filter((source) => !fresh.has(source.id))),
-    ...byFocus(sources.filter((source) => fresh.has(source.id))),
-  ];
-}
-
 export class SearchService {
   constructor({
     collector,
@@ -235,17 +194,74 @@ export class SearchService {
     this.store = store;
     this.trace = traceRecorder || new TraceRecorder({ now, store });
     this.traceSequence = 0;
+    this.collectionStates = [];
+    this.refreshTasks = new Map();
   }
 
   shouldRefresh(offers, sources, refresh, query) {
     if (refresh !== null && refresh !== undefined) {
       return refresh;
     }
-    return (
-      !offers.some(
-        (offer) =>
-          isForQuery(offer, query) && isFresh(offer, this.now(), this.maxAgeMs)
-      ) || !sourceCoverageIsComplete(offers, sources, query)
+    return sources.length
+      ? this.#staleSources(offers, matchingSources(sources, query), query)
+          .length > 0
+      : !offers.some(
+          (offer) =>
+            isForQuery(offer, query) &&
+            isFresh(offer, this.now(), this.maxAgeMs)
+        );
+  }
+
+  #staleSources(offers, sources, query, force = false) {
+    return refreshSources({
+      offers,
+      sources,
+      query,
+      states: this.collectionStates,
+      now: this.now(),
+      maxAgeMs: this.maxAgeMs,
+      force,
+    });
+  }
+
+  async #rememberOutcome(outcome, query) {
+    if (!outcome || ['pending', 'cancelled'].includes(outcome.status)) {
+      return;
+    }
+    const id = collectionKey(outcome.sourceId, query);
+    const timestamp = this.now().toISOString();
+    const update = (current) => {
+      const previous = current.find((state) => state.id === id);
+      const state = {
+        ...previous,
+        id,
+        sourceId: outcome.sourceId,
+        query,
+        attemptedAt: timestamp,
+        status: outcome.status,
+      };
+      if (['offers', 'empty'].includes(outcome.status)) {
+        state.collectedAt = timestamp;
+      }
+      return [...current.filter((entry) => entry.id !== id), state];
+    };
+    if (this.store.updateRecords) {
+      this.collectionStates = await this.store.updateRecords(
+        'search-collections',
+        update
+      );
+    } else {
+      this.collectionStates = update(this.collectionStates);
+      await this.store.saveRecords?.(
+        'search-collections',
+        this.collectionStates
+      );
+    }
+  }
+
+  async waitForRefresh() {
+    await Promise.all(
+      [...this.refreshTasks.values()].map(({ promise }) => promise)
     );
   }
 
@@ -255,16 +271,18 @@ export class SearchService {
 
   // Saves each finished source as it completes, so an interrupted refresh
   // keeps finished work; writes are chained to keep them ordered.
-  #sourcePersister() {
+  #sourcePersister(query) {
     let chain = Promise.resolve();
-    const persist = async ({ offers, signal }) => {
+    const persist = async ({ offers, outcome, signal }) => {
       if (!offers.length) {
+        await this.#rememberOutcome(outcome, query);
         return;
       }
       const cached = this.mediaCache
         ? await this.mediaCache.cacheOffers(offers, { signal })
         : offers;
       await this.store.saveOffers(cached);
+      await this.#rememberOutcome(outcome, query);
     };
     return (completion) => {
       chain = chain.then(() => persist(completion));
@@ -280,11 +298,17 @@ export class SearchService {
         collected = await this.mediaCache.cacheOffers(collected);
       }
       await this.store.saveOffers(collected);
+      for (const source of sources) {
+        await this.#rememberOutcome(
+          { sourceId: source.id, status: 'empty' },
+          query
+        );
+      }
       return { collected, report: undefined };
     }
     const report = await this.collector.collectWithReport(sources, query, {
       ...options,
-      onSourceComplete: this.#sourcePersister(),
+      onSourceComplete: this.#sourcePersister(query),
     });
     return { collected: report.offers, report };
   }
@@ -306,30 +330,85 @@ export class SearchService {
     this.trace.record({ runId, stage: 'search', status: 'start' });
     try {
       let offers = await this.store.listOffers();
-      const sources = await this.registry.list();
+      const sources = matchingSources(await this.registry.list(), query);
+      this.collectionStates =
+        (await this.store.loadRecords?.('search-collections')) ||
+        this.collectionStates;
       const shouldRefresh = this.shouldRefresh(offers, sources, refresh, query);
       let report;
 
       if (shouldRefresh) {
-        const ordered = refreshOrder(
+        const ordered = this.#staleSources(
           offers,
           sources,
           query,
-          this.now(),
-          this.maxAgeMs
+          refresh === true
         );
-        const refreshed = await this.#refresh(ordered, query, {
-          runId,
-          signal,
-        });
-        report = refreshed.report;
-        const budget = await this.mediaCache?.enforceBudget(
-          refreshed.collected
-        );
-        if (budget?.removed.length) {
-          await this.store.saveOffers(refreshed.collected);
+        const key = normalizedQuery(query);
+        const cached =
+          options.cacheFirst &&
+          refresh !== true &&
+          offers.some((offer) => isForQuery(offer, query));
+        let task = this.refreshTasks.get(key);
+        if (!task) {
+          const promise = (async () => {
+            const refreshed = await this.#refresh(ordered, query, {
+              runId,
+              signal,
+            });
+            const budget = await this.mediaCache?.enforceBudget(
+              refreshed.collected
+            );
+            if (budget?.removed.length) {
+              await this.store.saveOffers(refreshed.collected);
+            }
+            return refreshed.report;
+          })();
+          task = { sourceIds: ordered.map(({ id }) => id), promise };
+          this.refreshTasks.set(key, task);
+          // Keep failures observed while a cache-first caller has already left.
+          task.promise = promise
+            .catch((error) => {
+              if (!cached) {
+                throw error;
+              }
+              this.trace.record({
+                runId,
+                stage: 'background-refresh',
+                status: 'failure',
+                metadata: { code: error?.code },
+              });
+              return undefined;
+            })
+            .finally(async () => {
+              try {
+                if (cached) {
+                  await this.trace.persist();
+                }
+              } finally {
+                this.refreshTasks.delete(key);
+              }
+            })
+            .catch((error) => {
+              if (!cached) {
+                throw error;
+              }
+              // Observe trace persistence failures after the caller returned.
+              this.trace.record({
+                runId,
+                stage: 'background-trace',
+                status: 'failure',
+                metadata: { code: error?.code },
+              });
+              return undefined;
+            });
         }
-        offers = await this.store.listOffers();
+        if (cached) {
+          report = { refreshingSources: task.sourceIds };
+        } else {
+          report = await task.promise;
+          offers = await this.store.listOffers();
+        }
       }
 
       const unique = deduplicateOffers(offers).filter(
@@ -350,10 +429,10 @@ export class SearchService {
       this.trace.record({
         runId,
         stage: 'search',
-        status: report?.summary.allFailed ? 'degraded' : 'success',
+        status: report?.summary?.allFailed ? 'degraded' : 'success',
         metadata: {
           candidates: unique.length,
-          failedSources: report?.summary.failed,
+          failedSources: report?.summary?.failed,
           refresh: shouldRefresh,
           returned: result.length,
           sources: sources.length,
@@ -362,6 +441,7 @@ export class SearchService {
       return {
         offers: result,
         report: report && {
+          refreshingSources: report.refreshingSources,
           budgetElapsed: report.budgetElapsed,
           outcomes: report.outcomes,
           summary: report.summary,

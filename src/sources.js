@@ -1,3 +1,5 @@
+import { citiesIn } from './search-refresh.js';
+
 const OBSERVED_AT = '2026-09-21T00:00:00.000Z';
 
 // eslint-disable-next-line max-params -- Static source declarations stay compact and directly reviewable as a ranked manifest.
@@ -52,7 +54,7 @@ function telegramSource(handle, name, value, { focus } = {}) {
     url: `https://t.me/${handle}`,
     searchUrl: `https://t.me/s/${handle}`,
     access: 'public-preview',
-    geographicFocus: focus === 'nha-trang' ? 'nha-trang' : 'vietnam',
+    geographicFocus: focus || citiesIn(`${handle} ${name}`)[0] || 'vietnam',
     languages,
     lastScannedAt: OBSERVED_AT,
     popularity: {
