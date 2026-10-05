@@ -162,7 +162,7 @@ export class DomainScheduler {
       return this.domainStates.get(domain);
     }
     const records =
-      (await this.store?.loadRecords?.('browser-domain-cooldown')) || [];
+      (await this.store?.loadRecords?.('browser-domain-cooldowns')) || [];
     const state = records.find(
       (record) => record.id === domain || record.domain === domain
     ) || { blockedUntil: 0, consecutiveFailures: 0, domain, id: domain };
@@ -173,7 +173,7 @@ export class DomainScheduler {
   async #saveDomainState(state) {
     this.domainStates.set(state.domain, state);
     if (this.store?.updateRecords) {
-      await this.store.updateRecords('browser-domain-cooldown', (records) => [
+      await this.store.updateRecords('browser-domain-cooldowns', (records) => [
         ...records.filter(
           (record) => record.id !== state.id && record.domain !== state.domain
         ),
@@ -183,8 +183,8 @@ export class DomainScheduler {
     }
     if (this.store?.saveRecords) {
       const records =
-        (await this.store.loadRecords?.('browser-domain-cooldown')) || [];
-      await this.store.saveRecords('browser-domain-cooldown', [
+        (await this.store.loadRecords?.('browser-domain-cooldowns')) || [];
+      await this.store.saveRecords('browser-domain-cooldowns', [
         ...records.filter(
           (record) => record.id !== state.id && record.domain !== state.domain
         ),

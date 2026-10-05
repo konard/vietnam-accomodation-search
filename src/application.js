@@ -157,13 +157,13 @@ export function createApplication(options = {}) {
       { id: checkpoint.focus, ...checkpoint },
     ];
     if (typeof store.updateRecords === 'function') {
-      await store.updateRecords('telegram-discovery-checkpoint', update);
+      await store.updateRecords('telegram-discovery-checkpoints', update);
       return;
     }
     const existing =
-      (await store.loadRecords?.('telegram-discovery-checkpoint')) || [];
+      (await store.loadRecords?.('telegram-discovery-checkpoints')) || [];
     await store.saveRecords?.(
-      'telegram-discovery-checkpoint',
+      'telegram-discovery-checkpoints',
       update(existing)
     );
   };

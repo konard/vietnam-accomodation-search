@@ -136,7 +136,7 @@ describe('issue 20 composition and failure tracing', () => {
     expect(botDiscoveryCalls > 0).toBe(true);
     expect(clients > 0).toBe(true);
     expect(maxActiveClients).toBe(1);
-    expect(store.records.has('telegram-discovery-checkpoint')).toBe(true);
+    expect(store.records.has('telegram-discovery-checkpoints')).toBe(true);
 
     store.updateRecords = undefined;
     await app.registry.update({
@@ -144,7 +144,7 @@ describe('issue 20 composition and failure tracing', () => {
       telegramCount: 1,
       webCount: 1,
     });
-    expect(store.records.get('telegram-discovery-checkpoint').length > 0).toBe(
+    expect(store.records.get('telegram-discovery-checkpoints').length > 0).toBe(
       true
     );
   });

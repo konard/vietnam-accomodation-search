@@ -397,7 +397,7 @@ function singular(kind) {
       : kind;
 }
 
-function validKind(kind) {
+export function validKind(kind) {
   if (!/^[a-z][a-z\d-]*s$/u.test(kind)) {
     throw new Error(`Invalid record collection: ${kind}`);
   }

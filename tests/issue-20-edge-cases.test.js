@@ -225,7 +225,7 @@ describe('issue 20 browser edge contracts', () => {
         )
       ).message
     ).toBe('limited');
-    expect(writes[0].kind).toBe('browser-domain-cooldown');
+    expect(writes[0].kind).toBe('browser-domain-cooldowns');
     expect(writes[0].records.at(-1)).toEqual({
       blockedUntil: 5_000,
       category: 'rate-limit',

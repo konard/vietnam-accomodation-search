@@ -463,7 +463,7 @@ export class TelegramSourceDiscovery {
     const failures = [];
     const checkpointKey = focus || 'nationwide';
     const savedCheckpoints =
-      (await this.store?.loadRecords?.('telegram-discovery-checkpoint')) || [];
+      (await this.store?.loadRecords?.('telegram-discovery-checkpoints')) || [];
     const saved = savedCheckpoints.find(
       ({ complete, id }) => id === checkpointKey && complete === false
     );

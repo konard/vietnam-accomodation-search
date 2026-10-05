@@ -145,7 +145,7 @@ describe('issue 20 Telegram discovery contract', () => {
       },
     };
     const checkpoint = async (value) =>
-      store.updateRecords('telegram-discovery-checkpoint', (existing) => [
+      store.updateRecords('telegram-discovery-checkpoints', (existing) => [
         ...existing.filter(({ id }) => id !== value.focus),
         { id: value.focus, ...value },
       ]);
