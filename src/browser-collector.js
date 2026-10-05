@@ -806,13 +806,33 @@ export class BrowserCollector {
       return runIds.get(source.id);
     };
     const enabled = sources.filter(({ enabled }) => enabled !== false);
+    // Each finished source is saved, photo downloads included, beside the
+    // pool, so a slow save never holds a worker back from the next source.
+    // The deadline tells saves to stop downloading photos when the search
+    // budget is spent.
+    const deadline = AbortSignal.any(
+      [AbortSignal.timeout(this.budgetMs), signal].filter(Boolean)
+    );
+    const saves = [];
+    const save = (outcome, collected) =>
+      Promise.resolve()
+        .then(() =>
+          onSourceComplete?.({ offers: collected, outcome, signal: deadline })
+        )
+        .then(() => trace.persist())
+        .catch((error) =>
+          this.logger.debug(
+            `Persisting ${outcome.sourceId} results failed`,
+            error
+          )
+        );
 
     try {
       const pool = await runSourcePool(enabled, {
         budgetMs: this.budgetMs,
         concurrency: this.concurrency,
         isWorkerLost: isLostPageError,
-        onSettled: async (outcome, value) => {
+        onSettled: (outcome, value) => {
           const collected = Array.isArray(value) ? value : [];
           offers.push(...collected);
           this.#recordOutcome(
@@ -826,15 +846,7 @@ export class BrowserCollector {
               value
             );
           }
-          try {
-            await onSourceComplete?.({ offers: collected, outcome });
-            await trace.persist();
-          } catch (error) {
-            this.logger.debug(
-              `Persisting ${outcome.sourceId} results failed`,
-              error
-            );
-          }
+          saves.push(save(outcome, collected));
         },
         openWorker: () => workers.open(),
         retireWorker: (worker) =>
@@ -901,7 +913,11 @@ export class BrowserCollector {
       );
       offers.push(...official);
       if (official.length) {
-        await onSourceComplete?.({ offers: official, outcome: undefined });
+        await onSourceComplete?.({
+          offers: official,
+          outcome: undefined,
+          signal: deadline,
+        });
       }
       return {
         budgetElapsed: pool.budgetElapsed,
@@ -910,6 +926,7 @@ export class BrowserCollector {
         summary,
       };
     } finally {
+      await Promise.all(saves);
       await settleCleanup(
         [
           () => trace.persist(),

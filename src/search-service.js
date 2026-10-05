@@ -229,12 +229,12 @@ export class SearchService {
   // keeps finished work; writes are chained to keep them ordered.
   #sourcePersister() {
     let chain = Promise.resolve();
-    const persist = async ({ offers }) => {
+    const persist = async ({ offers, signal }) => {
       if (!offers.length) {
         return;
       }
       const cached = this.mediaCache
-        ? await this.mediaCache.cacheOffers(offers)
+        ? await this.mediaCache.cacheOffers(offers, { signal })
         : offers;
       await this.store.saveOffers(cached);
     };
