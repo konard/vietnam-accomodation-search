@@ -183,6 +183,13 @@ describe('location labels', () => {
     );
   });
 
+  it('reads a pinned line padded with long whitespace in linear time', () => {
+    const started = globalThis.performance.now();
+    const { location } = located(`📍 Lộc Thọ${'\t'.repeat(40_000)}x | 4`);
+    expect(location).toBe(`Lộc Thọ${'\t'.repeat(40_000)}x`);
+    expect(globalThis.performance.now() - started < 1_000).toBe(true);
+  });
+
   it('uses the source location as the hint for Telegram posts', async () => {
     const offer = await parseTelegramOffer(
       {

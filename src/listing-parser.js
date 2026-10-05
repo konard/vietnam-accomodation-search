@@ -466,7 +466,9 @@ const DISTANCE = /^≈|\d\s*(?:минут|мин|min|phút)/iu;
 
 const PINNED_LINES = /^\s*📍.*$/gmu;
 // A pinned line ends at "|" or at the next emoji: "📍 Центр – Лок Тхо 🌊 500 м".
-const PIN_END = /\s*(?:\||\p{Extended_Pictographic})/u;
+// The split part is trimmed, so the pattern holds no whitespace run, which
+// would rescan every unterminated run.
+const PIN_END = /\||\p{Extended_Pictographic}/u;
 // A label with nothing after it ("📍 Локация:") lists the place in the
 // bullets below it.
 function bulletsAfter(lines, index) {
