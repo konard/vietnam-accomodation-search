@@ -136,6 +136,17 @@ negatives in search and false positives in acceptance:
 [#98 open warnings](https://github.com/konard/vietnam-accomodation-search/issues/98),
 and [#99 owner inputs](https://github.com/konard/vietnam-accomodation-search/issues/99).
 
+[The post-PR #101 revalidation](case-studies/revalidation-2026-10-06-pr101/README.md)
+confirms that search works end to end on the host and in Docker, and that
+extraction improved (prices 0.980, sold-out posts handled). Successors are
+[#102 gate errors](https://github.com/konard/vietnam-accomodation-search/issues/102),
+[#103 per-term rent parsing](https://github.com/konard/vietnam-accomodation-search/issues/103),
+[#104 search coverage](https://github.com/konard/vietnam-accomodation-search/issues/104),
+[#105 flaky test](https://github.com/konard/vietnam-accomodation-search/issues/105),
+[#106 owner inputs](https://github.com/konard/vietnam-accomodation-search/issues/106),
+[#107 deploy readiness on real data](https://github.com/konard/vietnam-accomodation-search/issues/107),
+and [#108 audit throughput](https://github.com/konard/vietnam-accomodation-search/issues/108).
+
 [Issue #92](case-studies/issue-92/README.md) addresses #90 and #91 in PR #93.
 Every non-offer collection that outgrows one chunk is stored as bounded,
 content-defined, indexed LiNo chunks, and an oversized single file is streamed
