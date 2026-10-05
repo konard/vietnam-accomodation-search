@@ -81,7 +81,11 @@ describe('browser launch check', () => {
     });
     expect(events[0]).toEqual([
       'launch',
-      { args: ['--no-sandbox'], engine: 'playwright', headless: true },
+      {
+        args: ['--disable-dev-shm-usage', '--no-sandbox'],
+        engine: 'playwright',
+        headless: true,
+      },
     ]);
     expect(events[1][1].startsWith('data:text/html,')).toBe(true);
     expect(events.slice(-2)).toEqual([['destroy'], ['browser.close']]);

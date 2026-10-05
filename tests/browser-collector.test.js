@@ -57,7 +57,10 @@ describe('browser-driven collection', () => {
     );
 
     expect(events[0]).toBe('goto:https://booking.example/search?q=Da%20Nang');
-    expect(launchOptions.args).toEqual(['--no-sandbox']);
+    expect(launchOptions.args).toEqual([
+      '--disable-dev-shm-usage',
+      '--no-sandbox',
+    ]);
     expect(offers.length).toBe(1);
     expect(offers[0].raw.text).toContain('500,000 VND');
     expect(offers[0].identifiers).toEqual({ booking: 'hotel-42' });

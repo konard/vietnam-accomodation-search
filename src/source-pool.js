@@ -119,13 +119,15 @@ function startTimer(milliseconds, onElapsed) {
 
 // `run(source, { signal, worker })` collects one source; `openWorker(index)`
 // returns the per-worker context (for example a browser page) or undefined
-// when no further worker can be opened. `onSettled(outcome, value)` sees
+// when no further worker can be opened. `isWorkerLost(error)` marks failures
+// that leave the worker unusable. `onSettled(outcome, value)` sees
 // every finished source before the pool moves on.
 export async function runSourcePool(
   sources,
   {
     budgetMs = Infinity,
     concurrency = 1,
+    isWorkerLost = () => false,
     now = Date.now,
     onSettled = () => {},
     openWorker = () => ({}),
@@ -205,7 +207,7 @@ export async function runSourcePool(
         },
         error
       );
-      return { abandoned: timeout };
+      return { abandoned: timeout || isWorkerLost(error) };
     } finally {
       stopTimeout();
       budget.signal.removeEventListener('abort', relay);
@@ -222,8 +224,8 @@ export async function runSourcePool(
       }
       const { abandoned } = await runOne(nextSource(), worker);
       if (abandoned) {
-        // A timed-out source may still be using this worker, so it is
-        // retired and a fresh one takes its place.
+        // A timed-out source may still be using this worker, and a lost
+        // worker fails every later source, so a fresh one takes its place.
         await retireWorker(worker);
         worker =
           budget.signal.aborted || signal?.aborted

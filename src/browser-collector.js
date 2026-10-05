@@ -2,7 +2,12 @@ import { normalizeOffer } from './offers.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { classifyTelegramPost } from './telegram-pipeline.js';
 import { TraceRecorder } from './trace.js';
-import { openCommander, settleCleanup } from './utils.js';
+import {
+  isLostPageError,
+  launchSettings,
+  openCommander,
+  settleCleanup,
+} from './utils.js';
 import {
   SOURCE_STATUSES,
   runSourcePool,
@@ -744,11 +749,9 @@ export class BrowserCollector {
 
   async #launch() {
     const runtime = this.browserRuntime || (await loadDefaultBrowserRuntime());
-    const { browser, page } = await runtime.launchBrowser({
-      engine: 'playwright',
-      headless: true,
-      ...this.browserLaunchOptions,
-    });
+    const { browser, page } = await runtime.launchBrowser(
+      launchSettings(this.browserLaunchOptions)
+    );
     return { browser, page, runtime };
   }
 
@@ -808,6 +811,7 @@ export class BrowserCollector {
       const pool = await runSourcePool(enabled, {
         budgetMs: this.budgetMs,
         concurrency: this.concurrency,
+        isWorkerLost: isLostPageError,
         onSettled: async (outcome, value) => {
           const collected = Array.isArray(value) ? value : [];
           offers.push(...collected);
