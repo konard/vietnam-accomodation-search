@@ -64,6 +64,7 @@ export async function saveCollectedSourceBatch({
 }) {
   await saveSourceJournal(stateDirectory, payload);
   await saveAuditCheckpoint(checkpointStore, {
+    ...(payload.auditPass ? { auditPass: payload.auditPass } : {}),
     batchId: payload.batchId,
     collectedOldestMessageId: payload.offsetId,
     complete: false,
