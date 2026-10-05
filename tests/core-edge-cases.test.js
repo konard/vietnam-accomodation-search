@@ -42,6 +42,20 @@ describe('pricing edge cases', () => {
     expect(convertToVnd({ amount: 5, currency: 'CAD' })).toBe(null);
   });
 
+  it('reads a rent stated in roubles', () => {
+    expect(parsePrice('38 616 ₽\n/мес')).toEqual({
+      amount: 38_616,
+      currency: 'RUB',
+      period: 'month',
+    });
+    expect(parsePrice('45 000 руб. в месяц').currency).toBe('RUB');
+    expect(parsePrice('40 000 рублей/мес').amount).toBe(40_000);
+    expect(parsePrice('RUB 30000 per month').currency).toBe('RUB');
+    expect(convertToVnd(parsePrice('30 000 ₽/мес'), { RUB: 300 })).toBe(
+      9_000_000
+    );
+  });
+
   it('loads, validates, and caches exchange rates', async () => {
     let requests = 0;
     const provider = new ExchangeRateProvider({
@@ -101,6 +115,25 @@ describe('parser validation edges', () => {
     expect(id('КОД КВАРТИРЫ: проверим')).toBe(undefined);
     expect(id('Idea house near the beach')).toBe(undefined);
     expect(id('Mã căn đẹp, view biển')).toBe(undefined);
+  });
+
+  it('reads a count from the label on its own line only', () => {
+    const facts = (text) => parseListingText(text).attributes;
+
+    const card = facts('ID A902\nbathrooms: 1\nbedrooms: 2');
+    expect([card.bathrooms, card.bedrooms]).toEqual([1, 2]);
+    expect(facts('3-Bedroom House for Rent').bedrooms).toBe(3);
+    const stay = facts('beds: 2\n3\nguests: 4');
+    expect([stay.beds, stay.guests]).toEqual([2, 4]);
+    expect(facts('Floor 5\n2 bathrooms').bathrooms).toBe(2);
+  });
+
+  it('takes no area or deposit fact for a labelled location', () => {
+    const place = (text) => parseListingText(text).location;
+
+    expect(place('location: Area m²: 60\n$360/mo')).toBe(undefined);
+    expect(place('location: Deposit: $393\nLocation: North')).toBe('North');
+    expect(place('Location: Hà Quang 2')).toBe('Hà Quang 2');
   });
 
   it('rejects empty recent Telegram posts and non-web URLs', () => {

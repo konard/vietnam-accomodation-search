@@ -8,13 +8,15 @@ const CURRENCY_ALIASES = new Map([
   ['EUROS', 'EUR'],
   ['ЕВРО', 'EUR'],
   ['£', 'GBP'],
+  ['₽', 'RUB'],
+  ['RUB', 'RUB'],
   ['GBP', 'GBP'],
   ['美元', 'USD'],
   ['美金', 'USD'],
 ]);
 
 const CURRENCY =
-  'VND|VNĐ|донг(?:а|ов)?|đồng|₫|đ(?!\\p{L})|USD|US\\$|\\$|долл(?:ар\\p{L}{0,3})?|dollars?|EUR|€|евро|euros?|GBP|£|美元|美金|越盾';
+  'VND|VNĐ|донг(?:а|ов)?|đồng|₫|đ(?!\\p{L})|USD|US\\$|\\$|долл(?:ар\\p{L}{0,3})?|dollars?|EUR|€|евро|euros?|GBP|£|₽|RUB|руб(?:л\\p{L}{0,3}|\\.)?|美元|美金|越盾';
 const NUMBER = '\\d{1,12}(?:[.,\\u00a0 ]\\d{3}){0,4}(?:[.,]\\d{1,4})?';
 const SCALE =
   'triệu|tr|million|mio|mln|млн|мл|миллион\\p{L}{0,3}|tỷ|billion|млрд|миллиард\\p{L}{0,3}|k|к|тыс|nghìn|ngàn|thousand|m|萬|万';
@@ -70,6 +72,9 @@ function currencyFrom(value) {
   const upper = value.toUpperCase();
   if (/^(?:ДОЛЛ|DOLLAR)/u.test(upper)) {
     return 'USD';
+  }
+  if (upper.startsWith('РУБ')) {
+    return 'RUB';
   }
   return CURRENCY_ALIASES.get(upper) || 'VND';
 }

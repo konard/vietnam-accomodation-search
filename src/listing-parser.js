@@ -192,6 +192,16 @@ function wordNumber(text, expressions) {
   return undefined;
 }
 
+// A count stands on the same line as its label and is not the tail of a
+// longer number, so "ID A902\nbathrooms: 1" or "bathrooms: 1\nbedrooms: 2"
+// never lend their digits to the next label. "3-Bedroom" joins them by a dash.
+function countBefore(label, digits = 2) {
+  return new RegExp(
+    `(?<!\\d[.,]?)(\\d{1,${digits}})[ \\t]*-?[ \\t]*(?:${label})(?!\\p{L})`,
+    'iu'
+  );
+}
+
 const CHINESE_DIGITS = { 一: 1, 二: 2, 兩: 2, 两: 2, 三: 3, 四: 4, 五: 5 };
 const RUSSIAN_ROOM_WORDS = [
   [1, /одно/iu],
@@ -224,9 +234,9 @@ function bedroomCount(text) {
     return 0;
   }
   const numeric = matchedNumber(text, [
-    /(\d{1,2})\s*(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)/iu,
+    countBefore('bedrooms?|спальн\\p{L}*|phòng\\s*ngủ'),
     /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-    /(?<![\d.,])(\d{1,2})\s*(?:BR|BHK|PN)\b/iu,
+    countBefore('BR|BHK|PN'),
   ]);
   const chinese = text.match(/([一二兩两三四五])房/u)?.[1];
   return (
@@ -280,27 +290,27 @@ function extractAttributes(text, fields, referenceDate) {
   )?.[1];
   const bedrooms = bedroomCount(text);
   const bathrooms = matchedNumber(text, [
-    /(\d{1,2})\s*(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)/iu,
+    countBefore('bathrooms?|сануз\\p{L}*|phòng\\s*tắm'),
     /(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-    /(\d{1,2})\s*WC\b/iu,
+    countBefore('WC'),
   ]);
   const beds = matchedNumber(text, [
-    /(?:\bbeds?|кроват\p{L}*|giường)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-    /(\d{1,2})\s*(?:beds?|кроват\p{L}*|giường)/iu,
+    /(?:\bbeds?(?!\p{L})|кроват\p{L}*|giường)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
+    countBefore('beds?|кроват\\p{L}*|giường'),
   ]);
   const guests = matchedNumber(text, [
     /(?:guests?|гост\p{L}*|khách)\s{0,8}[:#-]?\s{0,8}(\d{1,3})/iu,
-    /(\d{1,3})\s*(?:guests?|гост\p{L}*|khách)/iu,
+    countBefore('guests?|гост\\p{L}*|khách', 3),
   ]);
   const areaM2 = matchedNumber(text, [
-    /(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:m²|m2|м²|кв\.?\s*м)/iu,
+    /(\d{1,4}(?:[.,]\d{1,2})?)[ \t]*(?:m²|m2|м²|кв\.?\s*м)/iu,
   ]);
   const floor = matchedNumber(text, [
     /(?:floor|этаж|tầng)\s{0,8}[:#-]?\s{0,8}(\d{1,3})/iu,
-    /(\d{1,3})\s*(?:floor|этаж)/iu,
+    countBefore('floor|этаж\\p{L}*', 3),
   ]);
   const rooms = matchedNumber(text, [
-    /(\d{1,2})\s*(?:rooms?|комнат\p{L}*|phòng(?!\s*(?:ngủ|tắm)))/iu,
+    countBefore('rooms?|комнат\\p{L}*|phòng(?!\\s*(?:ngủ|tắm))'),
   ]);
   const minimumStayMonths = matchedNumber(text, [
     /(?:minimum|аренд\p{L}*\s+от|tối\s*thiểu)\D{0,24}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
@@ -447,6 +457,9 @@ const LOCATION_LABELS = [
 ];
 const LOCATION_LABEL =
   /(?:address|location|district|địa\s*chỉ|vị\s*trí|khu\s*vực|quận|адрес|район|локация|местоположение|расположение)\s*:[ \t]*([^\n\r]*)/iu;
+// A card whose location slot holds another fact ("Area m²: 60", "Deposit:
+// $393") names no place there.
+const NUMERIC_FACT = /^[^:\d\n]{1,24}:\s*[$€£₫\d]/u;
 const BULLET = /^\s*[•·▪◦‣\-–]\s*(\S.*)$/u;
 // Bullets such as "≈ 5 минут пешком до моря" give a distance, not a place.
 const DISTANCE = /^≈|\d\s*(?:минут|мин|min|phút)/iu;
@@ -475,7 +488,7 @@ function labeledLocation(text) {
   for (const [index, line] of lines.entries()) {
     const label = line.match(LOCATION_LABEL);
     const value = label && (label[1].trim() || bulletsAfter(lines, index));
-    if (value) {
+    if (value && !NUMERIC_FACT.test(value)) {
       return value;
     }
   }
@@ -490,9 +503,18 @@ function labeledLocation(text) {
     .find((line) => namesPlace(line));
 }
 
+// The place a card's location slot names: "Location: North" gives "North",
+// and a slot holding another fact gives none.
+export function cardLocation(value) {
+  const slot = String(value || '').trim();
+  const place = (slot.match(LOCATION_LABEL)?.[1] ?? slot).trim();
+  return place && !NUMERIC_FACT.test(place) ? place : undefined;
+}
+
 function detectLocation(text, fields, hint) {
+  const field = firstLabeledValue(fields, LOCATION_LABELS);
   const labeled =
-    firstLabeledValue(fields, LOCATION_LABELS) || labeledLocation(text);
+    (!NUMERIC_FACT.test(field || '') && field) || labeledLocation(text);
   if (labeled) {
     return {
       location: trimTrailingCharacters(labeled.trim(), '.,;!').trim(),
