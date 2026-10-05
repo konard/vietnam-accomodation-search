@@ -1,4 +1,6 @@
 // Measures browser-commander goto() latency for http, data:, and about: URLs.
+// NETWORK_TRACKING=1 keeps browser-commander's tracker, which waits for 30 s of
+// network silence after every goto().
 // VERBOSE=1 prints browser-commander's navigation trace.
 import { createServer } from 'node:http';
 import { launchBrowser, makeBrowserCommander } from 'browser-commander';
@@ -14,6 +16,7 @@ const { browser, page } = await launchBrowser({
   headless: true,
 });
 const commander = makeBrowserCommander({
+  enableNetworkTracking: process.env.NETWORK_TRACKING === '1',
   page,
   verbose: process.env.VERBOSE === '1',
 });

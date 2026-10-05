@@ -1,4 +1,4 @@
-import { settleCleanup } from './utils.js';
+import { openCommander, settleCleanup } from './utils.js';
 import { TELEGRAM_DISCOVERY_QUERIES } from './telegram-discovery.js';
 import { DomainScheduler } from './browser-adapters.js';
 
@@ -183,7 +183,7 @@ export class BrowserSourceDiscoverer {
       headless: true,
       ...this.browserLaunchOptions,
     });
-    const commander = runtime.makeBrowserCommander({ page });
+    const commander = openCommander(runtime, page);
     try {
       return type === 'telegram'
         ? await this.rankTelegram(commander, candidates, { focus, signal })

@@ -64,3 +64,10 @@ export function canonicalizeUrl(value) {
     return undefined;
   }
 }
+
+// browser-commander's network tracker waits for 30 s without any request after
+// every goto(), and its goto() ignores `waitForNetworkIdle: false`. Readiness
+// then rests on the URL settling, and each caller reads the DOM it needs.
+export function openCommander(runtime, page) {
+  return runtime.makeBrowserCommander({ enableNetworkTracking: false, page });
+}

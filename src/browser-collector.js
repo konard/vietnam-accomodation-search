@@ -2,7 +2,7 @@ import { normalizeOffer } from './offers.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { classifyTelegramPost } from './telegram-pipeline.js';
 import { TraceRecorder } from './trace.js';
-import { settleCleanup } from './utils.js';
+import { openCommander, settleCleanup } from './utils.js';
 import {
   SOURCE_STATUSES,
   runSourcePool,
@@ -655,7 +655,7 @@ export class BrowserCollector {
         return undefined;
       }
       const worker = {
-        commander: runtime.makeBrowserCommander({ page: workerPage }),
+        commander: openCommander(runtime, workerPage),
         page: workerPage,
       };
       live.add(worker);
@@ -757,7 +757,7 @@ export class BrowserCollector {
   // cannot start fails them the same way it would fail a search.
   async checkLaunch() {
     const { browser, page, runtime } = await this.#launch();
-    const commander = runtime.makeBrowserCommander({ page });
+    const commander = openCommander(runtime, page);
     try {
       await commander.goto({
         url: 'data:text/html,<title>browser-check</title>',
