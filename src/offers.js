@@ -98,6 +98,13 @@ function normalizedIdentifier(value) {
     .replace(/\s+/gu, '-');
 }
 
+// A one- or two-word title such as "CHO THUÊ" or "Căn hộ" is a section
+// label shared by every card of a listing site, not a name of the unit.
+function distinctiveTitle(value) {
+  const title = normalizedIdentityValue(value);
+  return title.split(' ').length >= 3 ? title : undefined;
+}
+
 function fingerprintKey(offer) {
   const location = normalizedIdentityValue(offer.location);
   if (!location) {
@@ -118,7 +125,7 @@ function fingerprintKey(offer) {
     Number.isFinite(area) && Number.isFinite(bedrooms)
       ? `${area}:${bedrooms}`
       : undefined;
-  const title = normalizedIdentityValue(offer.title);
+  const title = distinctiveTitle(offer.title);
   const discriminator = contact
     ? `${contact}\n${firstPresent(structure, title)}`
     : structure && title
