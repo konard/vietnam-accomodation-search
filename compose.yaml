@@ -48,5 +48,6 @@ services:
         - fetch('http://127.0.0.1:8080/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
       interval: 15s
       timeout: 5s
-      start_period: 30s
+      start_period: 5m
+      start_interval: 2s
       retries: 3

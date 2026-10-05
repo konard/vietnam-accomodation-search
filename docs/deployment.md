@@ -16,6 +16,17 @@ Readiness is local-only by default. `/live` reports whether the process and
 health server are alive. `/ready` returns success only after Bot API `getMe`,
 optional MTProto `getMe`, and grammY's polling `onStart`.
 
+Deploy and rollback wait up to 300 seconds for Docker health. Override this
+with `--ready-timeout SECONDS` for data-dependent startup. Both Compose and the
+image use a five-minute startup grace period and two-second startup probes;
+normal probes remain 15 seconds apart. This requires Compose 2.20.2 or later
+and Docker Engine 25 / API 1.44 or later. A terminal container or unhealthy
+status fails immediately. The helper reports observed healthy time and budget.
+`node experiments/deploy-readiness-drill.mjs` reproduces the reported 40-second
+application startup / 60-second healthy transition with a virtual clock; its
+output records the reference data size and explicitly identifies synthetic
+timing. It does not establish real protected-store startup performance.
+
 Telegram allows one `getUpdates` poller per bot token. When another poller
 takes over (`409 Conflict: terminated by other getUpdates request`), the
 instance stays alive but `/ready` returns 503 with
@@ -107,6 +118,7 @@ record:
 
 ```bash
 node scripts/deploy.mjs deploy
+node scripts/deploy.mjs deploy --ready-timeout 300
 node scripts/deploy.mjs status
 node scripts/deploy.mjs logs
 node scripts/deploy.mjs rollback

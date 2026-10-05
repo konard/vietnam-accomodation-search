@@ -39,6 +39,8 @@ import {
   writeDataSchemaMarker,
 } from './deploy-state.mjs';
 import { loadCommandStream, loadLinoArguments } from './use-module.mjs';
+import { waitForReadiness } from './deploy-readiness.mjs';
+export { waitForReadiness } from './deploy-readiness.mjs';
 
 let command;
 let makeConfig;
@@ -87,6 +89,7 @@ function configuration(argv) {
         })
         .option('allow-shared-token', { default: false, type: 'boolean' })
         .option('settle-seconds', { default: 30, type: 'number' })
+        .option('ready-timeout', { default: 300, type: 'number' })
         .option('restore-snapshot', { default: false, type: 'boolean' })
         .option('project-name', {
           default: getenv('COMPOSE_PROJECT_NAME', DEFAULT_PROJECT),
@@ -210,26 +213,27 @@ export function assertComposeDataMount(model, dataDirectory) {
   return resolve(mount.source);
 }
 
-async function waitHealthy(config, image, attempts = 40) {
+async function waitHealthy(config, image) {
   const container = await currentContainer(config, image);
   if (!container) {
     throw new Error('Compose did not create the app container.');
   }
   const run = runner(config, image, { capture: true });
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const status = await text(
-      await run`docker inspect --format={{.State.Health.Status}} ${container}`
-    );
-    if (status === 'healthy') {
-      return;
-    }
-    if (status === 'unhealthy') {
-      break;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  throw new Error(
-    'Candidate did not become ready before the deployment deadline.'
+  const result = await waitForReadiness({
+    timeoutSeconds: config.readyTimeout,
+    inspect: async () => {
+      const state = JSON.parse(
+        await text(
+          await run`docker inspect --format='{{json .State}}' ${container}`
+        )
+      );
+      return ['exited', 'dead'].includes(state.Status)
+        ? state.Status
+        : state.Health?.Status;
+    },
+  });
+  console.log(
+    `Candidate healthy after ${Math.round(result.elapsedMs / 1000)}s (readiness budget ${config.readyTimeout}s).`
   );
 }
 
@@ -350,7 +354,7 @@ async function rollbackTo(
   const run = runner(config, image);
   await run`docker compose -f ${config.composeFile} -p ${config.projectName} stop -t 30 app`;
   if (snapshot) {
-    await restoreState(config.dataDirectory, snapshot);
+    await restoreState(dataDirectory, snapshot);
   }
   await runner(
     { ...config, dataDirectory },
@@ -439,6 +443,19 @@ async function readDeployState(config, statePath) {
   return optionalJson(join(dirname(dirname(statePath)), 'state.json'));
 }
 
+export async function inspectPreviousDeployment({
+  container,
+  readState,
+  inspectImage,
+  tagImage,
+}) {
+  if (!container) {
+    // A stopped project still owns its recorded image and recovery state.
+    return (await readState()).currentImage;
+  }
+  return tagImage(await inspectImage(container));
+}
+
 async function deploy(config, statePath) {
   let existing;
   let run;
@@ -450,7 +467,10 @@ async function deploy(config, statePath) {
         snapshots,
         new Date().toISOString().replace(/[:.]/gu, '-')
       );
-      const manifest = await snapshotState(config.dataDirectory, directory);
+      const manifest = await snapshotState(
+        config.previousDataDirectory || config.dataDirectory,
+        directory
+      );
       return { dataSchema: manifest.dataSchema, directory };
     },
     discard: () =>
@@ -460,16 +480,18 @@ async function deploy(config, statePath) {
     prepare: () => prepareCandidate(config),
     inspectPrevious: async () => {
       existing = await currentContainer(config);
-      if (!existing) {
-        return undefined;
-      }
       const inspect = command(commandOptions({ quiet: true }));
-      const imageId = await text(
-        await inspect`docker inspect --format={{.Image}} ${existing}`
-      );
-      const rollbackImage = `${config.projectName}:rollback-${Date.now()}`;
-      await command`docker image tag ${imageId} ${rollbackImage}`;
-      return rollbackImage;
+      return inspectPreviousDeployment({
+        container: existing,
+        readState: () => readDeployState(config, statePath),
+        inspectImage: async (container) =>
+          text(await inspect`docker inspect --format={{.Image}} ${container}`),
+        tagImage: async (imageId) => {
+          const rollbackImage = `${config.projectName}:rollback-${Date.now()}`;
+          await command`docker image tag ${imageId} ${rollbackImage}`;
+          return rollbackImage;
+        },
+      });
     },
     record: async ({
       candidate: currentImage,
@@ -560,6 +582,11 @@ export async function runDeployCli(argv = process.argv.slice(2)) {
   }
   await loadDependencies();
   const config = configuration(argv.slice(1));
+  if (!Number.isFinite(config.readyTimeout) || config.readyTimeout <= 0) {
+    throw new RangeError(
+      '--ready-timeout must be a positive number of seconds.'
+    );
+  }
   config.buildIdentity = await checkedOutBuildIdentity();
   const stateDirectory = STATE_ROOT;
   const statePath = join(
