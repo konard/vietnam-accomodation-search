@@ -1,6 +1,6 @@
 import { parseSearchCommand } from './commands.js';
 import { SubscriptionScheduler } from './presets.js';
-import { describeFailures } from './source-pool.js';
+import { describeFailures, describeUncollected } from './source-pool.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { stableHash } from './utils.js';
 
@@ -23,10 +23,11 @@ export function formatSearchFailures(report) {
   if (!summary?.failed) {
     return undefined;
   }
+  const uncollected = describeUncollected(report.outcomes);
   if (summary.allFailed) {
-    return `${NO_FRESH_OFFERS} ${describeFailures(summary)}`;
+    return `${NO_FRESH_OFFERS} ${describeFailures(summary)} ${uncollected}`;
   }
-  return `${summary.failed} of ${summary.total} sources failed or did not finish.`;
+  return `${summary.failed} of ${summary.total} sources failed or did not finish. ${uncollected}`;
 }
 
 function formatPrice(offer) {

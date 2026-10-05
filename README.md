@@ -119,8 +119,8 @@ throwaway data directory and fails unless it finds an offer.
 A search opens up to `BROWSER_CONCURRENCY` pages (default 4), stops a source
 after `BROWSER_SOURCE_TIMEOUT_MS` (default 90000), and stops the whole search
 after `SEARCH_BUDGET_MS` (default 180000). Each finished source is saved as
-soon as it completes. The CLI and the bot report sources that failed, timed
-out, or were still pending at the budget. When no source produced offers, the
+soon as it completes. The CLI and the bot name the sources that failed,
+timed out, or were still pending at the budget, with the reason for each. When no source produced offers, the
 CLI exits with status 1; an interrupted search (SIGINT/SIGTERM) closes its
 browser and exits with status 130.
 

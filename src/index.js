@@ -74,6 +74,7 @@ export { SearchService } from './search-service.js';
 export {
   SOURCE_STATUSES,
   describeFailures,
+  describeUncollected,
   runSourcePool,
   summarizeOutcomes,
 } from './source-pool.js';

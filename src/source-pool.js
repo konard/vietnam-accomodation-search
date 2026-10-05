@@ -247,14 +247,17 @@ export async function runSourcePool(
   };
 }
 
+// A source that answered, with offers or with none, was collected.
+function collected({ status }) {
+  return [SOURCE_STATUSES.OFFERS, SOURCE_STATUSES.EMPTY].includes(status);
+}
+
 export function summarizeOutcomes(outcomes = []) {
   const byStatus = {};
   const failedCategories = {};
   for (const outcome of outcomes) {
     byStatus[outcome.status] = (byStatus[outcome.status] || 0) + 1;
-    if (
-      ![SOURCE_STATUSES.OFFERS, SOURCE_STATUSES.EMPTY].includes(outcome.status)
-    ) {
+    if (!collected(outcome)) {
       const category = outcome.category || outcome.status;
       failedCategories[category] = (failedCategories[category] || 0) + 1;
     }
@@ -278,4 +281,17 @@ export function describeFailures(summary) {
     .map(([category, count]) => `${category} ×${count}`)
     .join(', ');
   return `All ${summary.total} sources failed: ${categories}.`;
+}
+
+// Names the sources a search could not collect, each with its failure
+// category, and counts the rest past `limit`.
+export function describeUncollected(outcomes = [], limit = 10) {
+  const uncollected = outcomes.filter((outcome) => !collected(outcome));
+  const names = uncollected
+    .slice(0, limit)
+    .map(
+      ({ category, sourceId, status }) => `${sourceId} (${category || status})`
+    );
+  const more = uncollected.length - names.length;
+  return `Not collected: ${names.join(', ')}${more ? `, and ${more} more` : ''}.`;
 }

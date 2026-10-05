@@ -250,13 +250,27 @@ describe('search failure messages', () => {
         ])
       )
     ).toBe(
-      'No fresh offers could be collected. All 2 sources failed: http-403 ×1, SOURCE_TIMEOUT ×1.'
+      'No fresh offers could be collected. All 2 sources failed: http-403 ×1, SOURCE_TIMEOUT ×1. Not collected: alpha (http-403), beta (SOURCE_TIMEOUT).'
     );
     expect(
       formatSearchFailures(
         reportFor([outcome('alpha', 'offers'), outcome('beta', 'pending')])
       )
-    ).toBe('1 of 2 sources failed or did not finish.');
+    ).toBe(
+      '1 of 2 sources failed or did not finish. Not collected: beta (pending).'
+    );
+  });
+
+  it('names at most ten sources that were not collected', () => {
+    const outcomes = Array.from({ length: 12 }, (_, index) =>
+      outcome(`source-${index + 1}`, 'pending')
+    );
+    expect(formatSearchFailures(reportFor(outcomes))).toBe(
+      'No fresh offers could be collected. All 12 sources failed: pending ×12. ' +
+        'Not collected: source-1 (pending), source-2 (pending), source-3 (pending), ' +
+        'source-4 (pending), source-5 (pending), source-6 (pending), source-7 (pending), ' +
+        'source-8 (pending), source-9 (pending), source-10 (pending), and 2 more.'
+    );
   });
 });
 
@@ -295,7 +309,7 @@ describe('Telegram /search with a source report', () => {
       }),
     });
     expect(replies).toEqual([
-      'No fresh offers could be collected. All 1 sources failed: challenge ×1.',
+      'No fresh offers could be collected. All 1 sources failed: challenge ×1. Not collected: alpha (challenge).',
     ]);
   });
 
@@ -319,7 +333,9 @@ describe('Telegram /search with a source report', () => {
         ]),
       }),
     });
-    expect(replies[0]).toBe('1 of 2 sources failed or did not finish.');
+    expect(replies[0]).toBe(
+      '1 of 2 sources failed or did not finish. Not collected: beta (timeout).'
+    );
     expect(replies.at(-1)).toContain('one room');
   });
 
@@ -414,7 +430,7 @@ describe('CLI search exit status', () => {
     expect(result.code).toBe(1);
     expect(result.stdout).toEqual([]);
     expect(result.stderr).toEqual([
-      'No fresh offers could be collected. All 1 sources failed: http-403 ×1.',
+      'No fresh offers could be collected. All 1 sources failed: http-403 ×1. Not collected: alpha (http-403).',
     ]);
     expect(result.processRef.handlers.size).toBe(0);
   });
