@@ -118,6 +118,50 @@ describe('SearchService.searchWithReport', () => {
     });
   });
 
+  it('keeps finished sources and persists the traces of an interrupted search', async () => {
+    await withDirectory(async (directory) => {
+      const store = new LinksStore({ directory });
+      const records = [];
+      let persisted = 0;
+      const controller = new AbortController();
+      const collector = {
+        collectWithReport: async (_sources, _query, { onSourceComplete }) => {
+          await onSourceComplete({
+            offers: [offer('one', 'alpha')],
+            outcome: outcome('alpha', 'offers'),
+          });
+          controller.abort();
+          throw Object.assign(new Error('Search interrupted by SIGTERM.'), {
+            name: 'AbortError',
+          });
+        },
+      };
+      const service = new SearchService({
+        collector,
+        now: () => NOW,
+        registry: { list: async () => [{ id: 'alpha' }, { id: 'beta' }] },
+        store,
+        traceRecorder: {
+          persist: async () => {
+            persisted += 1;
+          },
+          record: (entry) => records.push(entry),
+        },
+      });
+      const error = await service
+        .searchWithReport({ refresh: true, signal: controller.signal })
+        .catch((caught) => caught);
+      expect(error.name).toBe('AbortError');
+      expect((await store.listOffers()).map((entry) => entry.id)).toEqual([
+        'one',
+      ]);
+      expect(
+        records.filter((entry) => entry.stage === 'search').at(-1).status
+      ).toBe('cancelled');
+      expect(persisted).toBe(1);
+    });
+  });
+
   it('refreshes sources without fresh coverage first', async () => {
     const order = [];
     const service = new SearchService({
@@ -454,22 +498,24 @@ describe('CLI search exit status', () => {
     expect(result.stderr).toEqual([]);
   });
 
-  it('exits 130 when SIGINT interrupts the search', async () => {
-    const processRef = fakeProcess();
-    const result = await cliSearch(
-      {
-        searchWithReport: ({ signal }) =>
-          new Promise((_resolve, reject) => {
-            signal.addEventListener('abort', () => reject(signal.reason));
-            processRef.emit('SIGINT');
-          }),
-      },
-      processRef
-    );
-    expect(result.code).toBe(130);
-    expect(result.stderr).toEqual(['Search interrupted by SIGINT.']);
-    expect(processRef.handlers.size).toBe(0);
-  });
+  for (const signalName of ['SIGINT', 'SIGTERM']) {
+    it(`exits 130 when ${signalName} interrupts the search`, async () => {
+      const processRef = fakeProcess();
+      const result = await cliSearch(
+        {
+          searchWithReport: ({ signal }) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason));
+              processRef.emit(signalName);
+            }),
+        },
+        processRef
+      );
+      expect(result.code).toBe(130);
+      expect(result.stderr).toEqual([`Search interrupted by ${signalName}.`]);
+      expect(processRef.handlers.size).toBe(0);
+    });
+  }
 
   it('reports other search errors through the usual failure path', async () => {
     const result = await cliSearch({
