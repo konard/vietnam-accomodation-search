@@ -1,0 +1,5 @@
+---
+'vietnam-accomodation-search': patch
+---
+
+Make product search return offers again: name the cooldown and discovery checkpoint collections with valid plurals, report "all N sources failed" in the CLI (non-zero exit) and bot, and run the browser acceptance audit through `SearchService` against a reviewed live sample (#94). Launch Chromium in the shipped container with `BROWSER_NO_SANDBOX=1` in compose, and smoke-test the app's own launch path (#95). Collect sources in a bounded cross-domain pool with per-source timeouts, a search budget, partial results, per-source outcomes and per-source persistence, close the browser on abort and signals, keep Chromium shared memory off `/dev/shm`, and disable the web seeds that failed every live cohort run (#96). Prefer the labelled rent over fees and areas, read rents in roubles and Chinese currencies, mark sold-out and rented posts unavailable, read Nha Trang complexes, streets and wards as locations, and gate the Telegram audit on field-level precision and recall over a reviewed 275-case live corpus (186 Telegram posts, 89 web cards) (#97). Clear the CodeQL alerts and every lint warning in the release tooling (#98).
