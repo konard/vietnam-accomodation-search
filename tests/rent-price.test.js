@@ -79,6 +79,33 @@ describe('rent price selection', () => {
     });
   });
 
+  it('gives the lowest option and the range for per-floor rents', () => {
+    const perFloor = (low, high) => ({
+      amount: low,
+      currency: 'VND',
+      period: 'month',
+      range: { max: high, min: low },
+    });
+    expect(
+      parsePrice(
+        'Цена аренды:\n2 этаж — 9 млн/мес\n3 этаж — 8,5 млн/мес\n5 этаж — 8 млн/мес'
+      )
+    ).toEqual(perFloor(8_000_000, 9_000_000));
+    expect(
+      parsePrice(
+        'Rent:\nfloor 2 - 8,000,000 VND/month\nfloor 4 - 7,500,000 VND/month'
+      )
+    ).toEqual(perFloor(7_500_000, 8_000_000));
+    expect(
+      parsePrice('Giá thuê: tầng 1 9tr, tầng 2 8tr, tầng 3 7tr / tháng')
+    ).toEqual(perFloor(7_000_000, 9_000_000));
+    expect(parsePrice('Rent: level 3 – 12 triệu/tháng')).toEqual({
+      amount: 12_000_000,
+      currency: 'VND',
+      period: 'month',
+    });
+  });
+
   it('prefers the monthly rent over the nightly one', () => {
     expect(parsePrice('Сутки: 22 $\nМесяц: 375 $')).toEqual({
       amount: 375,

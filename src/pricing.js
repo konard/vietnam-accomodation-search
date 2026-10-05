@@ -64,6 +64,13 @@ const PER_UNIT =
 const FEE_SECTION =
   /дополнительн\p{L}*|расход\p{L}*|additional|extra\s*(?:costs|fees|charges)|chi\s*phí\s*khác|phát\s*sinh/iu;
 const CEILING = /(?:(?<!\p{L})до|up\s+to|under|dưới|не\s+дороже)\s*$/iu;
+// Floor words qualify one option of a per-floor rent ("tầng 2 8tr") rather
+// than label it, and the number right after one is the floor, so
+// "floor 2 - 8,000,000 VND" is no range from 2.
+const FLOOR_WORDS =
+  /(?<!\p{L})(?:floors?|levels?|этаж\p{L}*|tầng|lầu)(?!\p{L})/giu;
+const FLOOR_BEFORE =
+  /(?<!\p{L})(?:floors?|levels?|этаж\p{L}*|tầng|lầu)\s*(?:№\s*)?$/iu;
 
 function currencyFrom(value) {
   if (!value) {
@@ -140,6 +147,7 @@ function hasLabelWords(label) {
     label
       .replace(new RegExp(CURRENCY, 'giu'), '')
       .replace(PERIOD_WORDS, '')
+      .replace(FLOOR_WORDS, '')
       .replace(/(?<!\p{L})(?:в|за|per|a|an|mỗi|một|от|from|từ)(?!\p{L})/giu, '')
   );
 }
@@ -157,8 +165,11 @@ function scaleOf(match) {
 function tokenAmounts(match, scale) {
   const scaled = Boolean(scale);
   const factor = multiplier(scale);
-  const low = parseNumber(match[2], scaled) * factor;
-  const high = match[3] ? parseNumber(match[3], scaled) * factor : low;
+  const floorFirst =
+    Boolean(match[3]) && FLOOR_BEFORE.test(match.input.slice(0, match.index));
+  const [first, second] = floorFirst ? [match[3]] : [match[2], match[3]];
+  const low = parseNumber(first, scaled) * factor;
+  const high = second ? parseNumber(second, scaled) * factor : low;
   return high > low ? { high, low } : { high: low, low };
 }
 
