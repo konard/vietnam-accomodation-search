@@ -216,12 +216,17 @@ function roomAdjectiveCount(text) {
 // A navigation footer such as "КВАРТИРЫ И СТУДИИ" names the agency's other
 // listings, so only a singular "studio" marks the listing itself.
 const STUDIO = /\bstudio\b|студи(?:я|ю|ей)(?!\p{L})/iu;
+// Listing sites file a studio under "bedrooms: 1"; the property type wins.
+const STUDIO_TYPE = /^type:[^\n]*studio/imu;
 
 function bedroomCount(text) {
+  if (STUDIO_TYPE.test(text)) {
+    return 0;
+  }
   const numeric = matchedNumber(text, [
     /(\d{1,2})\s*(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)/iu,
     /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-    /(?<![\d.,])(\d{1,2})\s*(?:BR|BHK|PN)\b/u,
+    /(?<![\d.,])(\d{1,2})\s*(?:BR|BHK|PN)\b/iu,
   ]);
   const chinese = text.match(/([一二兩两三四五])房/u)?.[1];
   return (

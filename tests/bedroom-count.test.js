@@ -23,6 +23,9 @@ describe('bedroom count', () => {
     expect(bedrooms('СДАЁТСЯ НОВАЯ STUDIO-КВАРТИРА 30 м²')).toBe(0);
     expect(bedrooms('Cho thuê căn hộ studio ngay trung tâm')).toBe(0);
     expect(bedrooms('НОВАЯ КВАРТИРА-СТУДИЯ С БАЛКОНОМ')).toBe(0);
+    expect(
+      bedrooms('Căn hộ studio\nbedrooms: 1\nbathrooms: 1\ntype: Căn hộ studio')
+    ).toBe(0);
   });
 
   it('reads BR, BHK, and PN shorthand', () => {
@@ -30,6 +33,7 @@ describe('bedroom count', () => {
     expect(bedrooms('Nha Trang 2 BHK\n9.5 млн')).toBe(2);
     expect(bedrooms('Cho thuê căn hộ 2PN Mường Thanh')).toBe(2);
     expect(bedrooms('Căn hộ | 80 m² | 3 PN | 1 WC')).toBe(3);
+    expect(bedrooms('Thuê theo tháng, căn 2pn giá từ 8tr/ tháng')).toBe(2);
   });
 
   it('reads N-room apartments as N bedrooms', () => {
