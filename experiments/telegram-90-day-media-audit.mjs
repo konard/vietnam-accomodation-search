@@ -117,7 +117,9 @@ export function sourceMessageReader(
       const messages = await retryTelegramFloodWait(() =>
         client.getMessages(peer, { ids })
       );
-      cached = new Map(messages.map((message) => [message.id, message]));
+      cached = new Map(
+        messages.filter(Boolean).map((message) => [message.id, message])
+      );
     }
     return material.messageIds.map((id) => cached.get(id)).filter(Boolean);
   };

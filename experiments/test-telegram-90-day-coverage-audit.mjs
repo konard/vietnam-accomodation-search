@@ -108,6 +108,16 @@ assert.deepEqual(
   requestedBatches.map((ids) => ids.length),
   [100, 100, 5]
 );
+const readWithMissing = sourceMessageReader(
+  {
+    getMessages: (_source, { ids }) =>
+      ids.map((id) => (id === 1 ? undefined : { id })),
+  },
+  { username: 'qa_public' },
+  mediaMaterials
+);
+assert.deepEqual(await readWithMissing(mediaMaterials[0], 0), []);
+assert.deepEqual(await readWithMissing(mediaMaterials[1], 1), [{ id: 2 }]);
 const peerControlDirectory = await mkdtemp(
   join(tmpdir(), 'vac-public-peer-control-')
 );
