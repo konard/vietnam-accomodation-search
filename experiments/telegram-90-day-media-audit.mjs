@@ -23,7 +23,10 @@ import {
   environmentFile,
   userCredentials,
 } from './telegram-bot-conversation-e2e.mjs';
-import { retainedMessages } from './telegram-90-day-coverage-audit.mjs';
+import {
+  retainedMessages,
+  resolvePublicHistoryCommunity,
+} from './telegram-90-day-coverage-audit.mjs';
 import { retryTelegramFloodWait } from './telegram-live-audit-runtime.mjs';
 
 export function recognizeImage(command, bytes) {
@@ -73,10 +76,67 @@ async function json(path) {
   }
 }
 
-async function inspectMaterial(client, source, material, command) {
+async function cachedImage(client, message, command, output) {
+  const key = createHash('sha256')
+    .update(
+      JSON.stringify([
+        String(message.media.photo.id),
+        command,
+        process.env.TESSDATA_PREFIX || '',
+        'eng+rus+vie',
+      ])
+    )
+    .digest('hex');
+  const path = join(output, `image-${key}.json`);
+  let result = await json(path);
+  if (!result) {
+    const bytes = await retryTelegramFloodWait(() =>
+      client.downloadMedia(message.media)
+    );
+    const text = await recognizeImage(command, bytes);
+    result = { state: 'ocr-completed', bytes: bytes.length, text };
+    await save(path, result);
+  }
+  return { id: message.id, ...result };
+}
+
+export function sourceMessageReader(
+  client,
+  source,
+  materials,
+  peer = source.username
+) {
+  let cached = new Map();
+  return async (material, index) => {
+    if (material.messageIds.some((id) => !cached.has(id))) {
+      const ids = [
+        ...new Set(
+          materials.slice(index, index + 100).flatMap((next) => next.messageIds)
+        ),
+      ].slice(0, 100);
+      const messages = await retryTelegramFloodWait(() =>
+        client.getMessages(peer, { ids })
+      );
+      cached = new Map(messages.map((message) => [message.id, message]));
+    }
+    return material.messageIds.map((id) => cached.get(id)).filter(Boolean);
+  };
+}
+
+async function inspectMaterial(
+  client,
+  source,
+  material,
+  command,
+  output,
+  messages
+) {
   const results = [];
-  const messages = await retryTelegramFloodWait(() =>
-    client.getMessages(source.username, { ids: material.messageIds })
+  const missingMessageIds = material.messageIds.filter(
+    (id) =>
+      !messages.some(
+        (message) => message.id === id && message.className !== 'MessageEmpty'
+      )
   );
   for (const message of messages) {
     if (!message.media) {
@@ -90,22 +150,27 @@ async function inspectMaterial(client, source, material, command) {
       });
       continue;
     }
-    const bytes = await retryTelegramFloodWait(() =>
-      client.downloadMedia(message.media)
-    );
-    const text = await recognizeImage(command, bytes);
-    results.push({
-      id: message.id,
-      state: 'ocr-completed',
-      bytes: bytes.length,
-      text,
-    });
+    results.push(await cachedImage(client, message, command, output));
   }
+  return interpretMediaMaterial(source, material, results, missingMessageIds);
+}
+
+export function interpretMediaMaterial(
+  source,
+  material,
+  results,
+  missingMessageIds = []
+) {
   const text = results
     .map((result) => result.text || '')
     .filter(Boolean)
     .join('\n');
-  const relevance = classifyTelegramPost(text);
+  const relevance = classifyTelegramPost(text, {
+    targetLocation:
+      source.geographicFocus && source.focus !== 'nha-trang'
+        ? null
+        : 'nha-trang',
+  });
   const extracted = relevance.eligible
     ? parseTelegramOffer(
         {
@@ -120,6 +185,7 @@ async function inspectMaterial(client, source, material, command) {
   return {
     materialId: material.id,
     messageIds: material.messageIds,
+    missingMessageIds,
     results,
     relevance,
     historicalOfferExtracted: Boolean(extracted),
@@ -143,6 +209,10 @@ function mediaSummary(results, completedSources) {
     emptyOcr: results.filter((result) =>
       result.results?.every((image) => !image.text)
     ).length,
+    missingMessages: results.reduce(
+      (sum, result) => sum + (result.missingMessageIds?.length || 0),
+      0
+    ),
     results,
     limitation:
       'Only complete retained public sources are inspected. OCR is not human-reviewed recall; current downloads may reflect later edits. Production ingestion has not been changed.',
@@ -153,9 +223,7 @@ async function cachedMaterial(
   client,
   source,
   material,
-  command,
-  output,
-  ordinal
+  { command, output, ordinal, readMessages, index }
 ) {
   const key = createHash('sha256')
     .update(
@@ -168,7 +236,14 @@ async function cachedMaterial(
     try {
       result = {
         sourceOrdinal: ordinal,
-        ...(await inspectMaterial(client, source, material, command)),
+        ...(await inspectMaterial(
+          client,
+          source,
+          material,
+          command,
+          output,
+          await readMessages(material, index)
+        )),
       };
     } catch (error) {
       result = {
@@ -177,8 +252,21 @@ async function cachedMaterial(
         error: errorSummary(error),
       };
     }
-    await save(path, result);
   }
+  // Reuse downloaded OCR evidence, not cached classifier/parser decisions.
+  // Every replay observes the currently loaded production extraction code.
+  if (!result.error) {
+    result = {
+      sourceOrdinal: ordinal,
+      ...interpretMediaMaterial(
+        source,
+        material,
+        result.results,
+        result.missingMessageIds
+      ),
+    };
+  }
+  await save(path, result);
   return result;
 }
 
@@ -231,7 +319,8 @@ export async function runMediaAudit({
       }
       if (
         checkpoint.username !== source.username ||
-        checkpoint.cutoff !== cohort.cutoff
+        checkpoint.cutoff !== cohort.cutoff ||
+        checkpoint.startedAt !== cohort.startedAt
       ) {
         throw new Error('Source checkpoint does not match the frozen cohort.');
       }
@@ -239,15 +328,16 @@ export async function runMediaAudit({
       const materials = assembleTelegramAlbums(
         await retainedMessages(sourceDirectory, checkpoint.pages)
       ).filter((material) => !material.text.trim() && material.mediaIds.length);
-      for (const material of materials) {
-        const result = await cachedMaterial(
-          client,
-          source,
-          material,
-          tesseractCommand,
+      const peer = await resolvePublicHistoryCommunity(client, source);
+      const readMessages = sourceMessageReader(client, source, materials, peer);
+      for (const [materialIndex, material] of materials.entries()) {
+        const result = await cachedMaterial(client, source, material, {
+          command: tesseractCommand,
           output,
-          index + 1
-        );
+          ordinal: index + 1,
+          readMessages,
+          index: materialIndex,
+        });
         results.push(result);
         console.log(
           JSON.stringify({

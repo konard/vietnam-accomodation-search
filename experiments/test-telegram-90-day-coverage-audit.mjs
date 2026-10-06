@@ -2,9 +2,16 @@
 
 // Offline controls for the manual/private collector; never opens Telegram.
 import assert from 'node:assert/strict';
-import { recognizeImage } from './telegram-90-day-media-audit.mjs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  recognizeImage,
+  sourceMessageReader,
+} from './telegram-90-day-media-audit.mjs';
 import {
   analyzeHistoryMessages,
+  collectSource,
   historySourceWorkers,
   historySourcePlan,
   normalizedHistoryMessage,
@@ -79,6 +86,75 @@ await assert.rejects(
     Buffer.from('not-an-image')
   ),
   { code: 'ENOENT' }
+);
+const requestedBatches = [];
+const mediaMaterials = Array.from({ length: 205 }, (_, index) => ({
+  messageIds: [index + 1],
+}));
+const readMessages = sourceMessageReader(
+  {
+    getMessages(_source, { ids }) {
+      requestedBatches.push(ids);
+      return ids.map((id) => ({ id }));
+    },
+  },
+  { username: 'qa_public' },
+  mediaMaterials
+);
+for (const [index, material] of mediaMaterials.entries()) {
+  assert.deepEqual(await readMessages(material, index), [{ id: index + 1 }]);
+}
+assert.deepEqual(
+  requestedBatches.map((ids) => ids.length),
+  [100, 100, 5]
+);
+const peerControlDirectory = await mkdtemp(
+  join(tmpdir(), 'vac-public-peer-control-')
+);
+let privateHistoryCalls = 0;
+try {
+  await assert.rejects(
+    collectSource(
+      {
+        getEntity() {
+          return { className: 'User', username: 'qa_user' };
+        },
+        getMessages() {
+          privateHistoryCalls++;
+          return [];
+        },
+      },
+      { username: 'qa_user' },
+      {
+        startedAt: NOW.toISOString(),
+        cutoff: new Date(NOW.getTime() - 90 * 86400000).toISOString(),
+      },
+      peerControlDirectory,
+      1
+    ),
+    /public Telegram community/u
+  );
+  assert.equal(privateHistoryCalls, 0);
+} finally {
+  await rm(peerControlDirectory, { recursive: true, force: true });
+}
+const otherCity = {
+  id: 100,
+  date: NOW.toISOString(),
+  text: 'For rent: apartment in Da Nang, 8 million VND/month.',
+};
+assert.equal(
+  analyzeHistoryMessages([otherCity], { username: 'qa_public', now: NOW })
+    .counts.historicalTextOffers,
+  0
+);
+assert.equal(
+  analyzeHistoryMessages([otherCity], {
+    username: 'qa_public',
+    now: NOW,
+    targetLocation: null,
+  }).counts.historicalTextOffers,
+  1
 );
 assert.throws(
   () => normalizedHistoryMessage({ id: 1, date: 'not-a-date' }, 'qa_public'),

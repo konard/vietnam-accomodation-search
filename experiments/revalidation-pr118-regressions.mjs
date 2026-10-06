@@ -39,6 +39,10 @@ function result(issue, name, expected, actual) {
 }
 
 function fieldNotationChecks(parse) {
+  const mapText = 'Sample Villa\n€ 19 phút - 9,3 km\nAdd stop. Save.';
+  const mapOffer = classifyTelegramPost(mapText).eligible
+    ? parse(mapText)
+    : undefined;
   return [
     result(
       132,
@@ -70,6 +74,12 @@ function fieldNotationChecks(parse) {
       parse(
         'For rent: apartment in Nha Trang, 9 million VND/month. Available from 2026-10-09.'
       )?.attributes.availableFrom
+    ),
+    result(
+      135,
+      'map-travel-duration-is-not-monthly-rent',
+      null,
+      mapOffer?.price?.amount ?? null
     ),
   ];
 }
@@ -104,6 +114,14 @@ function diagnosticControls(parse) {
       parse(
         'For rent: apartment in Nha Trang, 9 million VND/month. Available on 09/10/2026.'
       )?.attributes.availableFrom
+    ),
+    result(
+      null,
+      'genuine-apartment-with-motorbike-travel-reference',
+      true,
+      classifyTelegramPost(
+        'For rent: studio apartment in Nha Trang, 8 million VND/month. 10 minutes to the beach by motorbike.'
+      ).eligible
     ),
   ];
 }
@@ -237,6 +255,21 @@ export async function reproducePr118Regressions() {
         propertyId?.replace(/[–—‑]/gu, '-')
       ),
       ...fieldNotationChecks(parse),
+      result(
+        136,
+        'vehicle-rental-is-not-housing',
+        false,
+        classifyTelegramPost('Сдам байк в аренду 50сс. 2.5 млн VND/месяц.')
+          .eligible
+      ),
+      result(
+        136,
+        'vehicle-sale-with-negated-rental-history-is-not-housing',
+        false,
+        classifyTelegramPost(
+          'Продаю Honda SCR. Байк не сдавался в аренду. Цена 10 млн VND.'
+        ).eligible
+      ),
     ],
     negativeControls: diagnosticControls(parse),
   };

@@ -2,7 +2,7 @@
 
 Tested production main [`5409ea0`](https://github.com/konard/vietnam-accomodation-search/commit/5409ea06127858be05d2e0f8cd6ad25854e0c419), package 0.12.3, on 2026-10-07 in Vietnam. This continues the [PR #110 revalidation](../revalidation-2026-10-06-pr110/README.md). Production code was not changed. Test experiments and this sanitized evidence are published; production defects are separate GitHub issues for parallel fixes. Existing bot and user credentials were sufficient for the executed real Telegram tests.
 
-**Verdict: not yet production-ready for complete 90-day parsing.** All public channels in the retained cohort have been retrieved across the requested window, but full parsing has confirmed gaps. The broader discussion-group retrieval remains in progress; neither incomplete histories nor unresolved media are counted as passing.
+**Verdict: not yet production-ready for complete 90-day parsing.** All 40 public sources in the retained cohort have been retrieved across the requested window, but full parsing has confirmed gaps. A catalog cross-check found 26 additional configured public communities, which are being audited across the same frozen window. Unresolved media and unreviewed classifier-positive results are not counted as fully parsed housing listings.
 
 ## Executed checks
 
@@ -33,31 +33,39 @@ The current Docker build is exact-revision linux/arm64, Node 24.21.0, clink 0.2.
 
 The raw retrieval experiment freezes its window at `2026-10-06T20:34:53.774Z`, with an exact 90-day cutoff of `2026-07-08T20:34:53.774Z` (Vietnam local July 9 through October 7). Its retained cohort contains **17 public channels and 23 public discussion groups**. It does not join communities or read private conversations. Channels are prioritized, but groups remain in scope.
 
-Each source is paginated without a message cap until an older-than-cutoff sentinel or actual empty history is received. Descending IDs, pagination progress, checksummed page payloads, frozen cutoff and independent source checkpoints are verified. Interrupted processes resume retained pages rather than declaring truncated histories complete. Raw messages and extracted contacts remain in the ignored private evidence directory, not this repository report.
+Each source is paginated without a message cap until an older-than-cutoff sentinel or actual empty history is received. Descending IDs, pagination progress, checksummed page payloads, frozen cutoff and independent source checkpoints are verified. Interrupted processes resume retained pages rather than declaring truncated histories complete. Normalized message-body snapshots, scalar media identifiers and extracted contacts remain in the ignored private evidence directory, not this repository report. These snapshots are not complete MTProto objects or an archive of messages deleted before retrieval.
 
-At this published checkpoint, **all 17 public channels and one public group are complete**. Those 18 complete sources contain:
+**All 17 public channels and 23 public groups are complete**, with no failed or pending raw-history sources. The original frozen 90-day pass contains:
 
 | Observation                                               |             Count |
 | --------------------------------------------------------- | ----------------: |
-| Retrieved messages / distinct message IDs                 | 144,101 / 144,101 |
-| Assembled materials                                       |            24,019 |
-| Accounted message IDs across materials                    |           144,101 |
-| Text offers extractable at publication time               |            21,983 |
-| Offers returned with the actual frozen current date       |            17,674 |
-| Historical text offers rejected by the two-month age gate |             4,309 |
+| Retrieved messages / distinct source-and-message-ID pairs | 577,643 / 577,643 |
+| Assembled materials                                       |           104,145 |
+| Accounted message IDs across materials                    |           577,643 |
+| Classifier-eligible parse results at publication time     |            75,978 |
+| Parse results returned with the frozen current date       |            53,392 |
+| Historical parse results rejected by the age gate         |            22,586 |
 | Parser exceptions                                         |                 0 |
-| Media-only materials unresolved by the text pass          |               121 |
+| Media-only materials unresolved by the text pass          |             2,277 |
 | Albums with different non-empty captions                  |                 1 |
 
-**This is not a completed 40-source acceptance pass.** The remaining groups are still being collected, including high-volume histories already exceeding 100,000 messages. This document will be updated from final durable reports; partial group pages are deliberately excluded from the complete-source totals above.
+This is a **completed 40-source raw retrieval and production-parser replay**, not a passing protected acceptance gate. The largest source alone returned 194,015 messages. Parser exceptions, duplicate IDs within a source and unaccounted members are zero, but the semantic defects below remain. A separate initial catch-up across those 40 sources, ending at `2026-10-06T21:44:31.525Z`, found nine new messages assembled into four accepted materials, with no parser exceptions. Its report remains separate rather than silently changing the original window. A final combined catch-up is still required after the catalog supplement completes.
 
-Message-ID accounting is not semantic recall. The one multiple-caption album was independently reviewed: it advertises two different apartments, and production drops the second caption (#130). Likewise, zero parser exceptions does not mean every eligible listing has correct fields.
+The default catalogs contain 41 Telegram seeds. Fourteen are in the original cohort; resolving the remaining 27 with the actual session found 26 additional public communities and one **User**, not a public channel/group (#137). Only entity metadata was requested for that User; no private history was read. The expanded finite audit scope is **66 distinct public communities: 30 channels and 36 groups**, covering all 40 currently public default seeds plus the retained discovery cohort. At this checkpoint the additional pass has completed 22/26 sources and 186,795 messages; four sources remain pending. These partial counters are not full-cohort acceptance. Non-Nha-Trang catalog sources use the native ingestion classifier's unrestricted geographic scope.
+
+Code inspection also found no public-community type guard at the native public-source history boundary: the SDK's `resolvePeer(peer, true)` boolean forces resolution and does not restrict peer type. Telegram's [history method](https://core.telegram.org/method/messages.getHistory) accepts [InputPeer](https://core.telegram.org/type/InputPeer), including user peers. This is a code-derived private-routing risk, **not an observed private-history leak**. The experiment rejects non-public-community entities before history or media requests.
+
+Message-ID accounting is not semantic recall. Classifier-eligible counters include confirmed non-housing false positives (#136), so the table is not a count of independently verified housing offers. The one multiple-caption album was independently reviewed: it advertises two different apartments, and production drops the second caption (#130). Likewise, zero parser exceptions does not mean every eligible listing has correct fields.
 
 The production native adapter independently returned exactly the same 3,054 IDs and text bodies as the first complete source. That successful comparison used a one-second manual consumer delay per 100 messages and briefly removed competing history requests. An earlier native run failed on an actual 22-second flood wait; the default SDK handles short waits but the production iterator does not recover longer ones (#128). A successful throttled check is not a fix for the failed run.
 
 ### Images and protected audit
 
-The first five complete sources contain 33 captionless materials. Every material was downloaded and inspected with local Tesseract `eng+rus+vie`: zero download/OCR exceptions, 22 materials with no readable text, and one visually confirmed rental poster. Without OCR, production returns `photo-only-ocr-unavailable`; actual OCR supplied to the same reconciliation yields an offer. Production ingestion does not wire in an OCR function (#129). The poster's visible 13M/month rent was distorted by OCR and correctly left unknown by the parser; enabling OCR alone is not accurate field acceptance. Additional completed sources have media awaiting this supplemental pass.
+The original 40-source media supplement is complete: **2,277 captionless materials assessed, zero download/OCR exceptions, 115 unsupported non-photo media items, and 1,615 materials with no readable OCR text** (including unsupported media). Actual local Tesseract `eng+rus+vie` produces 26 automatic historical classifier/parser-positive materials; this is not a human-reviewed rental count. Non-photo items were explicitly marked unsupported and were not downloaded or interpreted as photos.
+
+The first five sources contain 33 captionless materials, including one visually confirmed rental poster. Without OCR, production returns `photo-only-ocr-unavailable`; actual OCR supplied to the same reconciliation yields an offer. Production ingestion does not wire in an OCR function (#129). The poster's visible 13M/month rent was distorted by OCR and correctly left unknown by the parser; enabling OCR alone is not accurate field acceptance. Media in the 26-source catalog supplement is still pending.
+
+The ongoing image review also visually verified a September 28 navigation map showing **19 minutes / 9.3 km**, with no EUR rent. Actual OCR misreads the travel icon as `€`; the unchanged protected batch accepts **19 EUR/month** with no review reason (#135), including at the frozen current date. Its two images are within the default three-photo OCR limit. Native ingestion currently has no OCR and does not already display this false price; the protected OCR path does, and the mistake must be controlled before OCR integration. Automated OCR-positive counts are not human-reviewed rental recall. Non-photo documents/videos remain explicitly unsupported rather than being counted as fully parsed.
 
 The **unmodified protected audit** now runs with the actual user session and real clink storage, confirming the #111 collection-name fix. One full source at its calendar-three-month cutoff returned 3,134 messages, 232 accepted offers, 139 empty-parser age-gate errors, 15 excluded materials and 20 review materials. Actual storage persist/query/edit/delete/round-trip checks all passed. Its overall acceptance remained false. Its internal segment and recall measurements are defective (#126), and custom-folder resolution incorrectly sends a dialog-filter ID as a peer-folder ID (#127). Telegram distinguishes [custom dialog filters](https://core.telegram.org/api/folders) from the archive folder accepted by [messages.getDialogs](https://core.telegram.org/method/messages.getDialogs). The native SDK's custom-folder implementation uses client-side filters and is not implicated by this audit-specific failure.
 
@@ -69,9 +77,11 @@ Current live review confirms examples outside those fixtures:
 
 - **Listing false negatives:** rental villas containing `ищущих` are misclassified as requests; Nha Trang houses mentioning a view of Dalat are rejected as wrong-city (#125); one captionless rental poster is unparsed (#129); a second independent listing in an album is dropped (#130).
 - **Field false negatives:** qualified Russian five-bedroom descriptions and a one-year minimum stay (#123); shared one-bedroom layout across floor-price variants (#124); full property code (#131); six explicitly styled Unicode rents (#132); English ordinal floors (#133); explicit named-month/ISO availability dates (#134).
-- **Confirmed field false positives:** the bedroom count on the line after `17th floor` is invented as floor 3 (#133); a shortened property-code prefix is returned instead of the full reference (#131).
+- **Confirmed false positives:** nine current vehicle sales/rentals/requests become accommodation offers in a risk-targeted ten-post review (#136); the tenth is a genuine studio mentioning travel by motorbike and must stay eligible. A map's travel time becomes 19 EUR/month in the real OCR audit (#135). The bedroom count on the line after `17th floor` becomes floor 3 (#133), and a shortened property-code prefix substitutes for the full reference (#131). The risk-targeted sample is not a random all-source precision estimate.
 - **Audit false alarms:** a qualitative high floor plus `50m²` is incorrectly treated as a missing numeric floor; monetary deposits are incorrectly demanded as month counts; footer-wide pet policy, elevator-served floors, and whole-house bedrooms do not necessarily describe the selected rental option (#121). Keyword warnings are review candidates, not measured false-negative counts.
 - **Uncertain source, not a confirmed parser defect:** one retained caption explicitly quotes both 8M main rent and 7M rent under additional expenses. The parser preserves the 7M–8M range; a bounded reference helper sees only 8M. Its mismatch is excluded from confirmed price-error counts.
+
+A separate real rich-text probe sampled 500 public messages across five sources: 141 hidden Telegram-link entities were observed. All 11 explicit contact-link candidates already expose visible `@username` contacts and match their actual link targets after parsing. Those links are not confirmed contact false negatives; the remaining rich-link/UI semantics are not claimed as comprehensively parsed. Two adversarial 100,000-whitespace parser controls completed in 65.71 ms and 18.32 ms; this is bounded performance evidence for those patterns, not exhaustive fuzzing.
 
 Replaying all 1,232 retained prior offers extracted all of them. All 653 sold-out posts remained unavailable, with none `availableNow`; one location remained unknown. The additive surcharge bug (#112) is fixed. Of 833 bounded rent-reference cases, 832 match, with only the contradictory 7M/8M source above remaining. This is a reference-consistency check, not all-source human-reviewed price recall.
 
@@ -95,6 +105,9 @@ Replaying all 1,232 retained prior offers extracted all of them. All 653 sold-ou
 | [#132](https://github.com/konard/vietnam-accomodation-search/issues/132) | Mathematical-bold Unicode rent becomes unknown.                                                                     |
 | [#133](https://github.com/konard/vietnam-accomodation-search/issues/133) | Ordinal floor is unknown or misbound to next-line bedrooms.                                                         |
 | [#134](https://github.com/konard/vietnam-accomodation-search/issues/134) | Named-month and ISO availability dates remain unknown.                                                              |
+| [#135](https://github.com/konard/vietnam-accomodation-search/issues/135) | Actual OCR map travel time becomes an accepted 19 EUR/month rent.                                                   |
+| [#136](https://github.com/konard/vietnam-accomodation-search/issues/136) | Real vehicle sales/rentals/requests are accepted as accommodation offers.                                           |
+| [#137](https://github.com/konard/vietnam-accomodation-search/issues/137) | Configured public seed resolves to a User; native public-source routing lacks a community-type guard.               |
 
 Prior fixes #111, #112, #113, #115 and #116 are revalidated. The previous release issue's automatic closure did not establish successful publication: the actual tested-main [release run](https://github.com/konard/vietnam-accomodation-search/actions/runs/37439590697) reports zero verified and two failed publishing prerequisites. Repository release secrets/variables/releases were absent when checked. No publish credentials or production token were changed.
 
@@ -105,9 +118,9 @@ Manual, opt-in experiments:
 - [Resumable uncapped public history audit](../../../experiments/telegram-90-day-coverage-audit.mjs), minimum 90 days, explicit credential/cohort/private-state paths and bounded concurrency.
 - [Captionless-media supplement](../../../experiments/telegram-90-day-media-audit.mjs), checksummed completed sources only, local `eng+rus+vie` OCR, private cached results.
 - [Offline collector controls](../../../experiments/test-telegram-90-day-coverage-audit.mjs), no network/credentials, covering accounting, worker bounds/order and media failure handling.
-- [Independent reduced regressions](../../../experiments/revalidation-pr118-regressions.mjs), 16 current defect checks fail and four negative/control checks pass. Exit 1 explicitly means reported defects remain, not that the collector fixture gate failed.
+- [Independent reduced regressions](../../../experiments/revalidation-pr118-regressions.mjs), 19 current defect checks fail and five negative/control checks pass. Exit 1 explicitly means reported defects remain, not that the collector fixture gate failed.
 - [Existing real-credential conversation wrapper](../../../experiments/telegram-local-credential-e2e.mjs), bot-only and degraded modes.
 
 Private logs, checksummed raw history, media, OCR output, storage graphs, container state and reports remain under `.vietnam-accomodation-search/local-revalidation-pr118-2026-10-07/`. Original prior journals and canonical data were preserved. No credentials, session strings, numeric account identities, contact details, browser profiles or raw public/private conversations are committed.
 
-Complete broad-group retrieval and media review, fix the separately assigned defects, extend independent reviewed ground truth, then rerun protected acceptance. Passing unit/coverage/browser/E2E checks is valuable evidence but does not override the confirmed parsing gaps or failed release gate.
+Complete media review, fix the separately assigned defects, extend independent reviewed ground truth, then rerun protected acceptance. Passing unit/coverage/browser/E2E checks and complete raw-history retrieval are valuable evidence but do not override the confirmed parsing gaps or failed release gate.

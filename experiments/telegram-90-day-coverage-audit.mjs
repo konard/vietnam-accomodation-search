@@ -146,7 +146,10 @@ export function normalizedHistoryMessage(message, username) {
   };
 }
 
-export function analyzeHistoryMessages(messages, { username, now }) {
+export function analyzeHistoryMessages(
+  messages,
+  { username, now, targetLocation = 'nha-trang' }
+) {
   const materials = assembleTelegramAlbums(messages);
   const counts = {
     messages: messages.length,
@@ -182,7 +185,7 @@ export function analyzeHistoryMessages(messages, { username, now }) {
       });
       continue;
     }
-    const relevance = classifyTelegramPost(material.text);
+    const relevance = classifyTelegramPost(material.text, { targetLocation });
     counts.labels[relevance.label] = (counts.labels[relevance.label] || 0) + 1;
     if (!relevance.eligible) {
       findings.push({
@@ -261,8 +264,26 @@ export async function retainedMessages(directory, pages) {
   return messages;
 }
 
+export async function resolvePublicHistoryCommunity(client, source) {
+  const entity = await retryTelegramFloodWait(() =>
+    client.getEntity(source.username)
+  );
+  if (entity.className !== 'Channel' || !entity.username) {
+    throw new Error(
+      'The selected source no longer resolves to a public Telegram community.'
+    );
+  }
+  return entity;
+}
+
 // eslint-disable-next-line complexity -- One resumable source boundary owns public-peer verification, page evidence and its durable checkpoint.
-async function collectSource(client, source, cohort, directory, ordinal) {
+export async function collectSource(
+  client,
+  source,
+  cohort,
+  directory,
+  ordinal
+) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const path = join(directory, 'checkpoint.json');
   const checkpoint = (await jsonFile(path)) || {
@@ -275,20 +296,14 @@ async function collectSource(client, source, cohort, directory, ordinal) {
   };
   if (
     checkpoint.cutoff !== cohort.cutoff ||
+    checkpoint.startedAt !== cohort.startedAt ||
     checkpoint.username !== source.username
   ) {
     throw new Error(
       'Source checkpoint does not match its frozen history cohort.'
     );
   }
-  const entity = await retryTelegramFloodWait(() =>
-    client.getEntity(source.username)
-  );
-  if (entity.className !== 'Channel' || !entity.username) {
-    throw new Error(
-      'The selected source no longer resolves to a public Telegram community.'
-    );
-  }
+  const entity = await resolvePublicHistoryCommunity(client, source);
   while (!checkpoint.complete) {
     const page = await retryTelegramFloodWait(() =>
       client.getMessages(entity, {
@@ -333,7 +348,7 @@ async function collectSource(client, source, cohort, directory, ordinal) {
       normalized.at(-1)?.date || checkpoint.oldestRetrievedAt;
     checkpoint.complete = Boolean(boundary) || normalized.length === 0;
     checkpoint.reason = boundary
-      ? '90-day-cutoff-reached'
+      ? cohort.cutoffReason || '90-day-cutoff-reached'
       : normalized.length === 0
         ? 'history-exhausted'
         : 'in-progress';
@@ -354,7 +369,13 @@ async function collectSource(client, source, cohort, directory, ordinal) {
   }
   const analysis = analyzeHistoryMessages(
     await retainedMessages(directory, checkpoint.pages),
-    { username: source.username, now: new Date(cohort.startedAt) }
+    {
+      username: source.username,
+      now: new Date(cohort.startedAt),
+      ...(source.geographicFocus
+        ? { targetLocation: source.focus === 'nha-trang' ? 'nha-trang' : null }
+        : {}),
+    }
   );
   await saveJson(join(directory, 'analysis.json'), analysis);
   return { ...checkpoint, counts: analysis.counts };
@@ -392,10 +413,14 @@ export async function runHistoryCoverageAudit(options) {
       new Date(startedAt).getTime() - options.days * DAY_MS
     ).toISOString(),
     days: options.days,
-    sources: sourceCohort.sources.map(({ username, type }) => ({
-      username,
-      type,
-    })),
+    sources: sourceCohort.sources.map(
+      ({ username, type, geographicFocus, focus }) => ({
+        username,
+        type,
+        ...(geographicFocus ? { geographicFocus } : {}),
+        ...(focus ? { focus } : {}),
+      })
+    ),
   };
   if (cohort.days !== options.days) {
     throw new Error(
