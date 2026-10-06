@@ -214,10 +214,11 @@ function mergeParsedContacts(parsed, explicit) {
 
 export function normalizeOffer(input, options = {}) {
   const text = firstPresent(compact(input.text), compact(input.title), '');
+  const price = firstPresent(input.price, parsePrice(text));
   const parsed = parseListingText(text, {
     locationHint: options.locationHint,
+    price,
   });
-  const price = firstPresent(input.price, parsePrice(text));
   const rates = firstPresent(options.rates, { VND: 1 });
   const url = canonicalizeOfferUrl(compact(input.url));
   const sourceId = firstPresent(compact(input.sourceId), 'unknown');
