@@ -119,16 +119,19 @@ projection jobs are counted by elapsed-time union rather than double-counted.
 
 ### Primary-source research and component choices
 
-| Component / source                                                                                 | What it establishes                                       | Decision                                                                                                                                                        |
-| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Docker Compose healthcheck](https://docs.docker.com/reference/compose-file/services/#healthcheck) | `start_interval` is supported from Compose 2.20.2.        | Use two-second probes during the five-minute startup grace.                                                                                                     |
-| [Docker run health options](https://docs.docker.com/reference/cli/docker/container/run/)           | `--health-start-interval` needs Engine API 1.44.          | Apply equivalent image health settings; document compatibility.                                                                                                 |
-| [Node child processes](https://nodejs.org/api/child_process.html)                                  | Signal delivery and child completion are distinct events. | Synchronize trap readiness and retain process-group cleanup instead of assuming startup time.                                                                   |
-| [lru-cache](https://isaacs.github.io/node-lru-cache/)                                              | TTL and `fetchMethod` support stale-result refresh.       | Useful alternative, but its memory cache would not retain successful empty collections across restart. Use existing LinksStore plus a small shared-promise map. |
-| [p-limit](https://github.com/sindresorhus/p-limit)                                                 | Limits concurrent asynchronous tasks.                     | Existing source pool already supplies cancellation, budget, outcomes, and concurrency. Keep it and fix scheduling/freshness rather than add a second queue.     |
-| [grammY scaling](https://grammy.dev/advanced/scaling)                                              | Bot concurrency can overlap asynchronous middleware.      | Share refresh work and wait for cleanup within the existing bot/runtime lifecycle; a runner migration is unnecessary.                                           |
-| [link-cli](https://github.com/link-foundation/link-cli)                                            | Existing native links import/export component.            | Retain the app's verified LinkCliMirror reuse path and content-addressed chunks; test with real clink 0.2.11.                                                   |
-| [Telegram BotFather](https://core.telegram.org/bots/features#botfather)                            | Bot ownership/token management is an operator action.     | Rotation and drill identities require the owner's actual Telegram access.                                                                                       |
+| Component / source                                                                                           | What it establishes                                               | Decision                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Docker Compose healthcheck](https://docs.docker.com/reference/compose-file/services/#healthcheck)           | `start_interval` is supported from Compose 2.20.2.                | Use two-second probes during the five-minute startup grace.                                                                                                     |
+| [Docker run health options](https://docs.docker.com/reference/cli/docker/container/run/)                     | `--health-start-interval` needs Engine API 1.44.                  | Apply equivalent image health settings; document compatibility.                                                                                                 |
+| [Node child processes](https://nodejs.org/api/child_process.html)                                            | Signal delivery and child completion are distinct events.         | Synchronize trap readiness and retain process-group cleanup instead of assuming startup time.                                                                   |
+| [Node filesystem promises](https://nodejs.org/api/fs.html#promises-api)                                      | Concurrent modifications of one file are not synchronized.        | Queue the shared durable writer by resolved destination, retaining file and directory fsync.                                                                    |
+| [Microsoft file sharing](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew) | Rename requires compatible delete-sharing access.                 | Keep same-destination replacement transactions from overlapping on Windows.                                                                                     |
+| [write-file-atomic](https://github.com/npm/write-file-atomic)                                                | Serializes same-file writes; independent files remain concurrent. | Its queue is a useful precedent. Preserve the existing application's directory-fsync semantics and avoid another dependency.                                    |
+| [lru-cache](https://isaacs.github.io/node-lru-cache/)                                                        | TTL and `fetchMethod` support stale-result refresh.               | Useful alternative, but its memory cache would not retain successful empty collections across restart. Use existing LinksStore plus a small shared-promise map. |
+| [p-limit](https://github.com/sindresorhus/p-limit)                                                           | Limits concurrent asynchronous tasks.                             | Existing source pool already supplies cancellation, budget, outcomes, and concurrency. Keep it and fix scheduling/freshness rather than add a second queue.     |
+| [grammY scaling](https://grammy.dev/advanced/scaling)                                                        | Bot concurrency can overlap asynchronous middleware.              | Share refresh work and wait for cleanup within the existing bot/runtime lifecycle; a runner migration is unnecessary.                                           |
+| [link-cli](https://github.com/link-foundation/link-cli)                                                      | Existing native links import/export component.                    | Retain the app's verified LinkCliMirror reuse path and content-addressed chunks; test with real clink 0.2.11.                                                   |
+| [Telegram BotFather](https://core.telegram.org/bots/features#botfather)                                      | Bot ownership/token management is an operator action.             | Rotation and drill identities require the owner's actual Telegram access.                                                                                       |
 
 No new production dependency is needed. The options for each individual
 requirement and the chosen plan are listed in the inventory above.
@@ -230,3 +233,53 @@ missing npm bootstrap authentication and missing `DOCKERHUB_IMAGE`; PR-mode
 Release Preflight is advisory, so its green job is not evidence for #106.
 This PR adds exactly one patch changeset. Fresh runs are checked against the
 latest pushed SHA and timestamps before declaring CI complete.
+
+### Windows/Bun CI repair (2026-10-06)
+
+The subsequent [Checks run 37390996053](https://github.com/konard/vietnam-accomodation-search/actions/runs/37390996053)
+was created at 2026-10-05T23:53:02Z on `ff1137d`, after that commit's
+23:52:56Z timestamp. Its Bun/Windows failure was
+`canonical associative storage > completes concurrent writes of one file within one millisecond`.
+The full workflow log is preserved as `ci-logs/checks-37390996053.log`;
+the focused log is `ci-logs/bun-windows-37390996053.log`. Focused lines
+290–297 show two fulfilled writes and one rejected write; full-log lines
+29625–29628 show that Pipeline Status correctly propagated the test failure.
+No timeout, acceptance threshold, runtime exclusion, or status gate was relaxed.
+
+Unique temporary names prevented staging collisions but did not serialize
+replacement of one destination. The diagnostic regression repeats ten bounded
+rounds, reports rejected filesystem errors, and checks for abandoned temporary
+files. The shared durable writer now queues each complete staging/fsync/rename/
+directory-fsync transaction by resolved path, with Windows case normalization.
+Relative and absolute aliases use the same queue. A rejected operation releases
+the next queued operation; completed queues are removed. Different destinations
+remain independent. Existing cross-process LinksStore locking is preserved.
+This applies to canonical offers, generic records, binary projection pointers
+and manifests, Telegram sessions, audit journals, and release evidence through
+their existing shared helper.
+
+The diagnostic-only commit `702509f` reproduced the same failure in
+[run 37391885375](https://github.com/konard/vietnam-accomodation-search/actions/runs/37391885375),
+created at 2026-10-06T00:03:00Z after its 00:02:49Z commit.
+`ci-logs/bun-windows-37391885375.log` line 290 identifies
+`code: "EPERM", syscall: "rename"` at round 1 (the second bounded round).
+This establishes the failing replacement operation before the implementation
+change; the runtime's precise native handle-sharing behavior is inferred from
+Microsoft's sharing rules. Every other runtime/platform test job passed on
+that diagnostic commit.
+
+The focused regression also verifies final call order, preservation of committed
+contents after a failed write, temporary-file cleanup, and continued queued and
+later writes. The complete Node suite with real clink passed 1,156 tests in
+64.00s during this repair; sequential real-clink coverage passed all 1,156
+tests in 228.93s with 100% product line coverage. Bun with real clink passed
+all 1,156 tests in 118.35s. Field metrics, corpus preservation, and the
+synthetic readiness drill were rerun successfully. Final Deno, static checks,
+and fresh CI results are recorded in PR #110 after they complete.
+
+The requirement inventory above was rechecked against every child issue and
+the PR's conversation, inline comments, and reviews. Latest `main` remains
+included. Repository secrets, variables, and releases were rechecked on
+2026-10-06 and remain empty; real release preflight still exits 1 with
+0 verified, 2 failed, and 1 unknown. The documented #106 and protected #108
+acceptance limits therefore remain in effect.
