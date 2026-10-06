@@ -1,7 +1,7 @@
 import { canonicalizeUrl } from './utils.js';
 import { detectListingLanguage } from './language.js';
 import { namesPlace, nhaTrangPlace } from './nha-trang-places.js';
-import { parsePrice } from './pricing.js';
+import { parsePrice, rentalPriceOptions } from './pricing.js';
 
 function matchedNumber(text, patterns) {
   for (const pattern of patterns) {
@@ -281,14 +281,13 @@ function fees(fields) {
     );
 }
 
-function extractAttributes(text, fields, referenceDate) {
+function extractAttributes(text, fields, referenceDate, bedrooms) {
   // "ID: A2293", "mã căn A12", "Код квартиры: ALAB": the label may name what
   // it codes, and the id is a token with a digit or in capitals, so a plain
   // word after the label ("Idea", "mã căn đẹp") is no id.
   const propertyId = text.match(
     /(?:\b[Ii][Dd]|(?<!\p{L})(?:[Кк]од|КОД|[Mm]ã|MÃ))(?!\p{L})(?:\s+(?:\p{Ll}{2,12}|\p{Lu}{2,12}(?=\s*[:#№])))?\s{0,8}[#:№-]?\s{0,8}((?=[\p{L}_-]{0,31}\d)[\p{L}\d][\p{L}\d_-]{0,31}|\p{Lu}[\p{Lu}\d_-]{1,31})(?![\p{L}\d_-]|\s*[:#№])/u
   )?.[1];
-  const bedrooms = bedroomCount(text);
   const bathrooms = matchedNumber(text, [
     countBefore('bathrooms?|сануз\\p{L}*|phòng\\s*tắm'),
     /(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
@@ -433,6 +432,63 @@ function detectKind(text) {
   );
 }
 
+function hasLayout(text) {
+  return (
+    bedroomCount(text) !== undefined || detectKind(text) !== 'accommodation'
+  );
+}
+
+// Scope layout facts to the selected rent when the priced clauses describe
+// distinct properties. Contract/occupancy prices for one property retain
+// their shared layout. A descriptor immediately before a price belongs to it.
+function selectedRentalLayout(text, price) {
+  const options = rentalPriceOptions(text, { includeUnlabeled: true });
+  const distinctContexts = new Set(options.map(({ context }) => context));
+  const distinctPrices = new Set(options.map(({ amount }) => amount));
+  const distinctBedrooms = new Set(
+    options
+      .map(({ context }) => bedroomCount(context))
+      .filter((count) => count !== undefined)
+  );
+  const mixed =
+    distinctContexts.size > 1 &&
+    (distinctPrices.size > 1 || distinctBedrooms.size > 1) &&
+    options.some(
+      (option, index) =>
+        hasLayout(option.context) || (index > 0 && hasLayout(option.preceding))
+    );
+  if (!mixed) {
+    return { bedrooms: bedroomCount(text), kind: detectKind(text) };
+  }
+  const minimum = price?.amount ?? parsePrice(text)?.amount;
+  const selected = options.filter(
+    ({ amount, currency, period }) =>
+      amount === minimum &&
+      (!price ||
+        (price.currency === currency && price.period === (period || 'month')))
+  );
+  if (!selected.length) {
+    return { bedrooms: undefined, kind: 'accommodation' };
+  }
+  const layouts = selected.map(({ context, preceding }) => {
+    const local = hasLayout(context) ? context : `${preceding}\n${context}`;
+    return {
+      bedrooms: bedroomCount(local),
+      kind: STUDIO.test(local) ? 'studio' : detectKind(local),
+    };
+  });
+  const common = (field) =>
+    layouts.every((layout) => layout[field] === layouts[0][field])
+      ? layouts[0][field]
+      : undefined;
+  const header = text.slice(0, text.indexOf(options[0].context));
+  const kind = common('kind');
+  return {
+    bedrooms: common('bedrooms'),
+    kind: kind && kind !== 'accommodation' ? kind : detectKind(header),
+  };
+}
+
 function trimTrailingCharacters(value, characters) {
   let end = value.length;
   while (end > 0 && characters.includes(value[end - 1])) {
@@ -558,15 +614,16 @@ function officialUrl(text) {
 
 export function parseListingText(
   value = '',
-  { locationHint, referenceDate } = {}
+  { locationHint, referenceDate, price } = {}
 ) {
   const text = String(value);
   const fields = parseLabeledFields(text);
   const { location, method } = detectLocation(text, fields, locationHint);
+  const layout = selectedRentalLayout(text, price);
   return {
-    attributes: extractAttributes(text, fields, referenceDate),
+    attributes: extractAttributes(text, fields, referenceDate, layout.bedrooms),
     contacts: extractContacts(text),
-    kind: detectKind(text),
+    kind: layout.kind,
     language: detectListingLanguage(text),
     location,
     locationProvenance: { method, source: 'message-text' },

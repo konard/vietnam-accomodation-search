@@ -776,7 +776,7 @@ export async function runAudit(options) {
       throw new Error('The Telegram user session is not authorized.');
     }
     const retainedCohort = (
-      await checkpointStore.loadRecords('audit-cohort')
+      await checkpointStore.loadRecords('audit-cohorts')
     )[0];
     const filtersResult = await retryTelegramFloodWait(() =>
       client.invoke(new Api.messages.GetDialogFilters())
@@ -861,7 +861,7 @@ export async function runAudit(options) {
     if (options.redactedExcerpts) {
       report.examples = [...(cohort.examples || [])];
     }
-    await checkpointStore.saveRecords('audit-cohort', [cohort]);
+    await checkpointStore.saveRecords('audit-cohorts', [cohort]);
     report.auditPass = cohort.auditPass;
     report.cutoff = cutoffDate(cohort.startedAt, options.months).toISOString();
     const sources = [];
@@ -1117,7 +1117,7 @@ export async function runAudit(options) {
       });
     }
     report.completedPasses = cohort.completedPasses;
-    await checkpointStore.saveRecords('audit-cohort', [cohort]);
+    await checkpointStore.saveRecords('audit-cohorts', [cohort]);
     await checkpointStore.updateRecords('audit-pass-reports', (current) => [
       ...current.filter(({ id }) => id !== cohort.auditPass),
       { id: cohort.auditPass, report },

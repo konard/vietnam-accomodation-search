@@ -469,14 +469,14 @@ describe('polling conflict: shared token guard', () => {
         const { stdout } = await execute(
           process.execPath,
           ['--input-type=module', '-e', TOKEN_FINGERPRINT_SCRIPT],
-          { env: { PATH: process.env.PATH, ...env } }
+          { cwd: root, env: { PATH: process.env.PATH, ...env } }
         );
         expect(stdout).toBe(`${expected}\n`);
       }
       const { stdout } = await execute(
         process.execPath,
         ['--input-type=module', '-e', TOKEN_FINGERPRINT_SCRIPT],
-        { env: { PATH: process.env.PATH } }
+        { cwd: root, env: { PATH: process.env.PATH } }
       );
       expect(stdout).toBe('');
     } finally {

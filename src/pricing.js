@@ -55,6 +55,11 @@ const RENT_LABEL =
 // (Vietnamese "đồng 6" otherwise looks like a currency followed by an amount).
 const RENT_TERM =
   /(?<!\p{L})(?:(?:договор|contract|lease|hợp\s+đồng)\s*(?:(?:от|from|từ)\s*)?)?\d{1,3}(?:\s*[-–—]\s*\d{1,3})?\s*(?:месяц\p{L}*|months?|tháng)\s*:/iu;
+const OCCUPANCY_OPTION =
+  /(?:(?:для|for|cho)\s*)?\d{1,3}\s*(?:человек\p{L}*|persons?|people|occupants?|người)/iu;
+const EXTRA_CHARGE =
+  /надбав\p{L}*|доплат\p{L}*|surcharge|extra(?=\s*(?:rent\b|charges?\b|fees?\b|costs?\b|[:\d]|$))|additional\s+(?:rent|charges?|fees?|costs?)|phụ\s*thu|(?:trả|cộng)\s*thêm/iu;
+const ADDITIVE_AMOUNT = /(?:[+＋]|(?<!\p{L})plus)\s*$/iu;
 // Labels for amounts that are not the rent: utilities, building fees,
 // deposits, extras, vehicle rental offered next to the apartment, and sale
 // prices.
@@ -210,6 +215,7 @@ function moneyTokens(clause) {
       amount: low,
       bare,
       currency: currency || 'VND',
+      explicitCurrency: Boolean(currency),
       end: match.index + match[0].length,
       high,
       start: match.index,
@@ -228,12 +234,23 @@ function classifyTokens(clause, tokens, section) {
     const after = clause.slice(token.end, Math.min(next, token.end + 40));
     const leading = after.replace(/^[\s:–—-]*/u, '').split(/\s/u)[0];
     const own = hasLabelWords(label);
-    const fee = own
+    const labeledFee = own
       ? FEE_LABEL.test(label)
       : previous.fee || FEE_LABEL.test(leading);
+    const fee =
+      labeledFee ||
+      ADDITIVE_AMOUNT.test(before) ||
+      EXTRA_CHARGE.test(label) ||
+      EXTRA_CHARGE.test(
+        after
+          .replace(PERIOD_WORDS, '')
+          .split(/[,;+＋]|(?<!\p{L})plus(?!\p{L})/iu)[0]
+      );
     const rent =
       !fee &&
-      (RENT_TERM.test(label) || (own ? RENT_LABEL.test(label) : previous.rent));
+      (RENT_TERM.test(label) ||
+        OCCUPANCY_OPTION.test(label) ||
+        (own ? RENT_LABEL.test(label) : previous.rent));
     cursor = token.end;
     previous = { fee, rent };
     return {
@@ -253,9 +270,21 @@ function headingSection(clause) {
   return { fee, rent: !fee && RENT_LABEL.test(clause) };
 }
 
+function optionContext(clause, tokens, index) {
+  const token = tokens[index];
+  const previous = tokens[index - 1];
+  const next = tokens[index + 1];
+  const before = previous ? clause.lastIndexOf(', ', token.start) : -1;
+  const after = next ? clause.indexOf(', ', token.end) : -1;
+  const start = previous && before >= previous.end ? before + 2 : 0;
+  const end = next && after >= 0 && after < next.start ? after : clause.length;
+  return clause.slice(start, end);
+}
+
 function candidates(text) {
   let section = { fee: false, rent: false };
-  return clauses(text).flatMap((clause) => {
+  const parts = clauses(text);
+  return parts.flatMap((clause, index) => {
     const tokens = moneyTokens(clause);
     if (!tokens.length) {
       if (/:[\s\p{S}\p{P}]*$/u.test(clause)) {
@@ -263,11 +292,22 @@ function candidates(text) {
       }
       return [];
     }
-    return classifyTokens(clause, tokens, section);
+    const preceding =
+      index > 0 && !moneyTokens(parts[index - 1]).length
+        ? parts[index - 1]
+        : '';
+    return classifyTokens(clause, tokens, section).map(
+      (candidate, tokenIndex) => ({
+        ...candidate,
+        context: optionContext(clause, tokens, tokenIndex),
+        preceding,
+        clauseIndex: index,
+      })
+    );
   });
 }
 
-function preferred(pool) {
+function preferredOptions(pool) {
   const priced = pool.some(({ bare }) => !bare)
     ? pool.filter(({ bare }) => !bare)
     : pool;
@@ -279,9 +319,12 @@ function preferred(pool) {
   const currency = samePeriod.some(({ currency }) => currency === 'VND')
     ? 'VND'
     : samePeriod[0].currency;
-  const options = samePeriod.filter(
-    (candidate) => candidate.currency === currency
-  );
+  return samePeriod.filter((candidate) => candidate.currency === currency);
+}
+
+function preferred(options) {
+  const { currency } = options[0];
+  const period = options[0].period || 'month';
   const amount = Math.min(...options.map(({ amount }) => amount));
   const maximum = Math.max(...options.map(({ high }) => high));
   return {
@@ -298,13 +341,29 @@ function preferred(pool) {
 // and VND over other currencies in the same post. When a post lists several
 // rent options (by floor or contract length) the price is the lowest one and
 // `range` spans all of them.
-export function parsePrice(text = '') {
+export function rentalPriceOptions(
+  text = '',
+  { includeUnlabeled = false } = {}
+) {
   const all = candidates(String(text)).filter(
     ({ ceiling, fee }) => !fee && !ceiling
   );
   const rent = all.filter((candidate) => candidate.rent);
-  const pool = rent.length ? rent : all.filter(({ bare }) => !bare);
-  return pool.length ? preferred(pool) : null;
+  const pool = rent.length
+    ? all.filter(
+        (candidate) =>
+          candidate.rent ||
+          (includeUnlabeled &&
+            !candidate.bare &&
+            (candidate.explicitCurrency || candidate.period))
+      )
+    : all.filter(({ bare }) => !bare);
+  return pool.length ? preferredOptions(pool) : [];
+}
+
+export function parsePrice(text = '') {
+  const options = rentalPriceOptions(text);
+  return options.length ? preferred(options) : null;
 }
 
 export function convertToVnd(price, rates = {}) {

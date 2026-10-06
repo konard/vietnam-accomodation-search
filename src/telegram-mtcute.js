@@ -237,8 +237,22 @@ export class MtcuteTelegramProvider {
     const client = await this.#connect();
     const candidates = [];
     candidates.failures = [];
-    const addPeer = (peer, evidence) => {
+    const memberCounts = new Map();
+    const addPeer = async (peer, evidence) => {
       const entity = discoveryEntity(peer);
+      if (
+        entity.username &&
+        (entity.participantsCount === null ||
+          entity.participantsCount === undefined)
+      ) {
+        if (!memberCounts.has(entity.id)) {
+          memberCounts.set(
+            entity.id,
+            await this.#chatMembers(client, peer, peer.id)
+          );
+        }
+        entity.participantsCount = memberCounts.get(entity.id);
+      }
       candidates.push({ entity, evidence, transport: this.transport });
     };
     if (focus === 'nha-trang') {
@@ -255,7 +269,7 @@ export class MtcuteTelegramProvider {
                     signal.reason || new Error('Telegram discovery cancelled.')
                   );
                 }
-                addPeer(dialog.peer, { folder });
+                await addPeer(dialog.peer, { folder });
               }
             },
             {
@@ -295,7 +309,7 @@ export class MtcuteTelegramProvider {
                   signal.reason || new Error('Telegram discovery cancelled.')
                 );
               }
-              addPeer(message.chat, {
+              await addPeer(message.chat, {
                 language: query.language,
                 queryId: query.id,
               });
@@ -373,8 +387,22 @@ export class MtcuteTelegramProvider {
   }
 
   async popularity(chatId) {
-    const chat = await (await this.#connect()).getChat(chatId);
-    return { members: chat.membersCount ?? chat.participantsCount ?? null };
+    const client = await this.#connect();
+    const chat = await client.getChat(chatId);
+    return { members: await this.#chatMembers(client, chat, chatId) };
+  }
+
+  async #chatMembers(client, chat, chatId) {
+    const members = chat.membersCount ?? chat.participantsCount;
+    if (members !== null && members !== undefined) {
+      return members;
+    }
+    try {
+      const full = await client.getFullChat(chatId);
+      return full.membersCount ?? full.participantsCount ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async send(destination, message, options) {

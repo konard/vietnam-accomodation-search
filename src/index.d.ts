@@ -236,7 +236,11 @@ export declare function parseLabeledFields(
 ): Record<string, string[]>;
 export declare function parseListingText(
   text?: string,
-  options?: { referenceDate?: Date | string | number }
+  options?: {
+    referenceDate?: Date | string | number;
+    locationHint?: string;
+    price?: Price | null;
+  }
 ): {
   attributes: AccommodationAttributes;
   contacts: AccommodationContacts;
