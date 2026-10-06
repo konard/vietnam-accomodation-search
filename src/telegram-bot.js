@@ -13,12 +13,15 @@ const NO_FRESH_OFFERS = 'No fresh offers could be collected.';
 // reply can say whether sources failed or simply had nothing to offer.
 async function searchWithOptionalReport(service, options) {
   if (typeof service.searchWithReport === 'function') {
-    return service.searchWithReport(options);
+    return service.searchWithReport({ ...options, cacheFirst: true });
   }
   return { offers: await service.search(options) };
 }
 
 export function formatSearchFailures(report) {
+  if (report?.refreshingSources?.length) {
+    return `Showing cached results. Refreshing: ${report.refreshingSources.join(', ')}.`;
+  }
   const summary = report?.summary;
   if (!summary?.failed) {
     return undefined;
@@ -507,6 +510,11 @@ export async function createTelegramBot(token, dependencies) {
     dependencies.createAvailabilityService?.(bot.api) ||
     dependencies.availabilityService;
   bot.resources = availabilityService ? [availabilityService] : [];
+  if (dependencies.service?.waitForRefresh) {
+    bot.resources.push({
+      destroy: () => dependencies.service.waitForRefresh(),
+    });
+  }
   // Stopping the bot aborts in-flight searches, so shutdown does not wait
   // for a browser refresh to reach its own budget.
   const searchController = new AbortController();

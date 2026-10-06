@@ -241,14 +241,30 @@ describe('run-with-budget-warning.sh SIGKILL escalation', () => {
       [
         '#!/usr/bin/env bash',
         `trap 'echo "child ignored SIGTERM"' TERM`,
+        `touch '${path.join(root, 'ready')}'`,
         'end=$((SECONDS + 600))',
         'while [ "$SECONDS" -lt "$end" ]; do',
-        '  read -r -t 1 _ </dev/null 2>/dev/null || :',
+        '  sleep 1',
         'done',
         '',
       ].join('\n')
     );
     chmodSync(childPath, 0o755);
+    const clockPath = path.join(root, 'clock.sh');
+    writeFileSync(
+      clockPath,
+      [
+        '#!/usr/bin/env bash',
+        'deadline=$((SECONDS + 20))',
+        `while [ ! -f '${path.join(root, 'ready')}' ]; do`,
+        '  [ "$SECONDS" -lt "$deadline" ] || exit 2',
+        '  sleep 0.05',
+        'done',
+        'echo 1',
+        '',
+      ].join('\n')
+    );
+    chmodSync(clockPath, 0o755);
 
     return childPath;
   }
@@ -263,9 +279,12 @@ describe('run-with-budget-warning.sh SIGKILL escalation', () => {
     try {
       const result = runBudget(['1', 'stubborn step', childPath], {
         BUDGET_GRACE_SECONDS: '1',
+        BUDGET_CLOCK_COMMAND: path.join(path.dirname(childPath), 'clock.sh'),
+        BUDGET_POLL_SECONDS: '0.05',
       });
 
       expect(result.status).toBe(124);
+      expect(result.output).toContain('child ignored SIGTERM');
       expect(result.output).toContain(
         'stubborn step ignored SIGTERM after 1s; sending SIGKILL.'
       );

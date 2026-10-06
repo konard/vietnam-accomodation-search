@@ -31,7 +31,7 @@ const WEB_EXCLUDED_LABELS = new Set([
 
 export const FIELDS = [
   'offer',
-  'priceVnd',
+  'price',
   'period',
   'availability',
   'location',
@@ -40,7 +40,7 @@ export const FIELDS = [
 
 export const FIELD_THRESHOLDS = Object.freeze({
   offer: { precision: 0.95, recall: 0.95 },
-  priceVnd: { precision: 0.98, recall: 0.9 },
+  price: { precision: 0.98, recall: 0.9 },
   period: { precision: 0.98, recall: 0.9 },
   availability: { precision: 0.98, recall: 0.98 },
   location: { precision: 0.95, recall: 0.9 },
@@ -104,7 +104,7 @@ export async function predictCase(testCase, { rates } = {}) {
   const inherited = offer.locationProvenance?.method === 'source-inherited';
   return {
     offer: eligibility(input),
-    priceVnd: offer.priceVnd ?? undefined,
+    price: offer.price ?? undefined,
     period: offer.price?.period ?? undefined,
     availability:
       offer.attributes?.availability === 'unavailable'
@@ -118,6 +118,11 @@ export async function predictCase(testCase, { rates } = {}) {
 // The reviewed location lists the acceptable names: any of them inside the
 // extracted location counts as a match.
 function matches(field, actual, expected) {
+  if (field === 'price') {
+    return ['amount', 'currency', 'period'].every(
+      (key) => actual[key] === expected[key]
+    );
+  }
   if (field === 'location') {
     const names = Array.isArray(expected) ? expected : [expected];
     return names.some((name) => fold(actual).includes(fold(name)));
@@ -176,10 +181,14 @@ export async function fieldMetrics(
         {
           falseNegative: fn,
           falsePositive: fp,
-          // A field no case states nor predicts has nothing to score.
+          // No expected positives means no evidence for recall, even if
+          // predictions exist. Publish coverage separately from accuracy.
+          status: tp + fn ? 'evaluated' : 'not-evaluated',
           pass:
-            (precision ?? 1) >= threshold.precision &&
-            (recall ?? 1) >= threshold.recall,
+            tp + fn
+              ? (precision ?? 0) >= threshold.precision &&
+                (recall ?? 0) >= threshold.recall
+              : null,
           precision,
           recall,
           threshold,
@@ -196,7 +205,9 @@ export async function fieldMetrics(
       ...new Set(corpus.cases.map(({ language }) => language)),
     ].sort(),
     misses,
-    pass: Object.values(fields).every(({ pass }) => pass),
+    pass:
+      corpus.cases.length > 0 &&
+      Object.values(fields).every(({ pass }) => pass !== false),
     sources: new Set(corpus.cases.map(({ input }) => input.sourceId)).size,
   };
 }

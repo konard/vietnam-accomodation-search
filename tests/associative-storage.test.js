@@ -3,12 +3,13 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Parser } from 'links-notation';
@@ -574,7 +575,7 @@ describe('canonical associative storage', () => {
     }
   });
 
-  it('completes concurrent writes of one file within one millisecond', async () => {
+  it('orders concurrent writes with a fixed clock and relative/absolute path aliases', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;
     }
@@ -583,19 +584,62 @@ describe('canonical associative storage', () => {
     Date.now = () => 1_000;
     try {
       const path = join(directory, 'offers.lino');
-      const writes = await Promise.allSettled(
-        ['first', 'second', 'third'].map((text) => durableWrite(path, text))
-      );
-      expect(writes.map(({ status }) => status)).toEqual([
-        'fulfilled',
-        'fulfilled',
-        'fulfilled',
-      ]);
-      expect(['first', 'second', 'third']).toContain(
-        await readFile(path, 'utf8')
-      );
+      for (let round = 0; round < 10; round += 1) {
+        const writes = await Promise.allSettled(
+          ['first', 'second', 'third'].map((text, index) =>
+            durableWrite(
+              index === 1 ? relative(process.cwd(), path) : path,
+              text
+            )
+          )
+        );
+        const failures = writes.flatMap(({ reason, status }) =>
+          status === 'rejected'
+            ? [
+                {
+                  code: reason.code,
+                  message: reason.message,
+                  syscall: reason.syscall,
+                },
+              ]
+            : []
+        );
+        expect(failures).toEqual([], JSON.stringify({ round, failures }));
+        expect(await readFile(path, 'utf8')).toBe('third');
+        expect(await readdir(directory)).toEqual(['offers.lino']);
+      }
     } finally {
       Date.now = now;
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('preserves committed contents on failure and continues queued and later writes', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'failed-write-queue-'));
+    const path = join(directory, 'offers.lino');
+    try {
+      await durableWrite(path, 'committed');
+      const failed = await Promise.allSettled([durableWrite(path, null)]);
+      expect(failed[0].status).toBe('rejected');
+      expect(await readFile(path, 'utf8')).toBe('committed');
+      expect(await readdir(directory)).toEqual(['offers.lino']);
+
+      const writes = await Promise.allSettled([
+        durableWrite(path, null),
+        durableWrite(path, 'queued'),
+      ]);
+      expect(writes.map(({ status }) => status)).toEqual([
+        'rejected',
+        'fulfilled',
+      ]);
+      expect(await readFile(path, 'utf8')).toBe('queued');
+      await durableWrite(path, 'later');
+      expect(await readFile(path, 'utf8')).toBe('later');
+      expect(await readdir(directory)).toEqual(['offers.lino']);
+    } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });

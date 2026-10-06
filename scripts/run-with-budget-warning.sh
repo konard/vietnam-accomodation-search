@@ -25,6 +25,8 @@
 #   BUDGET_STATE_PARENT   parent for private state (default RUNNER_TEMP, then
 #                         TMPDIR or /tmp)
 #   BUDGET_VERBOSE        trace liveness and signalling decisions (default 0)
+#   BUDGET_CLOCK_COMMAND  optional executable returning elapsed whole seconds
+#                         (used by synchronized deadline fixtures)
 #
 # Exit codes: the command's own status, or 124 on timeout (matching timeout(1)).
 set -uo pipefail
@@ -257,13 +259,30 @@ echo "Running ${label} with a ${budget_seconds}s budget (warning at ${warn_secon
 SECONDS=0
 warned=false
 
+fail_clock() {
+  echo 'Budget clock must successfully return elapsed whole seconds.' >&2
+  signal_command KILL
+  wait_while_running "${kill_seconds}"
+  report_survivors
+  wait "${command_pid}" 2>/dev/null || true
+  relay_output
+  exit 2
+}
+
 while command_is_running; do
-  if [ "${warned}" = false ] && [ "${SECONDS}" -ge "${warn_seconds}" ]; then
+  elapsed_seconds="${SECONDS}"
+  if [ -n "${BUDGET_CLOCK_COMMAND:-}" ]; then
+    elapsed_seconds="$("${BUDGET_CLOCK_COMMAND}")" || fail_clock
+    case "${elapsed_seconds}" in
+      '' | *[!0-9]*) fail_clock ;;
+    esac
+  fi
+  if [ "${warned}" = false ] && [ "${elapsed_seconds}" -ge "${warn_seconds}" ]; then
     warned=true
     echo "::warning title=${label} is approaching its execution budget::${label} has run for ${SECONDS}s of its ${budget_seconds}s budget."
   fi
 
-  if [ "${SECONDS}" -ge "${budget_seconds}" ]; then
+  if [ "${elapsed_seconds}" -ge "${budget_seconds}" ]; then
     terminate_over_budget
   fi
 

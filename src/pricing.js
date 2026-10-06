@@ -51,6 +51,10 @@ const PERIOD_WORDS = new RegExp(
 // every unlabelled amount in the post.
 const RENT_LABEL =
   /стоимост\p{L}*|цен[аыуе](?!\p{L})|аренд\p{L}*|price|rent|giá|租金/iu;
+// Contract duration labels identify rent options. Their numbers are not money
+// (Vietnamese "đồng 6" otherwise looks like a currency followed by an amount).
+const RENT_TERM =
+  /(?<!\p{L})(?:(?:договор|contract|lease|hợp\s+đồng)\s*(?:(?:от|from|từ)\s*)?)?\d{1,3}(?:\s*[-–—]\s*\d{1,3})?\s*(?:месяц\p{L}*|months?|tháng)\s*:/iu;
 // Labels for amounts that are not the rent: utilities, building fees,
 // deposits, extras, vehicle rental offered next to the apartment, and sale
 // prices.
@@ -173,9 +177,21 @@ function tokenAmounts(match, scale) {
   return high > low ? { high, low } : { high: low, low };
 }
 
+function moneyMatches(clause) {
+  const terms = [...clause.matchAll(new RegExp(RENT_TERM, 'giu'))];
+  return [...clause.matchAll(MONEY)].filter(
+    (match) =>
+      !terms.some(
+        (term) =>
+          match.index < term.index + term[0].length &&
+          match.index + match[0].length > term.index
+      )
+  );
+}
+
 function moneyTokens(clause) {
   const tokens = [];
-  for (const match of clause.matchAll(MONEY)) {
+  for (const match of moneyMatches(clause)) {
     const scale = scaleOf(match);
     const { high, low } = tokenAmounts(match, scale);
     const currency = currencyFrom(match[1] || match[6]);
@@ -215,14 +231,16 @@ function classifyTokens(clause, tokens, section) {
     const fee = own
       ? FEE_LABEL.test(label)
       : previous.fee || FEE_LABEL.test(leading);
-    const rent = !fee && (own ? RENT_LABEL.test(label) : previous.rent);
+    const rent =
+      !fee &&
+      (RENT_TERM.test(label) || (own ? RENT_LABEL.test(label) : previous.rent));
     cursor = token.end;
     previous = { fee, rent };
     return {
       ...token,
       ceiling: CEILING.test(before),
       fee: fee || PER_UNIT.test(after),
-      period: periodIn(label) || periodIn(after.slice(0, 24)),
+      period: periodIn(after.slice(0, 24)) || periodIn(label),
       rent,
     };
   });

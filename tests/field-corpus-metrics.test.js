@@ -61,7 +61,7 @@ describe('field accuracy on the reviewed live corpus', () => {
           expected: {
             offer: true,
             period: 'month',
-            priceVnd: 9_000_000,
+            price: { amount: 9_000_000, currency: 'VND', period: 'month' },
             rooms: 2,
           },
           id: 'wrong-price',
@@ -93,7 +93,7 @@ describe('field accuracy on the reviewed live corpus', () => {
       falsePositive,
       truePositive,
     });
-    expect(counts(report.fields.priceVnd)).toEqual({
+    expect(counts(report.fields.price)).toEqual({
       falseNegative: 1,
       falsePositive: 1,
       truePositive: 0,
@@ -105,9 +105,9 @@ describe('field accuracy on the reviewed live corpus', () => {
     });
     expect(report.misses).toEqual([
       {
-        actual: 7_000_000,
-        expected: 9_000_000,
-        field: 'priceVnd',
+        actual: { amount: 7_000_000, currency: 'VND', period: 'month' },
+        expected: { amount: 9_000_000, currency: 'VND', period: 'month' },
+        field: 'price',
         id: 'wrong-price',
       },
     ]);

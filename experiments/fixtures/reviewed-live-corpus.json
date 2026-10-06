@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "collectedAt": "2026-10-05",
   "dataPolicy": "anonymized-live-sample",
   "rates": {
@@ -10,7 +10,7 @@
   },
   "reviewedFields": [
     "offer",
-    "priceVnd",
+    "price",
     "period",
     "availability",
     "location",
@@ -29,10 +29,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 23530000,
         "period": "month",
         "location": "Север",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 905,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -47,10 +51,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16380000,
         "period": "month",
         "location": "Север",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 630,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -65,10 +73,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16380000,
         "period": "month",
         "location": "Север",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 630,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -83,10 +95,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 27560000,
         "period": "month",
         "location": "Север",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 1060,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -101,10 +117,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 23530000,
         "period": "month",
         "location": "Север",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 905,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -119,10 +139,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 23452000,
         "period": "month",
         "location": "Север",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 902,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -137,9 +161,13 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 2700000,
         "period": "month",
-        "location": "Oceanus, Nha Trang"
+        "location": "Oceanus, Nha Trang",
+        "price": {
+          "amount": 2700000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -154,10 +182,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10500000,
         "period": "month",
         "location": "Truong Quyen street",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 10500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -172,10 +204,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16000000,
         "period": "month",
         "location": "Nguyen Duc An street",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -190,10 +226,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 21500000,
         "period": "month",
         "location": "My Khe 1",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 21500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -208,10 +248,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 6500000,
         "period": "month",
         "location": "118 To Hien Thanh",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 6500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -226,10 +270,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "My Da Dong 12",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -244,10 +292,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9000000,
         "period": "month",
         "location": "Mường Thanh Viễn Triều, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 9000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -262,10 +314,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9000000,
         "period": "month",
         "location": "Mường Thanh Viễn Triều, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 9000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -280,10 +336,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 8000000,
         "period": "month",
         "location": "Mường Thanh Viễn Triều, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 8000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -298,10 +358,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 7000000,
         "period": "month",
         "location": "Mường Thanh Viễn Triều, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 7000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -330,10 +394,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9750000,
         "period": "month",
         "location": ["Центр", "Central Nha Trang"],
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 375,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -348,10 +416,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10790000,
         "period": "month",
         "location": ["Центр", "Central Nha Trang"],
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 415,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -366,10 +438,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9360000,
         "period": "month",
         "location": ["Центр", "Central Nha Trang"],
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 360,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -384,10 +460,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14170000,
         "period": "month",
         "location": ["Центр", "Central Nha Trang"],
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 545,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -402,10 +482,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 2028000,
         "period": "night",
         "location": "Центр",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 78,
+          "currency": "USD",
+          "period": "night"
+        }
       }
     },
     {
@@ -420,10 +504,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 1820000,
         "period": "night",
         "location": "Центр",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 70,
+          "currency": "USD",
+          "period": "night"
+        }
       }
     },
     {
@@ -438,10 +526,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 962000,
         "period": "night",
         "location": "Север",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 37,
+          "currency": "USD",
+          "period": "night"
+        }
       }
     },
     {
@@ -456,10 +548,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 910000,
         "period": "night",
         "location": "Север",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 35,
+          "currency": "USD",
+          "period": "night"
+        }
       }
     },
     {
@@ -474,10 +570,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 2184000,
         "period": "night",
         "location": "Центр",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 84,
+          "currency": "USD",
+          "period": "night"
+        }
       }
     },
     {
@@ -492,10 +592,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 22000000,
         "period": "month",
         "location": "Северная часть Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 22000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -510,10 +614,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 19000000,
         "period": "month",
         "location": "Северная часть Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 19000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -528,10 +636,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Северная часть Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -546,10 +658,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18500000,
         "period": "month",
         "location": "Северная часть Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 18500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -564,10 +680,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Северная часть Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -582,10 +702,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 25000000,
         "period": "month",
         "location": "Северная часть Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 25000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -600,10 +724,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 35000000,
         "period": "month",
         "location": "Central Nha Trang",
-        "rooms": 4
+        "rooms": 4,
+        "price": {
+          "amount": 35000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -618,10 +746,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 30000000,
         "period": "month",
         "location": "Mỹ Gia, Nha Trang",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 30000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -636,10 +768,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18500000,
         "period": "month",
         "location": "Южный Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 18500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -654,10 +790,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "Южный Нячанг",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -672,9 +812,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 7500000,
         "period": "month",
-        "location": "Южный Нячанг"
+        "location": "Южный Нячанг",
+        "price": {
+          "amount": 7500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -689,10 +833,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Hòn Xện, Nha Trang",
-        "rooms": null
+        "rooms": null,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -856,10 +1004,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 39000000,
         "period": "month",
         "location": "Ho Chi Minh City",
-        "rooms": 4
+        "rooms": 4,
+        "price": {
+          "amount": 1500,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -919,10 +1071,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": null,
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -965,9 +1121,13 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 73658000,
         "period": "month",
-        "location": "Ho Chi Minh City"
+        "location": "Ho Chi Minh City",
+        "price": {
+          "amount": 2833,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -996,10 +1156,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 30000000,
         "period": "month",
         "location": "Ho Chi Minh City",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 30000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1073,10 +1237,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 20800000,
         "period": "month",
         "location": "Ho Chi Minh City",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 800,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -1091,10 +1259,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10400000,
         "period": "month",
         "location": "Ho Chi Minh City",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 400,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -1153,10 +1325,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 5500000,
         "period": "month",
         "location": "Север Нячанга, Mai Xuan Thuong",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 5500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1171,10 +1347,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16000000,
         "period": "month",
         "location": "Центр Нячанга, ЖК Gold Coast",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1189,10 +1369,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Север Нячанга, Doan Tran Nghiep",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1207,10 +1391,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 24000000,
         "period": "month",
         "location": "Центр Нячанга, ЖК Marina Suites",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 24000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1225,10 +1413,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 35000000,
         "period": "month",
         "location": "Север Нячанга, Pham Van Dong",
-        "rooms": 4
+        "rooms": 4,
+        "price": {
+          "amount": 35000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1243,10 +1435,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 23500000,
         "period": "month",
         "location": "Север Нячанга, ЖК Oceanus",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 23500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1261,10 +1457,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Юг Нячанга, Phuoc Long",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1279,10 +1479,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 8000000,
         "period": "month",
         "location": "Север Нячанга, Thai Nguyen",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 8000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1297,10 +1501,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10500000,
         "period": "month",
         "location": "Центр Нячанга, ACC Vuon Xoai",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 10500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1315,10 +1523,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "Центр Нячанга, Hung Vuong",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1333,10 +1545,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10000000,
         "period": "month",
         "location": "Запад Нячанга, Ha Quang 2",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 10000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1351,10 +1567,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "Юг Нячанга, An Binh Tan",
-        "rooms": null
+        "rooms": null,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1369,10 +1589,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 8500000,
         "period": "month",
         "location": "Север Нячанга, Hon Xen",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 8500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1387,10 +1611,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 6000000,
         "period": "month",
         "location": "Север Нячанга, Mai Xuan Thuong",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 6000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1405,10 +1633,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 7500000,
         "period": "month",
         "location": "Юг Нячанга, Phuoc Long",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 7500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1423,10 +1655,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 4500000,
         "period": "month",
         "location": "Юг Нячанга, Da Tuong",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 4500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1441,10 +1677,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Central Nha Trang, near the beach, shopping malls and all amenities",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1459,10 +1699,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16000000,
         "period": "month",
         "location": "Central Nha Trang, near the beach, shopping malls and all amenities",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1477,10 +1721,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "An Bình Tân, Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1495,10 +1743,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Центр города Нячанг – Лок Тхо",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1513,10 +1765,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "North Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1531,10 +1787,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10000000,
         "period": "month",
         "location": "Lộc Thọ – Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 10000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1549,9 +1809,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
-        "location": "Улица Lê Đại Hành (Центр Нячанга)"
+        "location": "Улица Lê Đại Hành (Центр Нячанга)",
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1566,10 +1830,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Phước Hải, Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1584,10 +1852,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Phước Hải, Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1602,10 +1874,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10500000,
         "period": "month",
         "location": "Vĩnh Hòa, Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 10500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1648,10 +1924,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Центр города",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1666,10 +1946,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Северный Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1684,9 +1968,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9000000,
         "period": "month",
-        "location": "Южный Нячанг"
+        "location": "Южный Нячанг",
+        "price": {
+          "amount": 9000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1701,10 +1989,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "availability": "unavailable",
-        "location": "Южный Нячанг"
+        "location": "Южный Нячанг",
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1719,10 +2011,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Phước Hải — Южный Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1737,11 +2033,15 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 5000000,
         "period": "month",
         "availability": "unavailable",
         "location": "AN BÌNH TÂN — Нячанг",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 5000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1756,10 +2056,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 21000000,
         "period": "month",
         "location": "Mường Thanh 60 Trần Phú",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 21000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1774,10 +2078,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "северная часть Нячанга",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1792,9 +2100,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15800000,
         "period": "month",
-        "location": "Vạn Thạnh — северная часть Нячанга"
+        "location": "Vạn Thạnh — северная часть Нячанга",
+        "price": {
+          "amount": 15800000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1809,9 +2121,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15300000,
         "period": "month",
-        "location": "Vạn Thạnh — северная часть Нячанга"
+        "location": "Vạn Thạnh — северная часть Нячанга",
+        "price": {
+          "amount": 15300000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1826,10 +2142,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Phước Hải — южная часть Нячанга",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1844,11 +2164,15 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "availability": "unavailable",
         "location": "Южный Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1863,11 +2187,15 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "availability": "unavailable",
         "location": "северная часть Нячанга",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1882,11 +2210,15 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12800000,
         "period": "month",
         "availability": "unavailable",
         "location": "Южный Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 12800000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1901,11 +2233,15 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 8500000,
         "period": "month",
         "availability": "unavailable",
         "location": "Central Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 8500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1920,11 +2256,15 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 19500000,
         "period": "month",
         "availability": "unavailable",
         "location": "Trần Phú, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 19500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1939,11 +2279,15 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "availability": "unavailable",
         "location": "Всего 500 м до пляжа Hòn Chồng 🌊, Рядом жилой комплекс Oceanus",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1958,10 +2302,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "Южный Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1976,10 +2324,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "северная часть Нячанга",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -1994,9 +2346,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
-        "location": "Северный Нячанг"
+        "location": "Северный Нячанг",
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2011,10 +2367,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9000000,
         "period": "month",
         "availability": "unavailable",
-        "location": "Vườn Xoài, продолжение улицы Trần Nhật Duật"
+        "location": "Vườn Xoài, продолжение улицы Trần Nhật Duật",
+        "price": {
+          "amount": 9000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2029,10 +2389,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Thái Nguyên — около 300 м до моря",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2047,10 +2411,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10000000,
         "period": "month",
         "location": "Южный Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 10000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2065,10 +2433,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14500000,
         "period": "month",
         "location": "Южный Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2083,10 +2455,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12500000,
         "period": "month",
         "location": "Северный Нячанг — около 500 м до моря",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 12500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2101,10 +2477,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13500000,
         "period": "month",
         "location": "Северный Нячанг — около 500 м до моря",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 13500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2119,9 +2499,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
-        "location": "Северный Нячанг"
+        "location": "Северный Нячанг",
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2136,10 +2520,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "North Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2154,10 +2542,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Phước Hải — западная часть Нячанга",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2172,10 +2564,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Phước Long — Южный Нячанг",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2190,10 +2586,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Phước Long — Южный Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2208,10 +2608,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 20000000,
         "period": "month",
         "location": "Phước Hải, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 20000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2226,10 +2630,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 22000000,
         "period": "month",
         "location": "Trần Phú, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 22000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2244,10 +2652,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 59800000,
         "period": "month",
         "location": "Северная часть Нячанга",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 2300,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -2262,9 +2674,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9000000,
         "period": "month",
-        "location": "Южная часть Нячанга"
+        "location": "Южная часть Нячанга",
+        "price": {
+          "amount": 9000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2279,10 +2695,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 4500000,
         "period": "month",
         "location": "напротив моря — центр Нячанга",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 4500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2297,10 +2717,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 4500000,
         "period": "month",
         "location": "Южная часть Нячанга",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 4500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2315,10 +2739,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 6000000,
         "period": "month",
         "location": "Quảng Đức, Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 6000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2333,10 +2761,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 4200000,
         "period": "month",
         "location": "Lộc Thọ — центр Нячанга",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 4200000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2351,9 +2783,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 19000000,
         "period": "month",
-        "location": "Ariyana, Nha Trang"
+        "location": "Ariyana, Nha Trang",
+        "price": {
+          "amount": 19000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2368,10 +2804,14 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Центр Нячанга, Рядом: район Бан Ко",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2386,10 +2826,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 22000000,
         "period": "month",
         "location": "Север Нячанга",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 22000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2404,10 +2848,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 20000000,
         "period": "month",
         "location": "Север Нячанга",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 20000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2422,10 +2870,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 35000000,
         "period": "month",
         "location": "Запад Нячанга, My Gia, пакет 5",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 35000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2440,10 +2892,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 20000000,
         "period": "month",
         "location": "Север Нячанга, Hon Xen",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 20000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2458,10 +2914,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Север Нячанга, Vinh Tho",
-        "rooms": null
+        "rooms": null,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2476,10 +2936,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 35000000,
         "period": "month",
         "location": "Север Нячанга, Pham Van Dong",
-        "rooms": 4
+        "rooms": 4,
+        "price": {
+          "amount": 35000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2494,10 +2958,14 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 10000000,
         "period": "month",
         "location": "Юг Нячанга, Phuoc Long",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 10000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2512,10 +2980,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 9000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2530,10 +3002,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9500000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 9500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2548,10 +3024,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 10000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2580,10 +3060,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 6500000,
         "period": "month",
         "location": null,
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 6500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2598,10 +3082,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 33000000,
         "period": "month",
         "location": "Север Нячанга, ЖК Oceanus",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 33000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2616,10 +3104,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Север Нячанга, ЖК Oceanus",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2634,10 +3126,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15500000,
         "period": "month",
         "location": "Север Нячанга, ЖК Oceanus",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 15500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2652,10 +3148,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18000000,
         "period": "month",
         "location": "Север Нячанга, ЖК Oceanus",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 18000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2670,10 +3170,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 23000000,
         "period": "month",
         "location": "Север Нячанга, ЖК Oceanus, корпус OC1A",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 23000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2688,10 +3192,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 20000000,
         "period": "month",
         "location": "Север Нячанга, ЖК Oceanus, корпус OC2B",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 20000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2706,9 +3214,13 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 100000000,
         "period": "month",
-        "location": "Phu Quoc"
+        "location": "Phu Quoc",
+        "price": {
+          "amount": 100000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2737,10 +3249,14 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 31980000000,
         "period": "month",
         "location": "Phu Quoc",
-        "rooms": 4
+        "rooms": 4,
+        "price": {
+          "amount": 31980000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2800,7 +3316,6 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": null,
         "period": null,
         "location": "Phu Quoc",
         "rooms": 9
@@ -2818,9 +3333,13 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 140000000,
         "period": "month",
-        "location": "Phu Quoc"
+        "location": "Phu Quoc",
+        "price": {
+          "amount": 140000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2851,10 +3370,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 65000000,
         "period": "month",
         "location": "Палм Гарден, район Марина, Вьетнам",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 65000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2869,9 +3392,13 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 18000000,
         "period": "month",
-        "location": "Остров Фукуок, Вьетнам — рядом с King Kong Mart и отелем La Veranda"
+        "location": "Остров Фукуок, Вьетнам — рядом с King Kong Mart и отелем La Veranda",
+        "price": {
+          "amount": 18000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2886,9 +3413,13 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 140000000,
         "period": "month",
-        "location": "Marina Square, остров Фукуок, Вьетнам"
+        "location": "Marina Square, остров Фукуок, Вьетнам",
+        "price": {
+          "amount": 140000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2963,10 +3494,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Central Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2981,10 +3516,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Central Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -2999,10 +3538,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Central Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3031,10 +3574,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13500000,
         "period": "month",
         "location": "Central Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 13500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3049,10 +3596,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Central Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3067,10 +3618,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15500000,
         "period": "month",
         "location": "Panorama, Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 15500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3085,10 +3640,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 20000000,
         "period": "month",
         "location": "Central Nha Trang",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 20000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3103,10 +3662,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "Центр Нячанга, Hung Vuong",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3121,10 +3684,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10000000,
         "period": "month",
         "location": "Запад Нячанга, My Gia",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 10000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3139,10 +3706,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Север Нячанга, Doan Tran Nghiep",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3157,10 +3728,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16000000,
         "period": "month",
         "location": "Центр Нячанга, ЖК Gold Coast",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3175,10 +3750,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Север Нячанга, Cu Chi",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3193,10 +3772,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 35000000,
         "period": "month",
         "location": "Север Нячанга, Pham Van Dong",
-        "rooms": 4
+        "rooms": 4,
+        "price": {
+          "amount": 35000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3211,10 +3794,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18500000,
         "period": "month",
         "location": "Север Нячанга, ЖК Oceanus",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 18500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3229,10 +3816,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Юг Нячанга, Phuoc Long",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3247,10 +3838,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 20000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Tỉnh Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 20000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3265,10 +3860,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Tỉnh Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3283,10 +3882,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3301,10 +3904,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 18000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3319,10 +3926,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 5500000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 5500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3337,10 +3948,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 5500000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 5500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3355,10 +3970,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 6500000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 6500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3373,10 +3992,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 8000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Tỉnh Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 8000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3391,10 +4014,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3409,10 +4036,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10000000,
         "period": "month",
         "location": "TP Nha Trang, Tỉnh Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 10000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3427,10 +4058,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3445,10 +4080,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3463,10 +4102,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3481,10 +4124,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3499,10 +4146,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3517,10 +4168,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "TP Nha Trang, Tỉnh Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3535,9 +4190,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9000000,
         "period": "month",
-        "location": "Thành Phố Nha Trang, Tỉnh Khánh Hòa"
+        "location": "Thành Phố Nha Trang, Tỉnh Khánh Hòa",
+        "price": {
+          "amount": 9000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3552,10 +4211,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 7000000,
         "period": "month",
         "location": "Thành Phố Thành Phố Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 7000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3570,10 +4233,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3588,10 +4255,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3606,10 +4277,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 22000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 22000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3624,10 +4299,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 22000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 22000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3642,10 +4321,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 25000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 25000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3660,10 +4343,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3678,10 +4365,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 20000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 20000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3696,10 +4387,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Nam Nha Trang",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3714,10 +4409,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3732,10 +4431,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Nam Nha Trang",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3750,10 +4453,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 8000000,
         "period": "month",
         "location": "Nam Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 8000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3768,10 +4475,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11500000,
         "period": "month",
         "location": "Nam Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 11500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3786,10 +4497,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 5000000,
         "period": "month",
         "location": "Phường Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 5000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3804,10 +4519,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Phường Nam Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3822,10 +4541,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15000000,
         "period": "month",
         "location": "Phường Bắc Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 15000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3840,10 +4563,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "Phường Nam Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3858,10 +4585,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 7500000,
         "period": "month",
         "location": "Phường Nam Nha Trang",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 7500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3876,10 +4607,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18500000,
         "period": "month",
         "location": "Phường Nam Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 18500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3894,10 +4629,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14000000,
         "period": "month",
         "location": "Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3912,10 +4651,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14500000,
         "period": "month",
         "location": "Phường Nam Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 14500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3930,10 +4673,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Phường Nam Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3948,10 +4695,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Phường Bắc Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3966,10 +4717,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 11000000,
         "period": "month",
         "location": "Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 11000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -3984,10 +4739,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Phường Bắc Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4002,10 +4761,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Phường Bắc Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4020,10 +4783,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "Phường Nam Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4038,10 +4805,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13000000,
         "period": "month",
         "location": "Phường Nam Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 13000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4056,10 +4827,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 100000000,
         "period": "month",
         "location": "Đường Thái Nguyên, Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 100000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4074,10 +4849,14 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 200000000,
         "period": "month",
         "location": "Đường Yersin, Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 200000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4092,10 +4871,14 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 185000000,
         "period": "month",
         "location": "Đường Lý Thánh Tôn, Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 185000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4110,10 +4893,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 130000000,
         "period": "month",
         "location": "Đường Thống Nhất, Phường Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 130000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4128,10 +4915,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 75000000,
         "period": "month",
         "location": "Đường Yersin, Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 75000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4146,10 +4937,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 100000000,
         "period": "month",
         "location": "Đường Mạc Đỉnh Chi, Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 100000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4164,10 +4959,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 50000000,
         "period": "month",
         "location": "Đường Nguyễn Thị Minh Khai, Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 50000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4182,10 +4981,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 40000000,
         "period": "month",
         "location": "Đường Nguyễn Thị Minh Khai, Phường Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 40000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4200,10 +5003,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 85000000,
         "period": "month",
         "location": "Đường Vân Đồn, Phường Nha Trang, Khánh Hòa",
-        "rooms": 5
+        "rooms": 5,
+        "price": {
+          "amount": 85000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4218,9 +5025,13 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 150000000,
         "period": "month",
-        "location": "Đường Hoàng Hoa Thám, Phường Nha Trang, Khánh Hòa"
+        "location": "Đường Hoàng Hoa Thám, Phường Nha Trang, Khánh Hòa",
+        "price": {
+          "amount": 150000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4235,10 +5046,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 25000000,
         "period": "month",
         "location": "Đường Trần Nhật Duật, Phường Nha Trang, Khánh Hòa",
-        "rooms": 7
+        "rooms": 7,
+        "price": {
+          "amount": 25000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4253,10 +5068,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 39000000,
         "period": "month",
         "location": "Đường Âu Cơ, Phường Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 39000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4271,10 +5090,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 40000000,
         "period": "month",
         "location": "Đường Cô Bắc, Phường Nha Trang, Khánh Hòa",
-        "rooms": 6
+        "rooms": 6,
+        "price": {
+          "amount": 40000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4289,10 +5112,14 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 35000000,
         "period": "month",
         "location": "Đường Vân Đồn, Phường Nha Trang, Khánh Hòa",
-        "rooms": 6
+        "rooms": 6,
+        "price": {
+          "amount": 35000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4307,9 +5134,13 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 35000000,
         "period": "month",
-        "location": "Đường Trần Phú B, Phường Nha Trang, Khánh Hòa"
+        "location": "Đường Trần Phú B, Phường Nha Trang, Khánh Hòa",
+        "price": {
+          "amount": 35000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4324,10 +5155,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 39000000,
         "period": "month",
         "location": "Đường Âu Cơ, Phường Nha Trang, Khánh Hòa",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 39000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4342,10 +5177,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 55000000,
         "period": "month",
         "location": "Đường Hồng Bàng, Phường Nha Trang, Khánh Hòa",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 55000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4360,10 +5199,14 @@
       },
       "expected": {
         "offer": false,
-        "priceVnd": 25000000,
         "period": "month",
         "location": "Đường Quang Trung, Phường Nha Trang, Khánh Hòa",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 25000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4378,10 +5221,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 160000000,
         "period": "month",
         "location": "Đường Tô Hiến Thành, Phường Nha Trang, Khánh Hòa",
-        "rooms": 8
+        "rooms": 8,
+        "price": {
+          "amount": 160000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4396,10 +5243,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 35000000,
         "period": "month",
         "location": "Đường Lê Đại Hành, Phường Nha Trang, Khánh Hòa",
-        "rooms": 6
+        "rooms": 6,
+        "price": {
+          "amount": 35000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4414,10 +5265,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 30000000,
         "period": "month",
         "location": "VCN · South",
-        "rooms": 3
+        "rooms": 3,
+        "price": {
+          "amount": 30000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4432,10 +5287,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10000000,
         "period": "month",
         "location": "Mường Thanh",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 10000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4450,10 +5309,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "South",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4468,10 +5331,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 7000000,
         "period": "month",
         "location": "South",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 7000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4486,10 +5353,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 8000000,
         "period": "month",
         "location": "North",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 8000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4504,10 +5375,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 17000000,
         "period": "month",
         "location": "D'Qua · North",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 17000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4522,10 +5397,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 5500000,
         "period": "month",
         "location": "South",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 5500000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4540,10 +5419,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18000000,
         "period": "month",
         "location": "Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 18000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4558,10 +5441,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12000000,
         "period": "month",
         "location": "Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        }
       }
     },
     {
@@ -4576,10 +5463,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14481000,
         "period": "month",
         "location": "Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 48270,
+          "currency": "RUB",
+          "period": "month"
+        }
       }
     },
     {
@@ -4594,10 +5485,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 14481000,
         "period": "month",
         "location": "Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 48270,
+          "currency": "RUB",
+          "period": "month"
+        }
       }
     },
     {
@@ -4612,10 +5507,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10619400,
         "period": "month",
         "location": "Нячанг",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 35398,
+          "currency": "RUB",
+          "period": "month"
+        }
       }
     },
     {
@@ -4630,10 +5529,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 16894500,
         "period": "month",
         "location": "Нячанг",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 56315,
+          "currency": "RUB",
+          "period": "month"
+        }
       }
     },
     {
@@ -4648,10 +5551,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 13515600,
         "period": "month",
         "location": "Нячанг",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 45052,
+          "currency": "RUB",
+          "period": "month"
+        }
       }
     },
     {
@@ -4666,10 +5573,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12067500,
         "period": "month",
         "location": "Нячанг",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 40225,
+          "currency": "RUB",
+          "period": "month"
+        }
       }
     },
     {
@@ -4684,10 +5595,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18342600,
         "period": "month",
         "location": "Нячанг",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 61142,
+          "currency": "RUB",
+          "period": "month"
+        }
       }
     },
     {
@@ -4702,10 +5617,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10920000,
         "period": "month",
         "location": "North",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 420,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -4720,10 +5639,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12220000,
         "period": "month",
         "location": "Centre",
-        "rooms": 0
+        "rooms": 0,
+        "price": {
+          "amount": 470,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -4738,10 +5661,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10218000,
         "period": "month",
         "location": "North",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 393,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -4756,10 +5683,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 15314000,
         "period": "month",
         "location": "North",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 589,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -4774,10 +5705,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 12246000,
         "period": "month",
         "location": "Centre",
-        "rooms": 1
+        "rooms": 1,
+        "price": {
+          "amount": 471,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -4792,10 +5727,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 9360000,
         "period": "month",
         "location": "Napoleon Castle, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 360,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -4810,10 +5749,14 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 10218000,
         "period": "month",
         "location": "Mường Thanh Khánh Hòa, Nha Trang",
-        "rooms": 2
+        "rooms": 2,
+        "price": {
+          "amount": 393,
+          "currency": "USD",
+          "period": "month"
+        }
       }
     },
     {
@@ -4828,11 +5771,556 @@
       },
       "expected": {
         "offer": true,
-        "priceVnd": 18720000,
         "period": "month",
         "location": "Mường Thanh Khánh Hòa, Nha Trang",
-        "rooms": 4
+        "rooms": 4,
+        "price": {
+          "amount": 720,
+          "currency": "USD",
+          "period": "month"
+        }
+      }
+    },
+    {
+      "id": "availability-en-1",
+      "origin": "synthetic-regression",
+      "language": "en",
+      "input": {
+        "sourceId": "telegram:availability-en",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nSOLD OUT"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-en-2",
+      "origin": "synthetic-regression",
+      "language": "en",
+      "input": {
+        "sourceId": "telegram:availability-en",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nAlready rented"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-en-3",
+      "origin": "synthetic-regression",
+      "language": "en",
+      "input": {
+        "sourceId": "telegram:availability-en",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nOccupied"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-en-4",
+      "origin": "synthetic-regression",
+      "language": "en",
+      "input": {
+        "sourceId": "telegram:availability-en",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nNo vacancy"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-ru-1",
+      "origin": "synthetic-regression",
+      "language": "ru",
+      "input": {
+        "sourceId": "telegram:availability-ru",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nСДАНО"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-ru-2",
+      "origin": "synthetic-regression",
+      "language": "ru",
+      "input": {
+        "sourceId": "telegram:availability-ru",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nКвартира сдана"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-ru-3",
+      "origin": "synthetic-regression",
+      "language": "ru",
+      "input": {
+        "sourceId": "telegram:availability-ru",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nЗАНЯТО"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-ru-4",
+      "origin": "synthetic-regression",
+      "language": "ru",
+      "input": {
+        "sourceId": "telegram:availability-ru",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nНет свободных квартир"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-vi-1",
+      "origin": "synthetic-regression",
+      "language": "vi",
+      "input": {
+        "sourceId": "telegram:availability-vi",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nĐã cho thuê"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-vi-2",
+      "origin": "synthetic-regression",
+      "language": "vi",
+      "input": {
+        "sourceId": "telegram:availability-vi",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nHết phòng"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-vi-3",
+      "origin": "synthetic-regression",
+      "language": "vi",
+      "input": {
+        "sourceId": "telegram:availability-vi",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nKhông còn phòng trống"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "availability-vi-4",
+      "origin": "synthetic-regression",
+      "language": "vi",
+      "input": {
+        "sourceId": "telegram:availability-vi",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nPrice: 16.000.000 VND / month\nĐã thuê"
+      },
+      "expected": {
+        "offer": true,
+        "availability": "unavailable",
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-ru-1",
+      "origin": "anonymized-issue-regression",
+      "language": "ru",
+      "input": {
+        "sourceId": "telegram:contract-ru",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• Договор 6–12 месяцев: 16.000.000 VND / month\n• Договор 3–5 месяцев: 16.500.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-ru-2",
+      "origin": "anonymized-issue-regression",
+      "language": "ru",
+      "input": {
+        "sourceId": "telegram:contract-ru",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• Договор 3–12 месяцев: 21.000.000 VND / month\n• Договор 1–2 месяца: 23.000.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 21000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-ru-3",
+      "origin": "anonymized-issue-regression",
+      "language": "ru",
+      "input": {
+        "sourceId": "telegram:contract-ru",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• Договор 2–6 месяцев: 23.000.000 VND / month\n• Договор 7–12 месяцев: 22.000.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 22000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-ru-4",
+      "origin": "anonymized-issue-regression",
+      "language": "ru",
+      "input": {
+        "sourceId": "telegram:contract-ru",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• Договор от 3 месяцев: 15.500.000 VND / month\n• Договор 1–2 месяца: 16.500.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 15500000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-en-1",
+      "origin": "anonymized-issue-regression",
+      "language": "en",
+      "input": {
+        "sourceId": "telegram:contract-en",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• 6–12 months: 16.000.000 VND / month\n• 3–5 months: 16.500.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-en-2",
+      "origin": "anonymized-issue-regression",
+      "language": "en",
+      "input": {
+        "sourceId": "telegram:contract-en",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• Contract 3–12 months: 21.000.000 VND / month\n• Contract 1–2 months: 23.000.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 21000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-en-3",
+      "origin": "anonymized-issue-regression",
+      "language": "en",
+      "input": {
+        "sourceId": "telegram:contract-en",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• Contract 2–6 months: 23.000.000 VND / month\n• Contract 7–12 months: 22.000.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 22000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-en-4",
+      "origin": "anonymized-issue-regression",
+      "language": "en",
+      "input": {
+        "sourceId": "telegram:contract-en",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• Contract from 3 months: 15.500.000 VND / month\n• Contract 1–2 months: 16.500.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 15500000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-vi-1",
+      "origin": "anonymized-issue-regression",
+      "language": "vi",
+      "input": {
+        "sourceId": "telegram:contract-vi",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• hợp đồng 6–12 tháng: 16.000.000 VND / month\n• hợp đồng 3–5 tháng: 16.500.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 16000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-vi-2",
+      "origin": "anonymized-issue-regression",
+      "language": "vi",
+      "input": {
+        "sourceId": "telegram:contract-vi",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• hợp đồng 3–12 tháng: 21.000.000 VND / month\n• hợp đồng 1–2 tháng: 23.000.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 21000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-vi-3",
+      "origin": "anonymized-issue-regression",
+      "language": "vi",
+      "input": {
+        "sourceId": "telegram:contract-vi",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• hợp đồng 2–6 tháng: 23.000.000 VND / month\n• hợp đồng 7–12 tháng: 22.000.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 22000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
+      }
+    },
+    {
+      "id": "contract-vi-4",
+      "origin": "anonymized-issue-regression",
+      "language": "vi",
+      "input": {
+        "sourceId": "telegram:contract-vi",
+        "sourceType": "telegram",
+        "focus": "nha-trang",
+        "postedAt": "2026-10-05T00:00:00.000Z",
+        "text": "Apartment for rent in Nha Trang\nRent:\n• hợp đồng từ 3 tháng: 15.500.000 VND / month\n• hợp đồng 1–2 tháng: 16.500.000 VND / month\nAdditional costs:\n• 50.000 VND\n• 200.000 VND"
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 15500000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": "Nha Trang"
       }
     }
-  ]
+  ],
+  "supplementalPolicy": "Cases with origin=synthetic-regression are constructed multilingual controls, not additional live observations."
 }

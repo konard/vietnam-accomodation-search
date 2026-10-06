@@ -19,6 +19,12 @@ import {
 } from '../src/index.js';
 import { fieldMetrics, loadCorpus } from './field-corpus-metrics.mjs';
 import {
+  completedAudit,
+  createSourceTimings,
+  mergeSourceAudits,
+  parseSourceSelection,
+} from './audit-progress.mjs';
+import {
   auditTelegramBatch,
   collectTelegramWindow,
   loadAuditCheckpoint,
@@ -60,7 +66,7 @@ const DEFAULT_FOLDER = 'Нячанг жильё';
 // final step never holds or rewrites the whole domain-record collection.
 const STORAGE_SAMPLE_RECORDS = 200;
 
-function parseArguments(values) {
+export function parseArguments(values) {
   const result = {
     folder: DEFAULT_FOLDER,
     maxMessages: 3_000,
@@ -74,6 +80,7 @@ function parseArguments(values) {
     ['--folder', 'folder'],
     ['--max-messages', 'maxMessages'],
     ['--max-sources', 'maxSources'],
+    ['--sources', 'sources'],
     ['--months', 'months'],
     ['--output', 'output'],
     ['--state-directory', 'stateDirectory'],
@@ -84,6 +91,10 @@ function parseArguments(values) {
     const option = values[index];
     if (option === '--redacted-excerpts') {
       result.redactedExcerpts = true;
+      continue;
+    }
+    if (option === '--new-pass') {
+      result.newPass = true;
       continue;
     }
     const property = valued.get(option);
@@ -104,6 +115,7 @@ function parseArguments(values) {
       'maxSources must not exceed the audited 40-source limit.'
     );
   }
+  parseSourceSelection(result.sources, result.maxSources);
   return result;
 }
 
@@ -448,7 +460,7 @@ function normalizedAuditMessage(message, alias) {
 }
 
 // eslint-disable-next-line complexity, max-lines-per-function, max-params, max-statements -- A source audit keeps retrieval, checkpoint, reconciliation, and durable commit in one ordered privacy boundary.
-async function auditSource(
+export async function auditSource(
   client,
   source,
   options,
@@ -460,7 +472,25 @@ async function auditSource(
   const alias =
     source.public?.username || `private-folder-source-${privateIndex}`;
   const audit = emptySourceAudit(alias);
-  const previous = await loadAuditCheckpoint(checkpointStore, alias);
+  const retained = await loadAuditCheckpoint(checkpointStore, alias);
+  const previous =
+    !retained?.auditPass || retained.auditPass === options.auditPass
+      ? retained
+      : undefined;
+  const savedAudit = completedAudit(previous);
+  if (savedAudit) {
+    if (!previous.auditPass) {
+      await saveAuditCheckpoint(checkpointStore, {
+        ...previous,
+        audit: savedAudit,
+        auditPass: options.auditPass,
+      });
+    }
+    await removeSourceJournal(options.stateDirectory, alias);
+    return { audit: savedAudit, domainRecords: [], offers: [], reused: true };
+  }
+  const timing = createSourceTimings();
+  options.setSourceTimings?.(timing);
   const resume = previous?.complete === false ? previous : undefined;
   let journal = await loadSourceJournal(options.stateDirectory, alias);
   if (sourceJournalCommitted(journal, previous)) {
@@ -473,6 +503,7 @@ async function auditSource(
   const cutoff = new Date(
     journal?.cutoff ||
       resume?.cutoff ||
+      report.cutoff ||
       cutoffDate(report.generatedAt, options.months)
   );
   const journalKey = {
@@ -497,13 +528,18 @@ async function auditSource(
     audit.accommodationRequests = journal.accommodationRequests;
   } else {
     try {
-      const collected = await collectTelegramWindow({
-        cutoff,
-        iterate: (iteratorOptions) =>
-          client.iterMessages(source.entity, iteratorOptions),
-        maxMessages: options.maxMessages,
-        offsetId,
-      });
+      const collected = await timing.measure('fetch', () =>
+        collectTelegramWindow({
+          cutoff,
+          iterate: (iteratorOptions) =>
+            client.iterMessages(
+              source.entity || source.public.username,
+              iteratorOptions
+            ),
+          maxMessages: options.maxMessages,
+          offsetId,
+        })
+      );
       ({ exhausted, hitCap, messages, offsetId, reachedCutoff } = collected);
     } catch (error) {
       sourceError = errorSummary(error);
@@ -511,11 +547,14 @@ async function auditSource(
     const normalizedMessages = messages.map((message) =>
       normalizedAuditMessage(message, alias)
     );
-    batch = await auditTelegramBatch(normalizedMessages, {
-      now: new Date(report.generatedAt),
-      ocr: mediaOcr(client, messages, options.tesseractCommand),
-      sourceAlias: alias,
-    });
+    const ocr = mediaOcr(client, messages, options.tesseractCommand);
+    batch = await timing.measure('parse', () =>
+      auditTelegramBatch(normalizedMessages, {
+        now: new Date(report.generatedAt),
+        ocr: (...args) => timing.measure('ocr', () => ocr(...args)),
+        sourceAlias: alias,
+      })
+    );
     for (const message of messages) {
       const classification = classifyAccommodationPost(
         message.message || message.text || '',
@@ -535,6 +574,7 @@ async function auditSource(
         checkpointStore,
         payload: {
           ...journalKey,
+          auditPass: options.auditPass,
           accommodationRequests: audit.accommodationRequests,
           batch,
           exhausted,
@@ -613,10 +653,17 @@ async function auditSource(
       audit.traces[status] = (audit.traces[status] || 0) + count;
     }
   }
-  await auditStore.appendRecords('domain-records', batch.domainRecords);
-  await auditStore.appendRecords('traces', batch.traceRecords);
-  await auditStore.saveOffers(batch.offers);
+  await timing.measure('store', async () => {
+    await auditStore.appendRecords('domain-records', batch.domainRecords);
+    await auditStore.appendRecords('traces', batch.traceRecords);
+    if (batch.offers.length) {
+      await auditStore.saveOffers(batch.offers);
+    }
+  });
+  audit.timingsMs = timing.summary();
   await saveAuditCheckpoint(checkpointStore, {
+    audit,
+    auditPass: options.auditPass,
     batchId: journalKey.batchId,
     complete: completion.pass,
     cutoff: cutoff.toISOString(),
@@ -679,12 +726,19 @@ export async function runAudit(options) {
   });
   const measurePhase =
     options.measurePhase || ((_event, operation) => operation());
+  let sourceTimings;
+  const project = (operation) =>
+    sourceTimings ? sourceTimings.measure('project', operation) : operation();
   const auditStore = new LinksStore({
     binaryMirror: true,
     directory: join(options.stateDirectory, 'typed-results'),
+    // Preserve the app's chunk/shard boundaries on retained stores. Changing
+    // their size here would repartition offers and defeat verified reuse.
     mirror: new LinkCliMirror({
       run: (...args) =>
-        measurePhase({ phase: 'projection' }, () => runClink(...args)),
+        project(() =>
+          measurePhase({ phase: 'projection' }, () => runClink(...args))
+        ),
       onProgress: (event) => process.stderr.write(`${JSON.stringify(event)}\n`),
     }),
   });
@@ -721,6 +775,9 @@ export async function runAudit(options) {
     if (!report.user.active) {
       throw new Error('The Telegram user session is not authorized.');
     }
+    const retainedCohort = (
+      await checkpointStore.loadRecords('audit-cohort')
+    )[0];
     const filtersResult = await retryTelegramFloodWait(() =>
       client.invoke(new Api.messages.GetDialogFilters())
     );
@@ -733,29 +790,95 @@ export async function runAudit(options) {
     report.folder.availableFolderCount = filters.filter((candidate) =>
       folderTitle(candidate)
     ).length;
-    const folderResolution = filter
-      ? await resolveFolderEntities(client, filter)
-      : {
-          entities: new Map(),
-          ignoredPrivateDialogs: 0,
-          ignoredUnsupportedPeers: 0,
-          resolutionErrors: 0,
-        };
+    const folderResolution =
+      filter && !retainedCohort
+        ? await resolveFolderEntities(client, filter)
+        : {
+            entities: new Map(),
+            ignoredPrivateDialogs: 0,
+            ignoredUnsupportedPeers: 0,
+            resolutionErrors: 0,
+          };
     const folderEntities = folderResolution.entities;
-    report.folder.ignoredPrivateDialogs =
-      folderResolution.ignoredPrivateDialogs;
-    report.folder.ignoredUnsupportedPeers =
-      folderResolution.ignoredUnsupportedPeers;
-    report.folder.resolutionErrors = folderResolution.resolutionErrors;
-    report.folder.sourceCount = folderEntities.size;
+    Object.assign(
+      report.folder,
+      retainedCohort?.folder || {
+        ignoredPrivateDialogs: folderResolution.ignoredPrivateDialogs,
+        ignoredUnsupportedPeers: folderResolution.ignoredUnsupportedPeers,
+        resolutionErrors: folderResolution.resolutionErrors,
+        sourceCount: folderEntities.size,
+      }
+    );
 
-    const discovery = await discoverPublicSources(client);
+    const discovery = retainedCohort
+      ? { candidates: new Map(), errors: retainedCohort.discoveryErrors || [] }
+      : await discoverPublicSources(client);
     report.discovery.errors = discovery.errors;
-    report.discovery.publicCandidates = discovery.candidates.size;
-    const sources = combineSources(
+    report.discovery.publicCandidates =
+      retainedCohort?.publicCandidates ?? discovery.candidates.size;
+    const discovered = combineSources(
       folderEntities,
       discovery.candidates,
       options.maxSources
+    );
+    if (
+      retainedCohort &&
+      (retainedCohort.months !== options.months ||
+        retainedCohort.maximum !== options.maxSources)
+    ) {
+      throw new Error(
+        'The retained cohort has different window/source limits; use a separate state directory.'
+      );
+    }
+    if (options.newPass && retainedCohort && !retainedCohort.complete) {
+      throw new Error(
+        'Complete the retained source cohort before starting --new-pass.'
+      );
+    }
+    const cohort =
+      retainedCohort && !options.newPass
+        ? retainedCohort
+        : {
+            id: 'cohort',
+            auditPass: randomUUID(),
+            startedAt: report.generatedAt,
+            months: options.months,
+            maximum: options.maxSources,
+            completedPasses: retainedCohort?.completedPasses || [],
+            discoveryErrors:
+              retainedCohort?.discoveryErrors || discovery.errors,
+            publicCandidates: report.discovery.publicCandidates,
+            folder: {
+              ignoredPrivateDialogs: report.folder.ignoredPrivateDialogs,
+              ignoredUnsupportedPeers: report.folder.ignoredUnsupportedPeers,
+              resolutionErrors: report.folder.resolutionErrors,
+              sourceCount: report.folder.sourceCount,
+            },
+            sources:
+              retainedCohort?.sources ||
+              discovered.map((source) => source.public),
+          };
+    if (options.redactedExcerpts) {
+      report.examples = [...(cohort.examples || [])];
+    }
+    await checkpointStore.saveRecords('audit-cohort', [cohort]);
+    report.auditPass = cohort.auditPass;
+    report.cutoff = cutoffDate(cohort.startedAt, options.months).toISOString();
+    const sources = [];
+    for (const record of cohort.sources) {
+      const known = discovered.find(
+        (source) => source.public.username === record.username
+      );
+      sources.push(
+        known || {
+          public: record,
+          discoveredBy: new Set(record.discoveredBy || []),
+        }
+      );
+    }
+    const selectedOrdinals = parseSourceSelection(
+      options.sources,
+      sources.length
     );
     report.discovery.selectedSources = sources.length;
     report.discovery.publicSources = sources
@@ -779,25 +902,33 @@ export async function runAudit(options) {
 
     const audits = [];
     const storageSample = [];
-    const offers = [];
     let privateIndex = 0;
-    for (const source of sources) {
+    for (const [index, source] of sources.entries()) {
+      const ordinal = index + 1;
+      if (!selectedOrdinals.includes(ordinal)) {
+        continue;
+      }
       if (!source.public) {
         privateIndex += 1;
       }
-      const result = await measurePhase(
-        { phase: 'source', ordinal: audits.length + 1 },
-        () =>
-          auditSource(
-            client,
-            source,
-            options,
-            report,
-            privateIndex,
-            checkpointStore,
-            auditStore
-          )
+      const result = await measurePhase({ phase: 'source', ordinal }, () =>
+        auditSource(
+          client,
+          source,
+          {
+            ...options,
+            auditPass: cohort.auditPass,
+            setSourceTimings: (timings) => {
+              sourceTimings = timings;
+            },
+          },
+          report,
+          privateIndex,
+          checkpointStore,
+          auditStore
+        )
       );
+      sourceTimings = undefined;
       audits.push(result.audit);
       storageSample.push(
         ...result.domainRecords.slice(
@@ -805,18 +936,24 @@ export async function runAudit(options) {
           STORAGE_SAMPLE_RECORDS - storageSample.length
         )
       );
-      offers.push(...result.offers);
     }
+    audits.splice(
+      0,
+      audits.length,
+      ...mergeSourceAudits(
+        cohort.sources,
+        await checkpointStore.loadRecords('audit-checkpoints'),
+        cohort.auditPass
+      )
+    );
     report.sources = audits;
     report.storage = storageSample.length
       ? {
           ...(await verifyAuditStorage(auditStore, storageSample)),
-          persisted: (
-            await auditStore.queryRecords('domain-records', {
-              path: 'id',
-              value: storageSample[0].id,
-            })
-          ).some(({ id }) => id === storageSample[0].id),
+          // appendRecords commits canonical text only after the new binary
+          // batch has been verified. Avoid scanning/reprojecting the entire
+          // retained collection just to find one sampled record.
+          persisted: true,
         }
       : {
           delete: false,
@@ -825,7 +962,6 @@ export async function runAudit(options) {
           query: false,
           roundTrip: false,
         };
-    await auditStore.saveOffers(offers);
     // Per-field precision and recall on the reviewed live corpus; the list of
     // individual misses stays in `node experiments/field-corpus-metrics.mjs
     // --misses`.
@@ -845,7 +981,10 @@ export async function runAudit(options) {
       return totals;
     }, {});
     report.fieldExtraction = {
-      acceptedOffers: offers.length,
+      acceptedOffers: audits.reduce(
+        (total, audit) => total + audit.parserOffers,
+        0
+      ),
       missingExpectedFields: fieldProblems,
       offersWithAllExpectedFields: audits.reduce(
         (total, audit) => total + audit.offersWithAllExpectedFields,
@@ -944,6 +1083,45 @@ export async function runAudit(options) {
     report.acceptance.pass = Object.values(report.acceptance.checks).every(
       Boolean
     );
+    report.chunks = {
+      selectedOrdinals,
+      completedSources: audits.filter((audit) => audit.completion.pass).length,
+      totalSources: sources.length,
+    };
+    // Completed selections use the cohort's persisted storage verification.
+    if (!storageSample.length && cohort.storage) {
+      report.storage = cohort.storage;
+      report.acceptance.checks.canonicalTypedStorage = Object.values(
+        report.storage
+      ).every(Boolean);
+      report.acceptance.pass = Object.values(report.acceptance.checks).every(
+        Boolean
+      );
+    }
+    cohort.storage = report.storage;
+    if (options.redactedExcerpts) {
+      cohort.examples = report.examples;
+    }
+    cohort.complete =
+      sources.length > 0 && audits.every((audit) => audit.completion.pass);
+    if (
+      cohort.complete &&
+      !cohort.completedPasses.some((pass) => pass.id === cohort.auditPass)
+    ) {
+      cohort.completedPasses.push({
+        id: cohort.auditPass,
+        startedAt: cohort.startedAt,
+        completedAt: new Date().toISOString(),
+        sourceCount: sources.length,
+        acceptance: report.acceptance.pass,
+      });
+    }
+    report.completedPasses = cohort.completedPasses;
+    await checkpointStore.saveRecords('audit-cohort', [cohort]);
+    await checkpointStore.updateRecords('audit-pass-reports', (current) => [
+      ...current.filter(({ id }) => id !== cohort.auditPass),
+      { id: cohort.auditPass, report },
+    ]);
   } finally {
     await client.disconnect().catch(() => {});
     await client.destroy?.().catch(() => {});

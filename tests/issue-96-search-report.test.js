@@ -213,10 +213,7 @@ describe('SearchService.searchWithReport', () => {
     });
     await service.search({ query: 'Nha Trang apartment', refresh: true });
     await service.search({ query: 'Đà Nẵng', refresh: true });
-    expect(order).toEqual([
-      ['channel', 'site', 'danang', 'covered'],
-      ['danang', 'covered', 'channel', 'site'],
-    ]);
+    expect(order).toEqual([['channel', 'site', 'covered'], ['danang']]);
   });
 
   it('traces a refresh where every source failed as degraded', async () => {

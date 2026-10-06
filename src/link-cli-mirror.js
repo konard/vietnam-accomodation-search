@@ -13,7 +13,7 @@ import {
   stat,
 } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import { Parser, formatLinks } from 'links-notation';
 
@@ -56,7 +56,26 @@ async function linkOrCopy(source, target, linkFile) {
   }
 }
 
+const pendingWrites = new Map();
+
+// Unique staging names prevent collisions, but concurrent replacement renames
+// still contend for the destination on Windows. Keep each file's write/fsync/
+// rename/directory-fsync transaction ordered; other files remain independent.
 export async function durableWrite(path, contents) {
+  const absolute = resolve(path);
+  const key = process.platform === 'win32' ? absolute.toLowerCase() : absolute;
+  const write = () => writeDurableFile(absolute, contents);
+  const previous = pendingWrites.get(key) || Promise.resolve();
+  const operation = previous.then(write, write);
+  pendingWrites.set(key, operation);
+  return await operation.finally(() => {
+    if (pendingWrites.get(key) === operation) {
+      pendingWrites.delete(key);
+    }
+  });
+}
+
+async function writeDurableFile(path, contents) {
   await mkdir(dirname(path), { recursive: true });
   // Writers of one file in one process get distinct temporary names, so one
   // never removes the file another is about to rename.

@@ -1,0 +1,88 @@
+{
+  "cases": 299,
+  "corpusSchemaVersion": 2,
+  "fields": {
+    "offer": {
+      "falseNegative": 0,
+      "falsePositive": 0,
+      "status": "evaluated",
+      "pass": true,
+      "precision": 1,
+      "recall": 1,
+      "threshold": {
+        "precision": 0.95,
+        "recall": 0.95
+      },
+      "truePositive": 248
+    },
+    "price": {
+      "falseNegative": 0,
+      "falsePositive": 0,
+      "status": "evaluated",
+      "pass": true,
+      "precision": 1,
+      "recall": 1,
+      "threshold": {
+        "precision": 0.98,
+        "recall": 0.9
+      },
+      "truePositive": 247
+    },
+    "period": {
+      "falseNegative": 0,
+      "falsePositive": 0,
+      "status": "evaluated",
+      "pass": true,
+      "precision": 1,
+      "recall": 1,
+      "threshold": {
+        "precision": 0.98,
+        "recall": 0.9
+      },
+      "truePositive": 247
+    },
+    "availability": {
+      "falseNegative": 0,
+      "falsePositive": 0,
+      "status": "evaluated",
+      "pass": true,
+      "precision": 1,
+      "recall": 1,
+      "threshold": {
+        "precision": 0.98,
+        "recall": 0.98
+      },
+      "truePositive": 21
+    },
+    "location": {
+      "falseNegative": 0,
+      "falsePositive": 0,
+      "status": "evaluated",
+      "pass": true,
+      "precision": 1,
+      "recall": 1,
+      "threshold": {
+        "precision": 0.95,
+        "recall": 0.9
+      },
+      "truePositive": 246
+    },
+    "rooms": {
+      "falseNegative": 0,
+      "falsePositive": 1,
+      "status": "evaluated",
+      "pass": true,
+      "precision": 0.9952153110047847,
+      "recall": 1,
+      "threshold": {
+        "precision": 0.95,
+        "recall": 0.9
+      },
+      "truePositive": 208
+    }
+  },
+  "languages": ["en", "ru", "vi", "zh"],
+  "misses": 1,
+  "pass": true,
+  "sources": 34
+}

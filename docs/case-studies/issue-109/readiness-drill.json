@@ -1,0 +1,17 @@
+{
+  "mode": "synthetic-health-timing",
+  "reference": "https://github.com/konard/vietnam-accomodation-search/issues/107",
+  "referenceStoreSize": "3.5 GB (reported by issue; not created by this drill)",
+  "applicationReadyMs": 40000,
+  "dockerHealthyMs": 60000,
+  "formerDeadline": {
+    "healthy": false,
+    "elapsedMs": 40000,
+    "error": "Candidate did not become ready before the 40s deployment deadline."
+  },
+  "defaultDeadline": {
+    "healthy": true,
+    "elapsedMs": 60000
+  },
+  "limitation": "Does not measure actual startup or projection performance on a protected store."
+}
