@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   utimes,
   writeFile,
@@ -583,17 +584,27 @@ describe('canonical associative storage', () => {
     Date.now = () => 1_000;
     try {
       const path = join(directory, 'offers.lino');
-      const writes = await Promise.allSettled(
-        ['first', 'second', 'third'].map((text) => durableWrite(path, text))
-      );
-      expect(writes.map(({ status }) => status)).toEqual([
-        'fulfilled',
-        'fulfilled',
-        'fulfilled',
-      ]);
-      expect(['first', 'second', 'third']).toContain(
-        await readFile(path, 'utf8')
-      );
+      for (let round = 0; round < 10; round += 1) {
+        const writes = await Promise.allSettled(
+          ['first', 'second', 'third'].map((text) => durableWrite(path, text))
+        );
+        const failures = writes.flatMap(({ reason, status }) =>
+          status === 'rejected'
+            ? [
+                {
+                  code: reason.code,
+                  message: reason.message,
+                  syscall: reason.syscall,
+                },
+              ]
+            : []
+        );
+        expect(failures).toEqual([], JSON.stringify({ round, failures }));
+        expect(['first', 'second', 'third']).toContain(
+          await readFile(path, 'utf8')
+        );
+        expect(await readdir(directory)).toEqual(['offers.lino']);
+      }
     } finally {
       Date.now = now;
       await rm(directory, { force: true, recursive: true });
