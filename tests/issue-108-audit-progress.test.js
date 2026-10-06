@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'test-anywhere';
 import * as progress from '../experiments/audit-progress.mjs';
+import { LinksStore } from '../src/index.js';
 
 describe('stable audit chunks and phase timing (#108)', () => {
   it('merges disjoint chunks into one cohort without accepting an incomplete or previous pass', () => {
@@ -116,8 +117,11 @@ describe('stable audit chunks and phase timing (#108)', () => {
         parserOffers: 3,
       },
     };
-    const store = { queryRecords: async () => [checkpoint] };
     try {
+      await new LinksStore({ directory }).saveRecords('audit-checkpoints', [
+        checkpoint,
+      ]);
+      const store = new LinksStore({ directory });
       const result = await auditSource(
         {
           iterMessages: () => {
