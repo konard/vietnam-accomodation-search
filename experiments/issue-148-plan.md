@@ -11,8 +11,10 @@
 - [x] Download completed failing CI logs, verify timestamps/SHA, and address each actual failure with evidence.
 - [x] Add patch changesets, run focused regressions and all repository checks/tests, and commit useful atomic changes.
 - [x] Merge current origin/main if necessary, push only issue-148-c588090f6214, review the complete PR diff, and update PR 149 with all closing references and truthful unresolved acceptance limits.
-- [ ] Wait for all current-commit CI checks, investigate failures, verify a clean working tree, and mark PR 149 ready.
+- [x] Wait for all code-revision CI checks, investigate failures, verify a clean working tree, and mark PR 149 ready.
 - [x] Investigate the fresh `da99d76` Node/Bun CI failures: preserve each job log, identify exact errors/lines, reproduce, fix the missing-clink fixtures and synchronized warning assertion, and rerun local checks.
-- [ ] Verify the replacement CI run on the final code SHA passes all operating systems, required real clink, Docker, security, links, and packaging.
+- [x] Verify the replacement CI run on code SHA `401232f` passes all operating systems, required real clink, Docker, security, links, and packaging: 34 passing checks; all four workflows successful.
+
+Final documentation commits retain the verified code and must also finish their own CI before the task ends; the PR description records that final revision's check results. Production publishing and the complete protected-cohort audit remain explicitly blocked by unavailable owner configuration and protected inputs.
 
 Private source bodies, sessions, contacts, and tokens must stay out of committed evidence. Raw logs stay in ignored ci-logs or the task's temporary research directory. Bounded profiling uses finite inputs and an explicit Node heap limit. This environment has no registry secrets/variables, published releases, or clink executable at initial inspection; dependency/bootstrap work is needed before reproduction.
