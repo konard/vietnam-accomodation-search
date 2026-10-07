@@ -304,6 +304,14 @@ export class SearchService {
     };
   }
 
+  #historyReport(sources, query) {
+    const { outcomes, summary } = this.#cachedReport(
+      sources.map(({ id }) => id),
+      query
+    );
+    return outcomes ? { outcomes, summary } : undefined;
+  }
+
   // Saves each finished source as it completes, so an interrupted refresh
   // keeps finished work; writes are chained to keep them ordered.
   #sourcePersister(query) {
@@ -370,7 +378,9 @@ export class SearchService {
         (await this.store.loadRecords?.('search-collections')) ||
         this.collectionStates;
       const shouldRefresh = this.shouldRefresh(offers, sources, refresh, query);
-      let report;
+      let report = shouldRefresh
+        ? undefined
+        : this.#historyReport(sources, query);
 
       if (shouldRefresh) {
         const ordered = this.#staleSources(

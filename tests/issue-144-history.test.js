@@ -272,5 +272,10 @@ describe('partial public-preview coverage (#142)', () => {
     ).toBe(true);
     expect(result.offers[0].id).toBe('cached');
     expect(records[0].historyComplete).toBe(false);
+    const retained = await service.searchWithReport({ refresh: false });
+    expect(
+      formatSearchFailures(retained.report)?.includes('History is incomplete')
+    ).toBe(true);
+    expect(calls).toBe(1);
   });
 });
