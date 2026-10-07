@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'test-anywhere';
 import {
   LinksStore,
+  LinkCliMirror,
   SearchService,
   TelegramHistoryCollector,
   deduplicateOffers,
@@ -202,6 +203,10 @@ describe('source chronology on observation-time ties (#147)', () => {
     }
     const directory = await mkdtemp(join(tmpdir(), 'issue-147-'));
     try {
+      const mirror =
+        process.env.REQUIRE_REAL_CLINK === '1'
+          ? new LinkCliMirror()
+          : undefined;
       let index = 0;
       for (const input of orders(
         parsed(2, newer, true),
@@ -209,7 +214,7 @@ describe('source chronology on observation-time ties (#147)', () => {
       )) {
         for (const incremental of [false, true]) {
           const path = join(directory, String(index++));
-          const store = new LinksStore({ directory: path, binaryMirror: true });
+          const store = new LinksStore({ directory: path, mirror });
           if (incremental) {
             await store.saveOffers([input[0]]);
             await store.saveOffers([input[1]]);
@@ -218,7 +223,7 @@ describe('source chronology on observation-time ties (#147)', () => {
           }
           const restarted = new LinksStore({
             directory: path,
-            binaryMirror: true,
+            mirror,
           });
           const restored = await restarted.listOffers();
           expect(restored[0].attributes.availableNow).toBe(false);

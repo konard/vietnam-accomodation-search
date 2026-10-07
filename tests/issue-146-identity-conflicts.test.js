@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'test-anywhere';
 import {
   LinksStore,
+  LinkCliMirror,
   SearchService,
   deduplicateOffers,
   parseTelegramOffer,
@@ -141,10 +142,14 @@ describe('explicit identities veto weak unit matches (#146)', () => {
     }
     const directory = await mkdtemp(join(tmpdir(), 'issue-146-'));
     try {
-      const store = new LinksStore({ directory, binaryMirror: true });
+      const mirror =
+        process.env.REQUIRE_REAL_CLINK === '1'
+          ? new LinkCliMirror()
+          : undefined;
+      const store = new LinksStore({ directory, mirror });
       await store.saveOffers([unit(1)]);
       await store.saveOffers([unit(2, 'A1802', 18), unit(3)]);
-      const restarted = new LinksStore({ directory, binaryMirror: true });
+      const restarted = new LinksStore({ directory, mirror });
       expect((await restarted.listOffers()).length).toBe(2);
       const search = new SearchService({
         store: restarted,
