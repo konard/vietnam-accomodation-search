@@ -283,9 +283,9 @@ export function registerTelegramHandlers(bot, dependencies) {
       if (!offers.length) {
         await replyBounded(
           context,
-          searched.report?.summary.allFailed
+          searched.report?.summary?.allFailed
             ? failures
-            : formatSearchResults(offers)
+            : [formatSearchResults(offers), failures].filter(Boolean).join('\n')
         );
       } else if (failures) {
         await context.reply(failures);

@@ -3,6 +3,7 @@ import {
   BrowserCollector,
   SearchService,
   formatSearchFailures,
+  registerTelegramHandlers,
   summarizeOutcomes,
 } from '../src/index.js';
 import { runSourcePool } from '../src/source-pool.js';
@@ -52,6 +53,40 @@ describe('partial public-preview coverage (#142)', () => {
     expect(
       summarizeOutcomes([{ ...outcomes[0], historyComplete: true }]).succeeded
     ).toBe(1);
+  });
+
+  it('delivers incomplete-history warnings when no offer matches, including cached and legacy reports', async () => {
+    const outcomes = [
+      { sourceId: 'qa', status: 'partial', offers: 0, historyComplete: false },
+    ];
+    for (const report of [
+      { outcomes, summary: summarizeOutcomes(outcomes) },
+      {
+        outcomes: [{ ...outcomes[0], status: 'empty' }],
+        summary: { allFailed: false, failed: 0 },
+      },
+      { outcomes, refreshingSources: ['qa'] },
+    ]) {
+      const commands = new Map();
+      const replies = [];
+      registerTelegramHandlers(
+        {
+          command: (name, handler) => commands.set(name, handler),
+          on: () => {},
+        },
+        {
+          registry: { update: async () => ({ web: [], telegram: [] }) },
+          service: { searchWithReport: async () => ({ offers: [], report }) },
+        }
+      );
+      await commands.get('search')({
+        match: 'Nha Trang',
+        reply: async (text) => replies.push(text),
+      });
+      expect(replies.join('\n').includes('History is incomplete')).toBe(true);
+      expect(replies.join('\n').includes('No fresh offers')).toBe(false);
+      expect(replies.join('\n').includes('No current offers')).toBe(true);
+    }
   });
 
   it('resumes older pages after restart and catches new posts after reaching the frozen cutoff', async () => {
