@@ -155,10 +155,9 @@ export function analyzeHistoryMessages(
     messages: messages.length,
     uniqueMessageIds: new Set(messages.map(({ id }) => id)).size,
     materials: materials.length,
-    accountedMessages: materials.reduce(
-      (sum, material) => sum + material.messageIds.length,
-      0
-    ),
+    accountedMessages: new Set(
+      materials.flatMap((material) => material.messageIds)
+    ).size,
     productionOffers: 0,
     historicalTextOffers: 0,
     ageGateRejections: 0,
@@ -169,12 +168,13 @@ export function analyzeHistoryMessages(
     missingExpectedFields: {},
   };
   const findings = [];
+  const differentCaptionAlbums = new Set();
   for (const material of materials) {
     const differentCaptions = new Set(
       material.members.map(({ text }) => text.trim()).filter(Boolean)
     );
     if (differentCaptions.size > 1) {
-      counts.multipleDifferentAlbumCaptions++;
+      differentCaptionAlbums.add(material.members[0].id);
     }
     if (!material.text.trim() && material.mediaIds.length) {
       counts.photoOnlyUnresolved++;
@@ -199,13 +199,13 @@ export function analyzeHistoryMessages(
     const message = {
       ...material,
       chat: { username },
-      messageId: material.messageIds[0],
+      messageId: material.messageId || material.messageIds[0],
       photos: material.mediaIds,
     };
     try {
       const production = parseTelegramOffer(message, { now });
       // Parsing at publication time tests text extraction without changing
-      // the product's 2-month age gate or claiming old offers are current.
+      // the product's configured age gate or claiming old offers are current.
       const historical = parseTelegramOffer(message, {
         now: new Date(material.date),
       });
@@ -240,6 +240,7 @@ export function analyzeHistoryMessages(
       });
     }
   }
+  counts.multipleDifferentAlbumCaptions = differentCaptionAlbums.size;
   return {
     counts,
     findings,

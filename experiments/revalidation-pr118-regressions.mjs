@@ -172,7 +172,7 @@ export async function reproducePr118Regressions() {
       groupedId: 'two-properties',
       text: secondCaption,
     },
-  ])[0];
+  ]);
   const propertyId = parseListingText(
     'Квартира в Нячанге. Аренда 655 USD/месяц.\nКод объекта: 414–75414.'
   ).attributes.propertyId;
@@ -246,7 +246,9 @@ export async function reproducePr118Regressions() {
         130,
         'second-independent-album-caption-survives',
         true,
-        multiListingAlbum.text.includes(secondCaption)
+        multiListingAlbum.some((material) =>
+          material.text.includes(secondCaption)
+        )
       ),
       result(
         131,

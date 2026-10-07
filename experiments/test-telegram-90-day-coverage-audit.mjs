@@ -223,6 +223,8 @@ const multipleCaptions = analyzeHistoryMessages(
 );
 assert.equal(multipleCaptions.counts.multipleDifferentAlbumCaptions, 1);
 assert.equal(multipleCaptions.counts.accountedMessages, 2);
+assert.equal(multipleCaptions.counts.materials, 2);
+assert.equal(multipleCaptions.counts.productionOffers, 2);
 console.log(
   'Offline history-audit controls passed; no network, credentials or private data used.'
 );
