@@ -14,6 +14,7 @@ export const SOURCE_STATUSES = Object.freeze({
   EMPTY: 'empty',
   ERROR: 'error',
   OFFERS: 'offers',
+  PARTIAL: 'partial',
   PENDING: 'pending',
   TIMEOUT: 'timeout',
 });
@@ -105,6 +106,22 @@ function historyCoverage(value) {
     : { historyComplete: value.historyComplete };
 }
 
+function sourceResult(sourceId, value, durationMs) {
+  const partial = value.historyComplete === false;
+  return {
+    durationMs,
+    offers: value.length,
+    ...historyCoverage(value),
+    ...(partial ? { category: 'incomplete-history' } : {}),
+    sourceId,
+    status: partial
+      ? SOURCE_STATUSES.PARTIAL
+      : value.length
+        ? SOURCE_STATUSES.OFFERS
+        : SOURCE_STATUSES.EMPTY,
+  };
+}
+
 // `run(source, { signal, worker })` collects one source; `openWorker(index)`
 // returns the per-worker context (for example a browser page) or undefined
 // when no further worker can be opened. `isWorkerLost(error)` marks failures
@@ -166,13 +183,7 @@ export async function runSourcePool(
       );
       await settle(
         source,
-        {
-          durationMs: now() - startedAt,
-          offers: value.length,
-          ...historyCoverage(value),
-          sourceId: source.id,
-          status: value.length ? SOURCE_STATUSES.OFFERS : SOURCE_STATUSES.EMPTY,
-        },
+        sourceResult(source.id, value, now() - startedAt),
         value
       );
       return { abandoned: false };
@@ -255,17 +266,34 @@ export async function runSourcePool(
 }
 
 // A source that answered, with offers or with none, was collected.
-function collected({ status }) {
-  return [SOURCE_STATUSES.OFFERS, SOURCE_STATUSES.EMPTY].includes(status);
+function collected({ status, historyComplete }) {
+  return (
+    historyComplete !== false &&
+    [SOURCE_STATUSES.OFFERS, SOURCE_STATUSES.EMPTY].includes(status)
+  );
+}
+
+function incomplete(outcome) {
+  return (
+    outcome.status === SOURCE_STATUSES.PARTIAL ||
+    outcome.historyComplete === false
+  );
 }
 
 export function summarizeOutcomes(outcomes = []) {
   const byStatus = {};
   const failedCategories = {};
+  let partial = 0;
   for (const outcome of outcomes) {
-    byStatus[outcome.status] = (byStatus[outcome.status] || 0) + 1;
+    const status = incomplete(outcome)
+      ? SOURCE_STATUSES.PARTIAL
+      : outcome.status;
+    partial += Number(incomplete(outcome));
+    byStatus[status] = (byStatus[status] || 0) + 1;
     if (!collected(outcome)) {
-      const category = outcome.category || outcome.status;
+      const category = incomplete(outcome)
+        ? 'incomplete-history'
+        : outcome.category || outcome.status;
       failedCategories[category] = (failedCategories[category] || 0) + 1;
     }
   }
@@ -273,7 +301,8 @@ export function summarizeOutcomes(outcomes = []) {
     (byStatus[SOURCE_STATUSES.OFFERS] || 0) +
     (byStatus[SOURCE_STATUSES.EMPTY] || 0);
   return {
-    allFailed: outcomes.length > 0 && succeeded === 0,
+    allFailed: outcomes.length > 0 && succeeded === 0 && partial === 0,
+    ...(partial ? { incomplete: partial } : {}),
     byStatus,
     failed: outcomes.length - succeeded,
     failedCategories,
@@ -297,7 +326,8 @@ export function describeUncollected(outcomes = [], limit = 10) {
   const names = uncollected
     .slice(0, limit)
     .map(
-      ({ category, sourceId, status }) => `${sourceId} (${category || status})`
+      (outcome) =>
+        `${outcome.sourceId} (${incomplete(outcome) ? 'incomplete-history' : outcome.category || outcome.status})`
     );
   const more = uncollected.length - names.length;
   return `Not collected: ${names.join(', ')}${more ? `, and ${more} more` : ''}.`;

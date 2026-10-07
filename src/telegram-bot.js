@@ -1,6 +1,10 @@
 import { parseSearchCommand } from './commands.js';
 import { SubscriptionScheduler } from './presets.js';
-import { describeFailures, describeUncollected } from './source-pool.js';
+import {
+  describeFailures,
+  describeUncollected,
+  summarizeOutcomes,
+} from './source-pool.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { stableHash } from './utils.js';
 
@@ -19,10 +23,30 @@ async function searchWithOptionalReport(service, options) {
 }
 
 export function formatSearchFailures(report) {
+  const partial =
+    report?.outcomes?.filter(
+      (outcome) =>
+        outcome.historyComplete === false || outcome.status === 'partial'
+    ) || [];
+  const historyWarning = partial.length
+    ? `History is incomplete for ${partial
+        .map(({ sourceId }) => sourceId)
+        .slice(0, 10)
+        .join(
+          ', '
+        )}${partial.length > 10 ? `, and ${partial.length - 10} more` : ''}. Partial results are included; older history will resume on refresh.`
+    : undefined;
   if (report?.refreshingSources?.length) {
-    return `Showing cached results. Refreshing: ${report.refreshingSources.join(', ')}.`;
+    return [
+      `Showing cached results. Refreshing: ${report.refreshingSources.join(', ')}.`,
+      historyWarning,
+    ]
+      .filter(Boolean)
+      .join(' ');
   }
-  const summary = report?.summary;
+  const summary = partial.length
+    ? summarizeOutcomes(report.outcomes)
+    : report?.summary;
   if (!summary?.failed) {
     return undefined;
   }
@@ -30,7 +54,12 @@ export function formatSearchFailures(report) {
   if (summary.allFailed) {
     return `${NO_FRESH_OFFERS} ${describeFailures(summary)} ${uncollected}`;
   }
-  return `${summary.failed} of ${summary.total} sources failed or did not finish. ${uncollected}`;
+  return [
+    `${summary.failed} of ${summary.total} sources failed or did not finish. ${uncollected}`,
+    historyWarning,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function formatPrice(offer) {
@@ -254,9 +283,9 @@ export function registerTelegramHandlers(bot, dependencies) {
       if (!offers.length) {
         await replyBounded(
           context,
-          searched.report?.summary.allFailed
+          searched.report?.summary?.allFailed
             ? failures
-            : formatSearchResults(offers)
+            : [formatSearchResults(offers), failures].filter(Boolean).join('\n')
         );
       } else if (failures) {
         await context.reply(failures);

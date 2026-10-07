@@ -81,7 +81,8 @@ export function refreshSources({
   const stateOf = (source) => byId.get(collectionKey(source.id, query));
   const isFresh = (source) =>
     stateOf(source)
-      ? freshAt(stateOf(source).collectedAt, now, maxAgeMs)
+      ? stateOf(source).historyComplete !== false &&
+        freshAt(stateOf(source).collectedAt, now, maxAgeMs)
       : fresh.has(source.id);
   const focused = (source) =>
     citiesIn(query).some((city) =>

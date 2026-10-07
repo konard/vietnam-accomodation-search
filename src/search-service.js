@@ -1,6 +1,7 @@
 import { telegramHistoryWindow } from './telegram-window.js';
 import { deduplicateOffers } from './offers.js';
 import { TraceRecorder } from './trace.js';
+import { summarizeOutcomes } from './source-pool.js';
 import {
   collectionKey,
   matchingSources,
@@ -246,6 +247,9 @@ export class SearchService {
         query,
         attemptedAt: timestamp,
         status: outcome.status,
+        ...(outcome.historyComplete === undefined
+          ? {}
+          : { historyComplete: outcome.historyComplete }),
       };
       if (
         ['offers', 'empty'].includes(outcome.status) &&
@@ -277,6 +281,35 @@ export class SearchService {
 
   async search(options = {}) {
     return (await this.searchWithReport(options)).offers;
+  }
+
+  #cachedReport(refreshingSources, query) {
+    const incomplete = this.collectionStates.filter(
+      (state) =>
+        normalizedQuery(state.query || '') === normalizedQuery(query) &&
+        refreshingSources.includes(state.sourceId) &&
+        state.historyComplete === false
+    );
+    const outcomes = incomplete.map(({ sourceId }) => ({
+      sourceId,
+      status: 'partial',
+      historyComplete: false,
+      offers: 0,
+    }));
+    return {
+      refreshingSources,
+      ...(outcomes.length
+        ? { outcomes, summary: summarizeOutcomes(outcomes) }
+        : {}),
+    };
+  }
+
+  #historyReport(sources, query) {
+    const { outcomes, summary } = this.#cachedReport(
+      sources.map(({ id }) => id),
+      query
+    );
+    return outcomes ? { outcomes, summary } : undefined;
   }
 
   // Saves each finished source as it completes, so an interrupted refresh
@@ -345,7 +378,9 @@ export class SearchService {
         (await this.store.loadRecords?.('search-collections')) ||
         this.collectionStates;
       const shouldRefresh = this.shouldRefresh(offers, sources, refresh, query);
-      let report;
+      let report = shouldRefresh
+        ? undefined
+        : this.#historyReport(sources, query);
 
       if (shouldRefresh) {
         const ordered = this.#staleSources(
@@ -414,7 +449,7 @@ export class SearchService {
             });
         }
         if (cached) {
-          report = { refreshingSources: task.sourceIds };
+          report = this.#cachedReport(task.sourceIds, query);
         } else {
           report = await task.promise;
           offers = await this.store.listOffers();
@@ -443,7 +478,7 @@ export class SearchService {
       this.trace.record({
         runId,
         stage: 'search',
-        status: report?.summary?.allFailed ? 'degraded' : 'success',
+        status: report?.summary?.failed ? 'degraded' : 'success',
         metadata: {
           candidates: unique.length,
           failedSources: report?.summary?.failed,

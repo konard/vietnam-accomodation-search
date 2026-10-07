@@ -17,6 +17,10 @@ import { availableParallelism, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 import { Parser, formatLinks } from 'links-notation';
+import {
+  compactProjectionNames,
+  expandProjectionNames,
+} from './clink-projection-names.js';
 
 export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -265,11 +269,30 @@ export function fnv1a(value) {
 // independently verified database small, and a local edit changes only the
 // shard containing it, so unchanged shards are reused by digest. Boundaries
 // depend on link ids only, never on offsets, so insertions do not shift them.
-export function splitNotation(
-  notation,
-  { averageLinks = 64, maxLinks = 128, minLinks = 32 } = {}
+function projectionBounds(
+  links,
+  { averageLinks, compactNames, maxLinks, minLinks }
 ) {
+  // Numeric projections have no character-link name expansion. Larger bounded
+  // shards amortize process launches and durable files for full-body ledgers.
+  const compact =
+    compactNames &&
+    [averageLinks, maxLinks, minLinks].every((value) => value === undefined) &&
+    links.some((link) =>
+      [link, ...link.values].some(
+        ({ id }) => typeof id === 'string' && id.length > 64
+      )
+    );
+  return {
+    averageLinks: averageLinks ?? (compact ? 256 : 64),
+    maxLinks: maxLinks ?? (compact ? 512 : 128),
+    minLinks: minLinks ?? (compact ? 128 : 32),
+  };
+}
+
+export function splitNotation(notation, options = {}) {
   const links = notation.trim() ? parseNotation(notation) : [];
+  const { averageLinks, maxLinks, minLinks } = projectionBounds(links, options);
   if (links.length <= maxLinks) {
     return [notation];
   }
@@ -297,7 +320,11 @@ class SnapshotCorruptionError extends Error {}
 // Every file a projection is trusted by. `data.names.links` is written by
 // clink's named-types decorator and is absent only for unnamed stores.
 const REQUIRED_FILES = ['data.links', 'verified.lino'];
-const PROJECTION_FILES = [...REQUIRED_FILES, 'data.names.links'];
+const PROJECTION_FILES = [
+  ...REQUIRED_FILES,
+  'data.names.links',
+  'aliases.json',
+];
 
 async function fileDigests(directory) {
   const digests = {};
@@ -336,6 +363,8 @@ async function verifyDatabase(directory, kind, digest) {
   const expected = Object.entries(manifest.files || {});
   if (
     !REQUIRED_FILES.every((name) => manifest.files?.[name]) ||
+    (manifest.encoding === 'compact-names-v1' &&
+      !manifest.files?.['aliases.json']) ||
     expected.some(([name]) => !PROJECTION_FILES.includes(name))
   ) {
     throw new SnapshotCorruptionError('Invalid clink manifest.');
@@ -466,6 +495,7 @@ export class LinkCliMirror {
     this.heartbeatMs = heartbeatMs ?? 15_000;
     this.shardOptions = {
       averageLinks: averageShardLinks,
+      compactNames: true,
       maxLinks: maxShardLinks,
       minLinks: minShardLinks,
     };
@@ -580,6 +610,18 @@ export class LinkCliMirror {
     const manifest = { kind, sha256: digest };
     await this.#build(directory, manifest, async () => {
       await durableWrite(importPath, notation);
+      const compact = compactProjectionNames(parseNotation(notation));
+      const binaryInput = compact
+        ? join(directory, 'compact.lino')
+        : importPath;
+      if (compact) {
+        manifest.encoding = 'compact-names-v1';
+        await durableWrite(binaryInput, compact.notation);
+        await durableWrite(
+          join(directory, 'aliases.json'),
+          JSON.stringify(compact.aliases)
+        );
+      }
       await this.run(
         this.command,
         [
@@ -587,13 +629,22 @@ export class LinkCliMirror {
           join(directory, 'data.links'),
           '--auto-create-missing-references',
           '--import',
-          importPath,
+          binaryInput,
           '--export',
           exportPath,
         ],
         runOptions
       );
-      verifyExport(notation, await readFile(exportPath, 'utf8'));
+      let exported = await readFile(exportPath, 'utf8');
+      if (compact) {
+        verifyExport(compact.notation, exported);
+        exported = expandProjectionNames(
+          parseNotation(exported),
+          compact.aliases
+        );
+        await durableWrite(exportPath, exported);
+      }
+      verifyExport(notation, exported);
       manifest.files = await fileDigests(directory);
     });
   }

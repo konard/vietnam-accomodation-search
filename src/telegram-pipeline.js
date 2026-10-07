@@ -310,10 +310,10 @@ export async function reconcileTelegramMaterials(
     }
     if (
       ocrState === 'completed' &&
-      (!/for\s+rent|rent|lease|аренд|сда[её]т|cho\s+thuê/iu.test(text) ||
-        !rentalPriceOptions(text).some(
-          (option) => option.rent || option.period
-        ))
+      !rentalPriceOptions(text).some(
+        (option) =>
+          (option.rent || option.period) && (RENTAL.test(text) || option.rent)
+      )
     ) {
       reviewQueue.push({
         id: material.id,
