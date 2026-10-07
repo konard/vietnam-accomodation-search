@@ -65,7 +65,12 @@ try {
   });
   await store.appendRecords('domain-records', batch.domainRecords);
   const elapsedMs = Math.round(performance.now() - started);
+  if (process.env.ISSUE_143_PROGRESS === '1') {
+    console.error(JSON.stringify({ status: 'ledger-persisted', elapsedMs }));
+  }
+  const readStarted = performance.now();
   const loaded = await store.loadRecords('domain-records');
+  const readMs = Math.round(performance.now() - readStarted);
   const roundTrip =
     JSON.stringify(loaded) === JSON.stringify(batch.domainRecords);
   console.log(
@@ -77,6 +82,8 @@ try {
       imports,
       importMs: Math.round(importMs),
       elapsedMs,
+      readMs,
+      totalMs: Math.round(performance.now() - started),
       roundTrip,
     })
   );
