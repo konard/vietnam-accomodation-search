@@ -2,6 +2,7 @@
 // Finite, isolated, synthetic full-body ledger. No private source data is read.
 // node --max-old-space-size=2048 experiments/issue-143-ledger-profile.mjs 24 128
 import { mkdtemp, rm } from 'node:fs/promises';
+import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -41,7 +42,7 @@ let importMs = 0;
 const started = performance.now();
 try {
   const store = new LinksStore({
-    directory,
+    directory: join(directory, 'actual'),
     binaryMirror: true,
     mirror: new LinkCliMirror({
       command: process.env.CLINK_COMMAND || 'clink',
@@ -68,8 +69,24 @@ try {
   if (process.env.ISSUE_143_PROGRESS === '1') {
     console.error(JSON.stringify({ status: 'ledger-persisted', elapsedMs }));
   }
+  await store.appendRecords('traces', batch.traceRecords);
+  await store.saveOffers(batch.offers);
+  const reference = new LinksStore({ directory: join(directory, 'reference') });
+  await reference.saveOffers(batch.offers);
+  const expectedOffers = await reference.listOffers();
   const readStarted = performance.now();
-  const loaded = await store.loadRecords('domain-records');
+  // A fresh store verifies durable readback without writer-side caches.
+  const restarted = new LinksStore({
+    directory: join(directory, 'actual'),
+    binaryMirror: true,
+    mirror: new LinkCliMirror({
+      command: process.env.CLINK_COMMAND || 'clink',
+    }),
+  });
+  const loaded = await restarted.loadRecords('domain-records');
+  assert.deepEqual(loaded, batch.domainRecords);
+  assert.deepEqual(await restarted.loadRecords('traces'), batch.traceRecords);
+  assert.deepEqual(await restarted.listOffers(), expectedOffers);
   const readMs = Math.round(performance.now() - readStarted);
   const roundTrip =
     JSON.stringify(loaded) === JSON.stringify(batch.domainRecords);
@@ -78,6 +95,9 @@ try {
       count,
       shardLinks,
       records: batch.domainRecords.length,
+      traces: batch.traceRecords.length,
+      storedOffers: expectedOffers.length,
+      freshStoreReadback: true,
       jsonBytes: Buffer.byteLength(JSON.stringify(batch.domainRecords)),
       imports,
       importMs: Math.round(importMs),

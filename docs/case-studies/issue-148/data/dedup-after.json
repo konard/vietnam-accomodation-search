@@ -1,0 +1,72 @@
+{
+  "mode": "offline-diagnostic",
+  "realBinaryStorage": true,
+  "checks": [
+    {
+      "name": "both-unit-identifiers-survive-parsing",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "same-unit-repost-still-deduplicates",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "name": "distinct-explicit-units-with-shared-agent-stay-separate",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "name": "newer-sold-and-older-available-parse-correctly",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "descending-history-retains-newer-unavailable-state",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "name": "descending-history-retains-newer-post-price",
+      "expected": 8000000,
+      "actual": 8000000,
+      "pass": true
+    },
+    {
+      "name": "ascending-control-retains-newer-unavailable-state",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "name": "ascending-control-retains-newer-post-price",
+      "expected": 8000000,
+      "actual": 8000000,
+      "pass": true
+    },
+    {
+      "name": "persisted-distinct-units-stay-separate",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "name": "persisted-history-retains-newer-unavailable-state",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "name": "persisted-history-retains-newer-post-price",
+      "expected": 8000000,
+      "actual": 8000000,
+      "pass": true
+    }
+  ]
+}
