@@ -3,6 +3,7 @@ import { telegramHistoryWindow } from './telegram-window.js';
 import { parseListingText } from './listing-parser.js';
 import { normalizeOffer } from './offers.js';
 import { firstPresent } from './utils.js';
+import { chronologyTimestamp } from './offer-chronology.js';
 
 function postedDate(message) {
   const value =
@@ -74,6 +75,9 @@ export function parseTelegramOffer(message, options = {}) {
       url: messageUrl(message, username),
       photos: firstPresent(message.photos, []),
       postedAt,
+      updatedAt: chronologyTimestamp(message.editDate ?? message.edit_date)
+        ? new Date(chronologyTimestamp(message.editDate ?? message.edit_date))
+        : undefined,
       raw: message,
     },
     { now, rates: options.rates }
