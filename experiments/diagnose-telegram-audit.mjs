@@ -64,7 +64,7 @@ const options = {
   folder: 'Нячанг жильё',
   maxMessages: 3_000,
   maxSources: 40,
-  months: 2,
+  months: 3,
   redactedExcerpts: false,
   stateDirectory,
   tesseractCommand: process.env.VAC_AUDIT_TESSERACT || 'tesseract',

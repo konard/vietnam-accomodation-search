@@ -1,12 +1,8 @@
+import { classifyTelegramPost } from './telegram-pipeline.js';
+import { telegramHistoryWindow } from './telegram-window.js';
 import { parseListingText } from './listing-parser.js';
 import { normalizeOffer } from './offers.js';
 import { firstPresent } from './utils.js';
-
-function twoMonthsBefore(date) {
-  const cutoff = new Date(date);
-  cutoff.setUTCMonth(cutoff.getUTCMonth() - 2);
-  return cutoff;
-}
 
 function postedDate(message) {
   const value =
@@ -24,13 +20,19 @@ function messageUrl(message, username) {
 }
 
 export function parseTelegramOffer(message, options = {}) {
-  const now = firstPresent(options.now, new Date());
+  const { now, since } = telegramHistoryWindow(options);
   const postedAt = postedDate(message);
-  if (!Number.isFinite(postedAt.getTime()) || postedAt < twoMonthsBefore(now)) {
+  if (!Number.isFinite(postedAt.getTime()) || postedAt < since) {
     return null;
   }
 
   const text = firstPresent(message.text, message.caption, '');
+  if (
+    classifyTelegramPost(text, { targetLocation: null }).reason ===
+    'non-housing-rental'
+  ) {
+    return null;
+  }
   const title = text
     .split(/\r?\n/u)
     .find((line) => line.trim())

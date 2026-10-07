@@ -1,11 +1,12 @@
+import { parsePrice, rentalPriceOptions } from './pricing.js';
 import { mediaIdentity } from './offer-bounds.js';
 
 export { mediaIdentity };
 
 const REQUEST =
-  /\b(?:looking\s+for|wanted|need(?:ed)?|seeking)\b|ищу|cần\s+(?:tìm|thuê)/iu;
+  /\b(?:looking\s+for|wanted|need(?:ed)?|seeking)\b|(?<!\p{L})(?:ищу|сниму)(?!\p{L})|хочу\s+(?:взять|снять)|cần\s+(?:tìm|thuê)/iu;
 const SALE =
-  /\b(?:for\s+sale|selling|sell)\b|прода(?:м|[её]тся)|продаж[аи]|будущ\p{L}*\s+владел\p{L}*|bán\s+(?:căn|nhà|đất|phòng)|sang\s+nhượng|出售|[轉转]售|售[價价]|[萬万]美[金元]/iu;
+  /\b(?:for\s+sale|selling|sell)\b|прода(?:ю|м|[её]тся)|продаж[аи]|будущ\p{L}*\s+владел\p{L}*|bán\s+(?:căn|nhà|đất|phòng)|sang\s+nhượng|買賣|买卖|預售|预售|價格[^\n]*美金\/平米|單價|单价|出售|[轉转]售|售[價价]|[萬万]美[金元]/iu;
 // "Căn hộ dịch vụ" is a serviced apartment, not a service advertisement.
 const SERVICE =
   /\b(?:visa|immigration|cleaning|moving|brokerage)\s+service\b|(?<!(?:căn\s+hộ|phòng|nhà)\s+)dịch\s+vụ|визов\p{L}*\s+услуг/iu;
@@ -40,6 +41,23 @@ function advertisesService(text) {
   );
 }
 
+// Explicit location fields identify the property. View, transport, travel and
+// agency navigation lines describe amenities and services.
+function propertyLocationText(text) {
+  const lines = text
+    .split(/\r?\n/u)
+    .filter(
+      (line) =>
+        !/вид\s+на|view\s+(?:of|to)|trips?\s+to|transfer|трансфер|поездк|экскурси|agency|агентств|👉/iu.test(
+          line
+        )
+    );
+  const labeled = lines.find((line) =>
+    /(?:location|address|локация|адрес|địa\s*chỉ|vị\s*trí)[ \t]*:/iu.test(line)
+  );
+  return labeled || lines.join('\n');
+}
+
 export const TELEGRAM_LABELS = new Set([
   'offer',
   'request',
@@ -57,7 +75,7 @@ export function classifyTelegramPost(
   value,
   { duplicate = false, targetLocation = 'nha-trang' } = {}
 ) {
-  const text = String(value || '').normalize('NFC');
+  const text = String(value || '').normalize('NFKC');
   if (duplicate) {
     return {
       eligible: false,
@@ -82,7 +100,10 @@ export function classifyTelegramPost(
       reason: 'service-advertisement',
     };
   }
-  if (targetLocation === 'nha-trang' && OTHER_VIETNAM_CITY.test(text)) {
+  if (
+    targetLocation === 'nha-trang' &&
+    OTHER_VIETNAM_CITY.test(propertyLocationText(text))
+  ) {
     return {
       eligible: false,
       label: 'wrong-location',
@@ -97,8 +118,20 @@ export function classifyTelegramPost(
     };
   }
   if (
-    RENTAL.test(text) ||
-    (PROPERTY.test(text) && (PRICE.test(text) || BOOKING.test(text)))
+    !PROPERTY.test(text) &&
+    /motorbike|motorcycle|scooter|laptop|bicycle|мотоцикл|байк|скутер|велосипед|xe\s+máy/iu.test(
+      text
+    )
+  ) {
+    return {
+      eligible: false,
+      label: 'unrelated',
+      reason: 'non-housing-rental',
+    };
+  }
+  if (
+    (PROPERTY.test(text) || /公寓|房/u.test(text)) &&
+    (RENTAL.test(text) || PRICE.test(text) || BOOKING.test(text))
   ) {
     return { eligible: true, label: 'offer', reason: 'rental-evidence' };
   }
@@ -152,22 +185,36 @@ export function assembleTelegramAlbums(messages) {
         : `${chatId(message)}:album:${String(groupedId)}`;
     groups.set(key, [...(groups.get(key) || []), message]);
   }
-  return [...groups.values()].map((members) => {
+  return [...groups.values()].flatMap((members) => {
     members.sort(
       (left, right) => Number(messageId(left)) - Number(messageId(right))
     );
     const first = members[0];
     const groupedId = first.groupedId ?? first.grouped_id;
-    const texts = members
-      .map((message) => message.text || message.caption)
-      .filter((text) => String(text || '').trim());
-    return {
+    const captionMap = new Map();
+    for (const member of members) {
+      const text = String(member.text || member.caption || '').trim();
+      if (!text) {
+        continue;
+      }
+      const entry = captionMap.get(text) || { text, messageIds: [] };
+      entry.messageIds.push(messageId(member));
+      captionMap.set(text, entry);
+    }
+    const captions = [...captionMap.values()];
+    const independent = captions.filter(
+      ({ text }) =>
+        classifyTelegramPost(text, { targetLocation: null }).eligible &&
+        parsePrice(text)
+    );
+    const material = {
       ...first,
       id:
         groupedId === undefined
           ? `telegram-message:${chatId(first)}:${String(messageId(first))}`
           : `telegram-album:${chatId(first)}:${String(groupedId)}`,
-      text: texts[0] || '',
+      text: captions.map(({ text }) => text).join('\n'),
+      captions,
       messageIds: members.map(messageId),
       // Scalar IDs only: provider media objects carry bytes (#82).
       mediaIds: [
@@ -179,6 +226,29 @@ export function assembleTelegramAlbums(messages) {
       ].slice(0, 10),
       members,
     };
+    if (independent.length > 1) {
+      return captions.map((caption) => ({
+        ...material,
+        id: `${material.id}:caption:${caption.messageIds[0]}`,
+        text: caption.text,
+        date: members.find(
+          (member) => messageId(member) === caption.messageIds[0]
+        ).date,
+        url: members.find(
+          (member) => messageId(member) === caption.messageIds[0]
+        ).url,
+        messageId: caption.messageIds[0],
+        captionMessageIds: caption.messageIds,
+      }));
+    }
+    material.captionConflict =
+      captions.length > 1 &&
+      captions.some(({ text }) =>
+        /^(?:request|sale|service|commercial)$/u.test(
+          classifyTelegramPost(text, { targetLocation: null }).label
+        )
+      );
+    return [material];
   });
 }
 
@@ -188,8 +258,18 @@ export async function reconcileTelegramMaterials(
   { extract, maxOcrPhotos = 3, ocr, targetLocation = 'nha-trang' } = {}
 ) {
   const accepted = [];
+  let eligibleAttempts = 0;
   const reviewQueue = [];
   for (const material of assembleTelegramAlbums(messages)) {
+    if (material.captionConflict) {
+      reviewQueue.push({
+        id: material.id,
+        reason: 'conflicting-album-captions',
+        state: 'review',
+        captions: material.captions,
+      });
+      continue;
+    }
     let text = material.text;
     let ocrState = 'not-needed';
     if (!text.trim() && material.mediaIds.length) {
@@ -202,12 +282,22 @@ export async function reconcileTelegramMaterials(
         continue;
       }
       const fragments = [];
+      const extraction = [];
       try {
         for (const mediaId of material.mediaIds.slice(0, maxOcrPhotos)) {
-          fragments.push(await ocr(mediaId));
+          const result = await ocr(mediaId, { material });
+          const fragment = typeof result === 'string' ? result : result?.text;
+          fragments.push(fragment);
+          extraction.push({
+            mediaId,
+            status: result?.status || (fragment ? 'extracted' : 'unreadable'),
+            confidence: result?.confidence,
+            engine: result?.engine,
+          });
         }
         text = fragments.filter(Boolean).join('\n');
         ocrState = 'completed';
+        material.mediaExtraction = extraction;
       } catch (error) {
         reviewQueue.push({
           id: material.id,
@@ -218,6 +308,21 @@ export async function reconcileTelegramMaterials(
         continue;
       }
     }
+    if (
+      ocrState === 'completed' &&
+      (!/for\s+rent|rent|lease|аренд|сда[её]т|cho\s+thuê/iu.test(text) ||
+        !rentalPriceOptions(text).some(
+          (option) => option.rent || option.period
+        ))
+    ) {
+      reviewQueue.push({
+        id: material.id,
+        reason: 'ocr-rental-evidence-insufficient',
+        state: 'review',
+        mediaExtraction: material.mediaExtraction,
+      });
+      continue;
+    }
     const relevance = classifyTelegramPost(text, { targetLocation });
     if (!relevance.eligible) {
       reviewQueue.push({
@@ -227,10 +332,24 @@ export async function reconcileTelegramMaterials(
       });
       continue;
     }
+    eligibleAttempts += 1;
     const reconciled = { ...material, ocrState, relevance, text };
     try {
       const extracted = extract ? await extract(reconciled) : reconciled;
       if (extracted) {
+        if (ocrState === 'completed') {
+          extracted.attributes = {
+            ...extracted.attributes,
+            reviewRequired: true,
+          };
+          reviewQueue.push({
+            id: material.id,
+            reason: 'ocr-fields-unverified',
+            state: 'review',
+            accepted: true,
+            mediaExtraction: material.mediaExtraction,
+          });
+        }
         accepted.push(extracted);
       } else {
         reviewQueue.push({
@@ -250,6 +369,7 @@ export async function reconcileTelegramMaterials(
   }
   return {
     accepted: accepted.filter(Boolean),
+    eligibleAttempts,
     complete: reviewQueue.every(({ state }) => state === 'excluded'),
     reviewQueue,
   };

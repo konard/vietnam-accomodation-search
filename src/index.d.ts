@@ -252,7 +252,12 @@ export declare function parseListingText(
 };
 export declare function parseTelegramOffer(
   message: Record<string, unknown>,
-  options?: { now?: Date; rates?: Record<string, number> }
+  options?: {
+    now?: Date;
+    since?: Date | string;
+    historyDays?: number;
+    rates?: Record<string, number>;
+  }
 ): AccommodationOffer | null;
 export declare function parseSearchCommand(
   input?: string,
@@ -527,13 +532,30 @@ export declare function assembleTelegramAlbums(
 export declare function reconcileTelegramMaterials<T = Record<string, unknown>>(
   messages: Array<Record<string, unknown>>,
   options?: {
-    extract?: (material: Record<string, unknown>) => T | Promise<T>;
+    extract?: (
+      material: Record<string, unknown>
+    ) => T | null | Promise<T | null>;
     maxOcrPhotos?: number;
-    ocr?: (mediaId: unknown) => string | Promise<string>;
+    ocr?: (
+      mediaId: unknown,
+      options?: { material?: Record<string, unknown>; signal?: AbortSignal }
+    ) =>
+      | string
+      | { text?: string; status?: string; engine?: string; confidence?: number }
+      | Promise<
+          | string
+          | {
+              text?: string;
+              status?: string;
+              engine?: string;
+              confidence?: number;
+            }
+        >;
     targetLocation?: string | null;
   }
 ): Promise<{
   accepted: T[];
+  eligibleAttempts: number;
   complete: boolean;
   reviewQueue: Array<Record<string, unknown>>;
 }>;
@@ -578,6 +600,7 @@ export declare class ExchangeRateProvider {
 
 export declare class LinksStore {
   constructor(options?: {
+    historyDays?: number;
     binaryMirror?: boolean;
     directory?: string;
     maxBytes?: number;
@@ -820,6 +843,7 @@ export declare class SearchService {
 }
 
 export interface SourceOutcome {
+  historyComplete?: boolean;
   sourceId: string;
   status: string;
   offers: number;
@@ -1013,6 +1037,14 @@ export declare class BotApiTelegramProvider {
     fileId: unknown,
     options?: { signal?: AbortSignal }
   ): Promise<Uint8Array>;
+  photo(
+    mediaId: unknown,
+    options?: {
+      material?: Record<string, unknown>;
+      signal?: AbortSignal;
+      maxBytes?: number;
+    }
+  ): Promise<Uint8Array>;
   membership(chatId: unknown, userId?: unknown): Promise<unknown>;
   popularity(chatId: unknown): Promise<{ members: number }>;
   send(
@@ -1040,6 +1072,8 @@ export declare class MtcuteTelegramProvider {
         oldestMessageId: number | string;
       };
       since?: Date;
+      signal?: AbortSignal;
+      retry?: Record<string, unknown>;
     }
   ): Promise<AsyncIterable<Record<string, unknown>>>;
   liveUpdates(
@@ -1111,6 +1145,7 @@ export declare class UpdateDeduplicator {
 export declare class TelegramHistoryCollector {
   constructor(options?: Record<string, unknown>);
   collect(sources: AccommodationSource[]): Promise<AccommodationOffer[]>;
+  reviewQueue: Array<Record<string, unknown>>;
 }
 export declare function createApplication(options?: Record<string, unknown>): {
   accessPolicy: TelegramAccessPolicy;

@@ -82,7 +82,8 @@ describe('Telegram error policy', () => {
         idempotent: true,
         jitter: () => 0,
         logger: { warn: (message, fields) => logs.push([message, fields]) },
-        maxDelayMs: 1000,
+        maxDelayMs: 60000,
+        maxElapsedMs: 180000,
         operationName: 'history',
         sleep: async (milliseconds) => sleeps.push(milliseconds),
         sourceId: 'telegram:rentals',
@@ -91,14 +92,14 @@ describe('Telegram error policy', () => {
       }
     );
     expect(result).toBe('ok');
-    expect(sleeps).toEqual([1000, 1000]);
+    expect(sleeps).toEqual([60000, 60000]);
     expect(logs[0]).toEqual([
       'telegram operation retry',
       {
         attempt: 1,
         category: 'rate-limit',
         correlationId: 'request-7',
-        delayMs: 1000,
+        delayMs: 60000,
         operation: 'history',
         sourceId: 'telegram:rentals',
         transport: 'mtproto',

@@ -36,7 +36,7 @@ content-addressed canonical `offers.chunks/HASH/offers.lino` files. Each file
 still uses typed schema-v3 LiNo. A chunk is limited to 16 MiB by default;
 the collection is partitioned by offer-id hash before any combined formatting.
 The byte budget is checked from individually formatted offers in one pass.
-Offers posted within the rolling two-month window are never evicted. If a
+Offers posted within the rolling 90-day window are never evicted. If a
 posting time is unavailable, the collection time is used; an offer with no
 usable time is also protected. An insufficient budget fails the write and
 leaves the prior index active. Older offers are evicted from oldest to newest,

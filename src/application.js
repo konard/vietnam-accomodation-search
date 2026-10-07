@@ -1,3 +1,4 @@
+import { createTelegramOcr } from './telegram-ocr.js';
 import { BrowserCollector } from './browser-collector.js';
 import { DomainScheduler } from './browser-adapters.js';
 import { ExchangeRateProvider } from './pricing.js';
@@ -71,6 +72,7 @@ export function createApplication(options = {}) {
         options.binaryMirror ?? environment.LINKS_BINARY_MIRROR === '1',
       directory,
       maxBytes,
+      historyDays: Number(environment.TELEGRAM_HISTORY_DAYS || 90),
     });
   const traceRecorder = options.traceRecorder || new TraceRecorder({ store });
   const presetService = options.presetService || new PresetService({ store });
@@ -94,6 +96,7 @@ export function createApplication(options = {}) {
       browserRuntime: options.browserRuntime,
       budgetMs: positiveSetting(environment.SEARCH_BUDGET_MS, 3 * 60 * 1000),
       concurrency: browserConcurrency,
+      historyDays: Number(environment.TELEGRAM_HISTORY_DAYS || 90),
       logger: options.logger,
       rateProvider,
       sourceTimeoutMs: positiveSetting(
@@ -228,6 +231,7 @@ export function createApplication(options = {}) {
     options.service ||
     new SearchService({
       collector,
+      historyDays: Number(environment.TELEGRAM_HISTORY_DAYS || 90),
       mediaCache,
       registry,
       store,
@@ -292,6 +296,13 @@ export function createApplication(options = {}) {
       return new TelegramIngestionService({
         logger: options.logger,
         provider,
+        historyDays: Number(environment.TELEGRAM_HISTORY_DAYS || 90),
+        maxEvents: Number(environment.TELEGRAM_MAX_EVENTS || 10000),
+        ocr:
+          options.telegramOcr ||
+          createTelegramOcr(provider, {
+            command: environment.TELEGRAM_OCR_COMMAND || 'tesseract',
+          }),
         rateProvider,
         store,
         traceRecorder,

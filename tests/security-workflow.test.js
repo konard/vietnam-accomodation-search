@@ -1,6 +1,7 @@
+import { trackedPackageLocks } from '../scripts/tracked-lockfiles.mjs';
 import { describe, it, expect } from 'test-anywhere';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const workflowPath = '.github/workflows/security.yml';
 const workflow = existsSync(workflowPath)
@@ -20,25 +21,6 @@ function getJobBlock(jobName) {
   );
 
   return lines.slice(start, end === -1 ? lines.length : end).join('\n');
-}
-
-function listPackageLocks(directory = '.') {
-  const locks = [];
-
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name === '.git' || entry.name === 'node_modules') {
-      continue;
-    }
-
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) {
-      locks.push(...listPackageLocks(path));
-    } else if (entry.name === 'package-lock.json') {
-      locks.push(relative('.', path).replaceAll('\\', '/'));
-    }
-  }
-
-  return locks.sort();
 }
 
 describe('security workflow', () => {
@@ -103,7 +85,11 @@ describe('security workflow', () => {
       )
       .sort();
 
-    expect(auditedLocks).toEqual(listPackageLocks());
+    const tracked =
+      typeof globalThis.Deno === 'undefined'
+        ? trackedPackageLocks()
+        : ['examples/universal-app/package-lock.json', 'package-lock.json'];
+    expect(auditedLocks).toEqual(tracked);
     expect(audit).toContain('    timeout-minutes: 10');
     expect(audit).toContain('uses: actions/setup-node@v7');
     expect(audit).toContain('node-version: 24');

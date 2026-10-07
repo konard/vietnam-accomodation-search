@@ -1,3 +1,5 @@
+import { resilientTelegramHistory } from './telegram-iterate.js';
+import { telegramHistoryWindow } from './telegram-window.js';
 import {
   createDomainRecords,
   createSemanticValue,
@@ -338,10 +340,24 @@ export class MtcuteTelegramProvider {
     return candidates;
   }
 
-  async history(source, { resume, since } = {}) {
+  async history(source, { resume, since, signal, retry = {} } = {}) {
     const client = await this.#connect();
     const peer = sourcePeer(source);
     await client.resolvePeer(peer, true);
+    if (source.access === 'public-preview' || source.public === true) {
+      const chat = await client.getChat(peer);
+      if (
+        chat.type !== 'chat' ||
+        !['channel', 'supergroup'].includes(chat.chatType) ||
+        !chat.username
+      ) {
+        const error = new Error(
+          'Declared public Telegram source does not resolve to a public community.'
+        );
+        error.code = 'PUBLIC_SOURCE_NOT_COMMUNITY';
+        throw error;
+      }
+    }
     const checkpointId = Number(resume?.oldestMessageId);
     const checkpointDate = new Date(resume?.oldestMessageDate);
     const resumable =
@@ -350,16 +366,31 @@ export class MtcuteTelegramProvider {
       !Number.isNaN(checkpointDate.getTime());
     const iterators = resumable
       ? [
-          client.iterHistory(peer, { minId: checkpointId }),
-          client.iterHistory(peer, {
-            offset: { date: checkpointDate, id: checkpointId },
-          }),
+          { minId: checkpointId },
+          {
+            offset: {
+              date: Math.floor(checkpointDate.getTime() / 1000),
+              id: checkpointId,
+            },
+          },
         ]
-      : [client.iterHistory(peer)];
+      : [{}];
+    const retryOptions = {
+      logger: this.logger,
+      operationName: 'history-page',
+      sourceId: source.id,
+      transport: 'mtproto',
+      signal,
+      ...retry,
+    };
     return (async function* () {
       const seen = new Set();
-      for (const iterator of iterators) {
-        for await (const message of iterator) {
+      for (const options of iterators) {
+        for await (const message of resilientTelegramHistory(
+          (opts) => client.iterHistory(peer, opts),
+          options,
+          retryOptions
+        )) {
           if (since && new Date(message.date) < since) {
             break;
           }
@@ -380,6 +411,37 @@ export class MtcuteTelegramProvider {
 
   async media(location, options) {
     return (await this.#connect()).downloadAsBuffer(location, options);
+  }
+
+  async photo(mediaId, { material, signal, maxBytes = 16 * 1024 * 1024 } = {}) {
+    const member = material?.members?.find(
+      (message) => String(message.media?.id) === String(mediaId)
+    );
+    if (!member) {
+      throw Object.assign(new Error('OCR photo reference is unavailable.'), {
+        code: 'OCR_MEDIA_UNAVAILABLE',
+      });
+    }
+    const client = await this.#connect();
+    const [message] = await client.getMessages(
+      sourcePeer({ id: member.sourceId }),
+      Number(member.id)
+    );
+    const media = message?.media;
+    if (!media || media.type !== 'photo') {
+      throw Object.assign(new Error('OCR media is not a photo.'), {
+        code: 'OCR_MEDIA_UNSUPPORTED',
+      });
+    }
+    if (media.fileSize > maxBytes) {
+      throw Object.assign(new Error('OCR photo exceeds the download budget.'), {
+        code: 'OCR_INPUT_BUDGET',
+      });
+    }
+    return client.downloadAsBuffer(media, {
+      abortSignal: signal,
+      limit: maxBytes + 1,
+    });
   }
 
   async membership(chatId, userId = 'me') {
@@ -494,6 +556,9 @@ export class MtcuteTelegramProvider {
 export class TelegramIngestionService {
   constructor({
     logger = console,
+    historyDays = 90,
+    since,
+    ocr,
     maxEvents = 10_000,
     maxRecordBytes,
     now = () => new Date(),
@@ -505,6 +570,9 @@ export class TelegramIngestionService {
   } = {}) {
     this.logger = logger;
     this.maxEvents = maxEvents;
+    this.historyDays = historyDays;
+    this.since = since;
+    this.ocr = ocr;
     this.maxRecordBytes = maxRecordBytes;
     this.now = now;
     this.provider = provider;
@@ -623,10 +691,27 @@ export class TelegramIngestionService {
     }
   }
 
-  #materialOffer(material, rates) {
+  #materialOffer(
+    material,
+    rates,
+    window = telegramHistoryWindow({
+      now: this.now(),
+      historyDays: this.historyDays,
+      since: this.since,
+    })
+  ) {
     const offer = parseTelegramOffer(
-      { ...material, photos: material.mediaIds || material.photos || [] },
-      { now: this.now(), rates }
+      {
+        ...material,
+        messageId: material.captionMessageIds?.[0] || material.messageIds?.[0],
+        photos: material.mediaIds || material.photos || [],
+      },
+      {
+        now: window.now,
+        since: window.since,
+        historyDays: this.historyDays,
+        rates,
+      }
     );
     if (!Number.isFinite(offer?.priceVnd)) {
       return null;
@@ -796,7 +881,7 @@ export class TelegramIngestionService {
         id: `parser-run:${offer.id}`,
         type: 'parser-run',
         values: {
-          ledger: createSegmentLedger(offer.text, ({ text }) => ({
+          ledger: createSegmentLedger(offer.raw?.text, ({ text }) => ({
             state:
               /(?:VND|VNĐ|₫|USD|EUR|GBP|rent|аренд|сда[её]т|cho\s+thuê|контакт|contact|liên\s+hệ|спальн|bedroom|phòng)/iu.test(
                 text
@@ -924,17 +1009,25 @@ export class TelegramIngestionService {
       materialMessages = [...liveMembers.values()];
     }
     const result = await reconcileTelegramMaterials(materialMessages, {
+      ocr: this.ocr,
       extract: (material) => this.#materialOffer(material, rates),
       targetLocation: null,
     });
-    const offer = result.accepted[0];
-    if (offer) {
-      await this.store.saveOffers([offer]);
+    if (result.accepted.length) {
+      await this.store.saveOffers(result.accepted);
     }
     await this.#appendRecords(
-      'domain-records',
-      this.#graphRecords(event, offer)
+      'telegram-reviews',
+      result.reviewQueue.map((item) => ({ ...item, sourceId: event.sourceId }))
     );
+    for (const offer of result.accepted.length
+      ? result.accepted
+      : [undefined]) {
+      await this.#appendRecords(
+        'domain-records',
+        this.#graphRecords(event, offer)
+      );
+    }
     this.trace.record({
       runId,
       stage: 'reconcile',
@@ -956,8 +1049,12 @@ export class TelegramIngestionService {
       const rates = this.rateProvider
         ? await this.rateProvider.getRates()
         : this.rates;
-      const cutoff = this.now();
-      cutoff.setUTCMonth(cutoff.getUTCMonth() - 2);
+      this.window = telegramHistoryWindow({
+        now: this.now(),
+        historyDays: this.historyDays,
+        since: this.since,
+      });
+      const cutoff = this.window.since;
       const backfill = [];
       const graphRecords = [];
       const loadedEvents = await this.store.loadRecords('telegram-events');
@@ -992,7 +1089,9 @@ export class TelegramIngestionService {
           (await this.store.loadRecords('telegram-ingestion-checkpoints')) || []
         ).map((checkpoint) => [checkpoint.id, checkpoint])
       );
-      for (const source of sources) {
+      for (const source of sources.filter(
+        (source) => source.enabled !== false
+      )) {
         this.trace.record({
           runId: `telegram-backfill:${source.id}`,
           stage: 'history',
@@ -1088,9 +1187,28 @@ export class TelegramIngestionService {
         const reconciliation = await reconcileTelegramMaterials(
           sourceMessages,
           {
-            extract: (material) => this.#materialOffer(material, rates),
+            ocr: this.ocr,
+            extract: (material) =>
+              this.#materialOffer(material, rates, this.window),
             targetLocation: source.focus === 'nha-trang' ? 'nha-trang' : null,
           }
+        );
+        if (eventRecords.length > this.maxEvents) {
+          reconciliation.complete = false;
+          reconciliation.reviewQueue.push({
+            id: `telegram-retention:${source.id}`,
+            state: 'error',
+            reason: 'rolling-window-retention-budget',
+            messages: eventRecords.length,
+            maxEvents: this.maxEvents,
+          });
+        }
+        await this.#appendRecords(
+          'telegram-reviews',
+          reconciliation.reviewQueue.map((item) => ({
+            ...item,
+            sourceId: source.id,
+          }))
         );
         backfill.push(...reconciliation.accepted);
         for (const offer of reconciliation.accepted) {
@@ -1136,6 +1254,23 @@ export class TelegramIngestionService {
           },
         ]);
       }
+      if (eventRecords.length > this.maxEvents) {
+        const enabled = new Set(
+          sources
+            .filter((source) => source.enabled !== false)
+            .map(({ id }) => id)
+        );
+        await this.#appendRecords(
+          'telegram-ingestion-checkpoints',
+          (await this.store.loadRecords('telegram-ingestion-checkpoints'))
+            .filter(({ id }) => enabled.has(id))
+            .map((checkpoint) => ({
+              ...checkpoint,
+              complete: false,
+              state: 'degraded',
+            }))
+        );
+      }
       await this.#mergeEvents(eventRecords);
       await this.#appendRecords('domain-records', graphRecords);
       await this.trace.persist();
@@ -1151,7 +1286,7 @@ export class TelegramIngestionService {
           );
           return operation;
         },
-        { sources }
+        { sources: sources.filter((source) => source.enabled !== false) }
       );
       return { backfilled: backfill.length, sources: sources.length };
     } catch (error) {

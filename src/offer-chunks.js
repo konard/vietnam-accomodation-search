@@ -1,5 +1,6 @@
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { telegramHistoryWindow } from './telegram-window.js';
 
 import {
   committedChunks,
@@ -22,7 +23,6 @@ import {
 export const DEFAULT_OFFER_SHARD_BYTES = 16 * 1024 * 1024;
 const INDEX_NAME = 'offers.index.json';
 const CHUNK_DIRECTORY = 'offers.chunks';
-const TWO_MONTHS_MS = 62 * 24 * 60 * 60 * 1000;
 
 export function orderOffersByRecency(offers) {
   return [...offers].sort(
@@ -32,14 +32,14 @@ export function orderOffersByRecency(offers) {
   );
 }
 
-function protectedOffer(offer, now) {
+function protectedOffer(offer, since) {
   const postedAt = Date.parse(offer.postedAt);
   const collectedAt = Date.parse(offer.collectedAt);
   const ageAnchor = Number.isFinite(postedAt) ? postedAt : collectedAt;
-  return !Number.isFinite(ageAnchor) || ageAnchor >= now - TWO_MONTHS_MS;
+  return !Number.isFinite(ageAnchor) || ageAnchor >= since.getTime();
 }
 
-function preparedOffers(offers, maxBytes, maxShardBytes) {
+function preparedOffers(offers, maxBytes, maxShardBytes, historyDays) {
   if (new Set(offers.map(({ id }) => String(id))).size !== offers.length) {
     throw new Error('Canonical offer collection contains duplicate offer IDs.');
   }
@@ -48,7 +48,7 @@ function preparedOffers(offers, maxBytes, maxShardBytes) {
     offer,
   }));
   let total = prepared.reduce((sum, entry) => sum + entry.bytes, 0);
-  const now = Date.now();
+  const { since } = telegramHistoryWindow({ historyDays });
   if (total > maxBytes) {
     const sizes = new Map(prepared.map(({ offer, bytes }) => [offer, bytes]));
     const evicted = new Set();
@@ -57,7 +57,7 @@ function preparedOffers(offers, maxBytes, maxShardBytes) {
       if (total <= maxBytes) {
         break;
       }
-      if (!protectedOffer(offer, now)) {
+      if (!protectedOffer(offer, since)) {
         total -= sizes.get(offer);
         evicted.add(offer);
       }
@@ -66,7 +66,7 @@ function preparedOffers(offers, maxBytes, maxShardBytes) {
   }
   if (total > maxBytes) {
     const error = new Error(
-      'Offer storage budget cannot retain the two-month listing window.'
+      'Offer storage budget cannot retain the configured rolling listing window.'
     );
     error.code = 'offer-budget-exhausted';
     throw error;
@@ -244,6 +244,7 @@ export async function readOfferCollection(options) {
 
 export async function writeOfferCollection({
   directory,
+  historyDays = 90,
   maxBytes,
   maxShardBytes,
   mirror,
@@ -256,7 +257,8 @@ export async function writeOfferCollection({
   const { prepared, total } = preparedOffers(
     offers.map(boundStoredOffer),
     maxBytes,
-    maxShardBytes
+    maxShardBytes,
+    historyDays
   );
   const indexPath = join(directory, INDEX_NAME);
   const existingIndex = await readOrEmpty(indexPath);
