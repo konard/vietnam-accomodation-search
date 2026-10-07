@@ -1,4 +1,5 @@
 import { telegramHistoryWindow } from './telegram-window.js';
+import { TelegramPreviewProgress } from './telegram-preview-progress.js';
 import { normalizeOffer } from './offers.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { classifyTelegramPost } from './telegram-pipeline.js';
@@ -414,6 +415,7 @@ export class BrowserCollector {
     this.telegramPageReserveMs = telegramPageReserveMs;
     this.logger = logger || { debug: () => {} };
     this.maxTelegramPages = maxTelegramPages;
+    this.previewProgress = new TelegramPreviewProgress(store);
     this.navigationTimeoutMs = navigationTimeoutMs;
     this.now = now || (() => new Date());
     this.rateProvider = rateProvider;
@@ -522,12 +524,18 @@ export class BrowserCollector {
     } = {}
   ) {
     const firstUrl = buildSearchUrl(source, query);
+    const checkpoint = await this.previewProgress.load(firstUrl, window);
     const rowsByUrl = new Map();
     const visited = new Set();
-    const cutoff = window.since;
+    const cutoff = new Date(checkpoint.cutoff);
     let historyComplete = false;
     let pageDeadline = Infinity;
-    let url = firstUrl;
+    let url =
+      !checkpoint.complete && Number.isSafeInteger(checkpoint.beforeId)
+        ? beforeUrl(firstUrl, checkpoint.beforeId)
+        : firstUrl;
+    let beforeId = checkpoint.beforeId;
+    let newestId = checkpoint.newestId;
 
     for (
       let page = 0;
@@ -568,7 +576,13 @@ export class BrowserCollector {
       if (!ids.length) {
         break;
       }
-      const nextUrl = beforeUrl(firstUrl, Math.min(...ids));
+      newestId = Math.max(newestId || 0, ...ids);
+      if (checkpoint.complete && ids.some((id) => id <= checkpoint.newestId)) {
+        historyComplete = true;
+        break;
+      }
+      beforeId = Math.min(...ids);
+      const nextUrl = beforeUrl(firstUrl, beforeId);
       if (visited.has(nextUrl)) {
         throw new BrowserPageError(
           PAGE_CLASSIFICATIONS.NAVIGATION_LOOP,
@@ -577,8 +591,11 @@ export class BrowserCollector {
       }
       url = nextUrl;
     }
-    return Object.defineProperty([...rowsByUrl.values()], 'historyComplete', {
-      value: historyComplete,
+    return Object.defineProperties([...rowsByUrl.values()], {
+      historyComplete: { value: historyComplete },
+      historyCheckpoint: {
+        value: { ...checkpoint, beforeId, newestId, complete: historyComplete },
+      },
     });
   }
 
@@ -678,6 +695,9 @@ export class BrowserCollector {
     if (source.type === 'telegram') {
       Object.defineProperty(offers, 'historyComplete', {
         value: rows.historyComplete,
+      });
+      Object.defineProperty(offers, 'historyCheckpoint', {
+        value: rows.historyCheckpoint,
       });
     }
     return offers;
@@ -797,9 +817,11 @@ export class BrowserCollector {
   }
 
   #recordOutcome(trace, runId, outcome) {
-    const success = [SOURCE_STATUSES.OFFERS, SOURCE_STATUSES.EMPTY].includes(
-      outcome.status
-    );
+    const success = [
+      SOURCE_STATUSES.OFFERS,
+      SOURCE_STATUSES.EMPTY,
+      SOURCE_STATUSES.PARTIAL,
+    ].includes(outcome.status);
     const status =
       outcome.historyComplete === false
         ? 'degraded'
@@ -911,6 +933,11 @@ export class BrowserCollector {
   #saveSource(trace, onSourceComplete, completed) {
     return Promise.resolve()
       .then(() => onSourceComplete?.(completed))
+      .then(
+        () =>
+          onSourceComplete &&
+          this.previewProgress.commit(completed.offers.historyCheckpoint)
+      )
       .then(() => trace.persist())
       .catch((error) =>
         this.logger.debug(

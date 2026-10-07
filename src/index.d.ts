@@ -649,7 +649,8 @@ export declare class LinksStore {
 
 export declare class LinkCliMirror {
   constructor(options?: {
-    /** Content-defined shard bounds, in top-level links (default 64/128/32). */
+    /** Content-defined average/max/min links: 64/128/32 for named shards;
+     * 256/512/128 for long-name numeric projections unless explicitly set. */
     averageShardLinks?: number;
     command?: string;
     /** Parallel clink imports for sharded projections (default up to 4). */
@@ -853,6 +854,7 @@ export interface SourceOutcome {
 
 export interface SourceOutcomeSummary {
   allFailed: boolean;
+  incomplete?: number;
   failed: number;
   succeeded: number;
   byStatus: Record<string, number>;

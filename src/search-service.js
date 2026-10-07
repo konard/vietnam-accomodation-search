@@ -1,6 +1,7 @@
 import { telegramHistoryWindow } from './telegram-window.js';
 import { deduplicateOffers } from './offers.js';
 import { TraceRecorder } from './trace.js';
+import { summarizeOutcomes } from './source-pool.js';
 import {
   collectionKey,
   matchingSources,
@@ -246,6 +247,9 @@ export class SearchService {
         query,
         attemptedAt: timestamp,
         status: outcome.status,
+        ...(outcome.historyComplete === undefined
+          ? {}
+          : { historyComplete: outcome.historyComplete }),
       };
       if (
         ['offers', 'empty'].includes(outcome.status) &&
@@ -277,6 +281,27 @@ export class SearchService {
 
   async search(options = {}) {
     return (await this.searchWithReport(options)).offers;
+  }
+
+  #cachedReport(refreshingSources, query) {
+    const incomplete = this.collectionStates.filter(
+      (state) =>
+        normalizedQuery(state.query || '') === normalizedQuery(query) &&
+        refreshingSources.includes(state.sourceId) &&
+        state.historyComplete === false
+    );
+    const outcomes = incomplete.map(({ sourceId }) => ({
+      sourceId,
+      status: 'partial',
+      historyComplete: false,
+      offers: 0,
+    }));
+    return {
+      refreshingSources,
+      ...(outcomes.length
+        ? { outcomes, summary: summarizeOutcomes(outcomes) }
+        : {}),
+    };
   }
 
   // Saves each finished source as it completes, so an interrupted refresh
@@ -414,7 +439,7 @@ export class SearchService {
             });
         }
         if (cached) {
-          report = { refreshingSources: task.sourceIds };
+          report = this.#cachedReport(task.sourceIds, query);
         } else {
           report = await task.promise;
           offers = await this.store.listOffers();
@@ -443,7 +468,7 @@ export class SearchService {
       this.trace.record({
         runId,
         stage: 'search',
-        status: report?.summary?.allFailed ? 'degraded' : 'success',
+        status: report?.summary?.failed ? 'degraded' : 'success',
         metadata: {
           candidates: unique.length,
           failedSources: report?.summary?.failed,
