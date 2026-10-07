@@ -52,6 +52,10 @@ describe('reviewed rental field regressions (#123, #124, #131–#134)', () => {
       'ID A905\nотдельные спальни',
       '50 m² отдельные спальни',
       '5\nотдельные спальни',
+      'bedrooms\n5 bathrooms',
+      'спальни:\n50 m²',
+      'Bedrooms: 50 m²',
+      'Bedrooms: 123456789',
       '1 floor, separate bedrooms',
       'Service 1 year. Minimum lease unknown',
     ]) {
@@ -125,6 +129,8 @@ describe('reviewed rental field regressions (#123, #124, #131–#134)', () => {
       'floor\n17',
       'floor 50m²',
       'Лифт (этажи 1–3)',
+      'floor 1‑3',
+      '1–3 floor',
     ]) {
       expect(parseListingText(text).attributes.floor).toBe(undefined);
       expect(expectedDetails(text).includes('floor')).toBe(false);
@@ -150,6 +156,10 @@ describe('reviewed rental field regressions (#123, #124, #131–#134)', () => {
       'Available on 31st February',
       'Available from November 2026 through January 2026',
       'Available from 9-12 October',
+      'Available from 9‑12 October',
+      'Available from October 9-12',
+      'Available on October 200',
+      'Available on 10 Marching',
       'Available from 2026-10-09, or 2026-10-12',
       'Available from October 9, alternatively October 12',
     ]) {

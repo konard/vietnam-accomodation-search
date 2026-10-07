@@ -191,6 +191,15 @@ describe('bounded production photo OCR', () => {
       { timeoutMs: 5 }
     );
     expect((await failure(() => stalled('fixture'))).code).toBe('OCR_TIMEOUT');
+    const denied = Object.assign(new Error('Photo access denied'), {
+      code: 'PHOTO_DENIED',
+    });
+    const inaccessible = createTelegramOcr({
+      photo: async () => {
+        throw denied;
+      },
+    });
+    expect(await failure(() => inaccessible('fixture'))).toBe(denied);
   });
 });
 describe('clink capability preflight', () => {

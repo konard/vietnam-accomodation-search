@@ -157,16 +157,18 @@ describe('lazy Telegram history retry', () => {
     expect(offsets).toEqual([undefined, 4]);
     expect(sleeps).toEqual([22000]);
   });
-  it('rejects a declared public handle resolving to a user before history is read', async () => {
+  it('guards public handles against users and private peers before history is read', async () => {
     const { MtcuteTelegramProvider } = await import('../src/index.js');
     let historyReads = 0;
+    let chat = { type: 'user' };
     const client = {
       start: async () => {},
       getMe: async () => ({ id: 1 }),
       resolvePeer: async () => ({}),
-      getChat: async () => ({ type: 'user' }),
+      getChat: async () => chat,
       iterHistory() {
         historyReads++;
+        return [];
       },
       destroy: async () => {},
     };
@@ -187,6 +189,26 @@ describe('lazy Telegram history retry', () => {
     }
     expect(error.code).toBe('PUBLIC_SOURCE_NOT_COMMUNITY');
     expect(historyReads).toBe(0);
+    chat = { type: 'chat', chatType: 'supergroup' };
+    let privateError;
+    try {
+      await provider.history({
+        id: 'telegram:fixture',
+        access: 'public-preview',
+      });
+    } catch (caught) {
+      privateError = caught;
+    }
+    expect(privateError.code).toBe('PUBLIC_SOURCE_NOT_COMMUNITY');
+    expect(historyReads).toBe(0);
+    chat = { ...chat, username: 'fixture' };
+    for await (const message of await provider.history({
+      id: 'telegram:fixture',
+      access: 'public-preview',
+    })) {
+      throw new Error(`Unexpected message ${message.id}`);
+    }
+    expect(historyReads).toBe(1);
     await provider.destroy();
   });
 });

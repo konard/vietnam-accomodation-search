@@ -218,9 +218,9 @@ function bedroomCount(text) {
     return 0;
   }
   const numeric = matchedNumber(text, [
-    countBefore('bedrooms?|спальн\\p{L}*|phòng\\s*ngủ'),
+    countBefore('bedrooms?|спальн\\p{L}*|phòng[ \\t]*ngủ'),
     /(?<![\p{L}\d])(\d{1,2})[ \t]+(?:отдельн\p{L}*|separate|private|individual)[ \t]+(?:bedrooms?|спальн\p{L}*)(?!\p{L})/iu,
-    /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
+    /(?:bedrooms?|спальн\p{L}*|phòng[ \t]*ngủ)[ \t]{0,8}[:#-]?[ \t]{0,8}(\d{1,2})(?!\d|[ \t]*(?:m[²2]|м[²2]|кв\.?))/iu,
     countBefore('BR|BHK|PN'),
   ]);
   const chinese = text.match(/([一二兩两三四五])房/u)?.[1];

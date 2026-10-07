@@ -1,7 +1,7 @@
 // Numbers and their field labels must share a clause. Horizontal whitespace
 // avoids borrowing the next line's count; area/ranges are never a single floor.
 export const FLOOR_PATTERN =
-  /(?<![\p{L}\d])(?:(\d{1,3})(?:st|nd|rd|th|[- ]?(?:й|ый|ой))?[ \t]+(?:floor|этаж\p{L}*)|(?:floor|этаж|tầng)(?!\p{L})[ \t]{0,8}[:#-]?[ \t]{0,8}(\d{1,3}))(?!\d|[ \t]*(?:[-–—]\s*\d|m[²2]|м[²2]|кв\.?|bedrooms?|bathrooms?|спальн|сануз))/iu;
+  /(?<![\p{L}\d]|\d[ \t]*\p{Pd}[ \t]*)(?:(\d{1,3})(?:st|nd|rd|th|[- ]?(?:й|ый|ой))?[ \t]+(?:floor|этаж\p{L}*)|(?:floor|этаж|tầng)(?!\p{L})[ \t]{0,8}[:#-]?[ \t]{0,8}(\d{1,3}))(?!\d|[ \t]*(?:\p{Pd}\s*\d|m[²2]|м[²2]|кв\.?|bedrooms?|bathrooms?|спальн|сануз))/iu;
 
 export function listingFloor(text) {
   const match = text.match(FLOOR_PATTERN);
@@ -35,7 +35,7 @@ const MONTHS = [
 const MONTH =
   '(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)';
 const ENGLISH_DATE = new RegExp(
-  `(?:(\\d{1,2})(?:st|nd|rd|th)?[ \\t]+(${MONTH})|(${MONTH})[ \\t]+(\\d{1,2})(?:st|nd|rd|th)?)(?:[ \\t,]+(\\d{4}))?`,
+  `(?<![\\p{L}\\d])(?:(\\d{1,2})(?:st|nd|rd|th)?[ \\t]+(${MONTH})(?!\\p{L})|(${MONTH})(?!\\p{L})[ \\t]+(\\d{1,2})(?:st|nd|rd|th)?)(?![\\p{L}\\d])(?:[ \\t,]+(\\d{4})(?!\\d))?(?![ \\t,]+\\d)`,
   'iu'
 );
 
@@ -49,11 +49,11 @@ export function listingAvailabilityDate(text, referenceDate = new Date()) {
   )?.[0];
   if (
     !clause ||
-    /\b(?:through|until|to)\b|\s(?:до|по|đến)\s|\d\s*[–—]\s*\d/iu.test(
+    /\b(?:through|until|to)\b|\s(?:до|по|đến)\s|\d\s*(?!-)\p{Pd}\s*\d/iu.test(
       clause
     ) ||
     new RegExp(
-      `\\d{1,2}(?:st|nd|rd|th)?[ \\t]*-[ \\t]*\\d{1,2}(?:st|nd|rd|th)?[ \\t]+${MONTH}`,
+      `(?:\\d{1,2}(?:st|nd|rd|th)?[ \\t]*\\p{Pd}[ \\t]*\\d{1,2}(?:st|nd|rd|th)?[ \\t]+${MONTH}|${MONTH}[ \\t]+\\d{1,2}(?:st|nd|rd|th)?[ \\t]*\\p{Pd}[ \\t]*\\d{1,2})`,
       'iu'
     ).test(clause) ||
     [...clause.matchAll(/\b\d{4}-\d{2}-\d{2}\b/gu)].length > 1 ||
