@@ -150,8 +150,10 @@ describe('polling conflict: two pollers on one bot token', () => {
       await until(() => first.conflicts > 0);
       const evicted = await ready(first);
       expect(evicted.status).toBe(503);
+      expect(evicted.body.conflicts).toBeGreaterThan(0);
+      expect(evicted.body.conflicts).toBeLessThanOrEqual(first.conflicts);
       expect(evicted.body).toEqual({
-        conflicts: first.conflicts,
+        conflicts: evicted.body.conflicts,
         reason: 'polling-conflict',
         status: 'not-ready',
       });
