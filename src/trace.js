@@ -86,11 +86,28 @@ function normalizeSegmentState(state) {
 }
 
 export function createSegmentLedger(value, classify = () => ({})) {
-  const segments = String(value)
+  if (typeof value !== 'string') {
+    return {
+      segments: [],
+      summary: { error: 1, mapped: 0, reviewedUnknown: 0, coverage: 0 },
+      reason: 'missing-source-body',
+    };
+  }
+  let offset = 0;
+  const segments = value
     .split(/\r?\n/gu)
-    .map((text) => text.trim())
-    .filter(Boolean)
-    .map((text, index) => {
+    .map((line) => {
+      const text = line.trim();
+      const start = offset + line.indexOf(text);
+      offset +=
+        line.length +
+        (value.slice(offset + line.length, offset + line.length + 2) === '\r\n'
+          ? 2
+          : 1);
+      return { text, start, end: start + text.length };
+    })
+    .filter(({ text }) => text)
+    .map(({ text, start, end }, index) => {
       const decision = classify({ index, text }) || {};
       const metadata = { ...decision };
       delete metadata.state;
@@ -100,6 +117,8 @@ export function createSegmentLedger(value, classify = () => ({})) {
         hash: createHash('sha256').update(text.normalize('NFC')).digest('hex'),
         length: [...text].length,
         position: index,
+        start,
+        end,
         state: normalizeSegmentState(decision.state),
         ...metadata,
       };

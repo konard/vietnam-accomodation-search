@@ -1,3 +1,4 @@
+import { listingLexemes } from './listing-lexemes.js';
 const CURRENCY_ALIASES = new Map([
   ['$', 'USD'],
   ['US$', 'USD'],
@@ -64,10 +65,10 @@ const ADDITIVE_AMOUNT = /(?:[+＋]|(?<!\p{L})plus)\s*$/iu;
 // deposits, extras, vehicle rental offered next to the apartment, and sale
 // prices.
 const FEE_LABEL =
-  /продаж\p{L}*|for\s+sale|sale\s+price|(?<!\p{L})giá\s+bán|электр\p{L}*|свет(?!\p{L})|вод[аыуе](?!\p{L})|интернет|wi-?fi|вай-?фай|управлен\p{L}*|обслужив\p{L}*|охран\p{L}*|услуг\p{L}*|сервис\p{L}*|депозит|залог|комисси\p{L}*|уборк\p{L}*|клининг|стирк\p{L}*|парков\p{L}*|питом\p{L}*|животн\p{L}*|доплат\p{L}*|газ(?!\p{L})|мусор|коммунал\p{L}*|байк\p{L}*|скутер\p{L}*|автомоб\p{L}*|трансфер|electric\p{L}*|water|internet|management|service|deposit|cleaning|laundry|parking|(?<!\p{L})pets?(?!\p{L})|commission|agency|utilit\p{L}*|motorbike|scooter|(?<!\p{L})bike|transfer|điện|nước|phí|cọc|dọn|giặt|gửi\s*xe|xe\s*máy|押金|管理[費费]|水[電电]/iu;
+  /receipt|invoice|total|balance|phone|продаж\p{L}*|for\s+sale|sale\s+price|(?<!\p{L})giá\s+bán|электр\p{L}*|свет(?!\p{L})|вод[аыуе](?!\p{L})|интернет|wi-?fi|вай-?фай|управлен\p{L}*|обслужив\p{L}*|охран\p{L}*|услуг\p{L}*|сервис\p{L}*|депозит|залог|комисси\p{L}*|уборк\p{L}*|клининг|стирк\p{L}*|парков\p{L}*|питом\p{L}*|животн\p{L}*|доплат\p{L}*|газ(?!\p{L})|мусор|коммунал\p{L}*|байк\p{L}*|скутер\p{L}*|автомоб\p{L}*|трансфер|electric\p{L}*|water|internet|management|service|deposit|cleaning|laundry|parking|(?<!\p{L})pets?(?!\p{L})|commission|agency|utilit\p{L}*|motorbike|scooter|(?<!\p{L})bike|transfer|điện|nước|phí|cọc|dọn|giặt|gửi\s*xe|xe\s*máy|押金|管理[費费]|水[電电]/iu;
 // Unit rates such as "4.500 VND / кВт⋅ч" or "100.000 VND / человек".
 const PER_UNIT =
-  /^\s?(?:\/|за|per|mỗi|một)?\s?(?:кв?т|kwh|kw(?!\p{L})|số(?!\p{L})|человек\p{L}*|чел(?!\p{L})|person|pax|người|м³|m³|m3|куб\p{L}*|khối|кг|kg|ký(?!\p{L})|m²|m2|м²|м2)/iu;
+  /^\s?(?:\/|за|per|mỗi|một)?\s?(?:кв?т|kwh|kw(?!\p{L})|số(?!\p{L})|человек\p{L}*|чел(?!\p{L})|person|pax|người|minutes?|mins?|phút|минут\p{L}*|km|км|м³|m³|m3|куб\p{L}*|khối|кг|kg|ký(?!\p{L})|m²|m2|м²|м2)/iu;
 // "до 10 млн" or "up to $500" states a budget ceiling, not a listed rent.
 // Headings such as "Дополнительные расходы:" that open a list of fees.
 const FEE_SECTION =
@@ -284,7 +285,10 @@ function optionContext(clause, tokens, index) {
 function candidates(text) {
   let section = { fee: false, rent: false };
   const parts = clauses(text);
+  let sourceOffset = 0;
   return parts.flatMap((clause, index) => {
+    const clauseStart = text.indexOf(clause, sourceOffset);
+    sourceOffset = clauseStart + clause.length;
     const tokens = moneyTokens(clause);
     if (!tokens.length) {
       if (/:[\s\p{S}\p{P}]*$/u.test(clause)) {
@@ -302,6 +306,8 @@ function candidates(text) {
         context: optionContext(clause, tokens, tokenIndex),
         preceding,
         clauseIndex: index,
+        lexicalStart: clauseStart + candidate.start,
+        lexicalEnd: clauseStart + candidate.end,
       })
     );
   });
@@ -345,9 +351,13 @@ export function rentalPriceOptions(
   text = '',
   { includeUnlabeled = false } = {}
 ) {
-  const all = candidates(String(text)).filter(
-    ({ ceiling, fee }) => !fee && !ceiling
-  );
+  const lexemes = listingLexemes(text);
+  const all = candidates(lexemes.text)
+    .filter(({ ceiling, fee }) => !fee && !ceiling)
+    .map((option) => ({
+      ...option,
+      sourceSpan: lexemes.sourceSpan(option.lexicalStart, option.lexicalEnd),
+    }));
   const rent = all.filter((candidate) => candidate.rent);
   const pool = rent.length
     ? all.filter(

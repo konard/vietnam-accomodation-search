@@ -1,3 +1,4 @@
+import { telegramHistoryWindow } from './telegram-window.js';
 import { normalizeOffer } from './offers.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { classifyTelegramPost } from './telegram-pipeline.js';
@@ -340,12 +341,6 @@ function messageId(row) {
   return value ? Number(value) : undefined;
 }
 
-function cutoffDate(now) {
-  const cutoff = new Date(now);
-  cutoff.setUTCMonth(cutoff.getUTCMonth() - 2);
-  return cutoff;
-}
-
 function beforeUrl(url, id) {
   const parsed = new globalThis.URL(url);
   parsed.searchParams.set('before', String(id));
@@ -397,6 +392,7 @@ export class BrowserCollector {
     browserRuntime,
     budgetMs = 3 * 60 * 1000,
     concurrency = 4,
+    historyDays = 90,
     logger,
     maxTelegramPages = 200,
     navigationTimeoutMs = NAVIGATION_TIMEOUT_MS,
@@ -413,6 +409,7 @@ export class BrowserCollector {
     this.browserRuntime = browserRuntime;
     this.budgetMs = budgetMs;
     this.concurrency = concurrency;
+    this.historyDays = historyDays;
     this.sourceTimeoutMs = sourceTimeoutMs;
     this.telegramPageReserveMs = telegramPageReserveMs;
     this.logger = logger || { debug: () => {} };
@@ -510,16 +507,25 @@ export class BrowserCollector {
   // Paging stops at `deadline` (epoch milliseconds) and keeps the pages
   // already read, so a channel deeper than the time left still yields its
   // newest posts. The first page has no such limit.
+  // eslint-disable-next-line complexity -- Preview paging owns cutoff, visited links, budgets and row deduplication.
   async collectTelegramRows(
     commander,
     source,
     query,
-    { deadline = Infinity, signal } = {}
+    {
+      deadline = Infinity,
+      signal,
+      window = telegramHistoryWindow({
+        now: this.now(),
+        historyDays: this.historyDays,
+      }),
+    } = {}
   ) {
     const firstUrl = buildSearchUrl(source, query);
     const rowsByUrl = new Map();
     const visited = new Set();
-    const cutoff = cutoffDate(this.now());
+    const cutoff = window.since;
+    let historyComplete = false;
     let pageDeadline = Infinity;
     let url = firstUrl;
 
@@ -547,6 +553,7 @@ export class BrowserCollector {
       }
       pageDeadline = deadline;
       if (!rows.length) {
+        historyComplete = true;
         break;
       }
 
@@ -554,6 +561,7 @@ export class BrowserCollector {
         .map((row) => new Date(row.date))
         .filter((date) => Number.isFinite(date.getTime()));
       if (dates.some((date) => date <= cutoff)) {
+        historyComplete = true;
         break;
       }
       const ids = rows.map(messageId).filter(Number.isFinite);
@@ -569,7 +577,9 @@ export class BrowserCollector {
       }
       url = nextUrl;
     }
-    return [...rowsByUrl.values()];
+    return Object.defineProperty([...rowsByUrl.values()], 'historyComplete', {
+      value: historyComplete,
+    });
   }
 
   // eslint-disable-next-line complexity -- Source collection keeps transport, paging, and parser failure boundaries together.
@@ -578,7 +588,14 @@ export class BrowserCollector {
     source,
     query,
     rates,
-    { deadline, signal } = {}
+    {
+      deadline,
+      signal,
+      window = telegramHistoryWindow({
+        now: this.now(),
+        historyDays: this.historyDays,
+      }),
+    } = {}
   ) {
     const requestedUrl = buildSearchUrl(source, query);
     const adapter = browserAdapterFor(requestedUrl);
@@ -590,6 +607,7 @@ export class BrowserCollector {
       rows = await this.collectTelegramRows(commander, source, query, {
         deadline,
         signal,
+        window,
       });
     } else {
       const url = requestedUrl;
@@ -631,7 +649,9 @@ export class BrowserCollector {
       const offer =
         source.type === 'telegram'
           ? await parseTelegramOffer(telegramMessage(row, source), {
-              now: this.now(),
+              now: window.now,
+              since: window.since,
+              historyDays: this.historyDays,
               rates,
             })
           : await normalizeOffer(
@@ -654,6 +674,11 @@ export class BrowserCollector {
         };
         offers.push(offer);
       }
+    }
+    if (source.type === 'telegram') {
+      Object.defineProperty(offers, 'historyComplete', {
+        value: rows.historyComplete,
+      });
     }
     return offers;
   }
@@ -775,13 +800,20 @@ export class BrowserCollector {
     const success = [SOURCE_STATUSES.OFFERS, SOURCE_STATUSES.EMPTY].includes(
       outcome.status
     );
-    const status = success
-      ? 'success'
-      : outcome.status === SOURCE_STATUSES.CANCELLED
-        ? 'cancelled'
-        : 'failure';
+    const status =
+      outcome.historyComplete === false
+        ? 'degraded'
+        : success
+          ? 'success'
+          : outcome.status === SOURCE_STATUSES.CANCELLED
+            ? 'cancelled'
+            : 'failure';
     const metadata = success
-      ? { durationMs: outcome.durationMs, offers: outcome.offers }
+      ? {
+          durationMs: outcome.durationMs,
+          offers: outcome.offers,
+          historyComplete: outcome.historyComplete,
+        }
       : {
           category: outcome.category,
           durationMs: outcome.durationMs,
@@ -905,6 +937,10 @@ export class BrowserCollector {
       ? await this.rateProvider.getRates()
       : this.rates;
     const startedAt = Date.now();
+    const window = telegramHistoryWindow({
+      now: this.now(),
+      historyDays: this.historyDays,
+    });
     const { browser, page, runtime } = await this.#launch();
     const workers = this.#workerFactory(runtime, browser, page);
     const offers = [];
@@ -975,6 +1011,7 @@ export class BrowserCollector {
           return this.collectSource(worker.commander, source, query, rates, {
             deadline: this.#pagingDeadline(startedAt),
             signal: sourceSignal,
+            window,
           });
         },
         signal,

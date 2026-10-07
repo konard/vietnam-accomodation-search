@@ -136,7 +136,8 @@ function materialType(material) {
 
 function terminalCounts(accepted, reviewQueue) {
   const terminal = {
-    accepted: accepted.length,
+    accepted:
+      accepted.length - reviewQueue.filter((item) => item.accepted).length,
     degraded: 0,
     error: 0,
     excluded: 0,
@@ -168,7 +169,7 @@ function materialRecords(materials, decisions, sourceAlias) {
 }
 
 function offerLedger(offer) {
-  return createSegmentLedger(offer.text, ({ text }) => ({
+  return createSegmentLedger(offer.raw?.text, ({ text }) => ({
     state:
       /(?:VND|VNĐ|₫|USD|EUR|GBP|rent|аренд|сда[её]т|cho\s+thuê|контакт|contact|liên\s+hệ|спальн|bedroom|phòng)/iu.test(
         text
@@ -236,7 +237,7 @@ function reconciliationTraces(materials, result, sourceAlias, now) {
 
 export async function auditTelegramBatch(
   messages,
-  { now = new Date(), ocr, sourceAlias } = {}
+  { now = new Date(), since, ocr, sourceAlias } = {}
 ) {
   if (!sourceAlias) {
     throw new TypeError(
@@ -249,15 +250,16 @@ export async function auditTelegramBatch(
     extract: (material) =>
       parseTelegramOffer(
         {
+          ...material,
           chat: { username: sourceAlias },
           date: material.date || now,
           id: material.id,
-          messageId: material.messageIds[0],
+          messageId: material.captionMessageIds?.[0] || material.messageIds[0],
           photos: material.mediaIds,
           sourceId: `telegram:${sourceAlias}`,
           text: material.text,
         },
-        { now }
+        { now, since }
       ),
   });
   const terminal = terminalCounts(result.accepted, result.reviewQueue);
@@ -278,6 +280,7 @@ export async function auditTelegramBatch(
       unaccounted: materials.length - terminalTotal,
     },
     offers: result.accepted,
+    eligibleAttempts: result.eligibleAttempts,
     reviewQueue: result.reviewQueue,
     segments: segmentLedgers.reduce(
       (summary, { segments, summary: ledger }) => ({

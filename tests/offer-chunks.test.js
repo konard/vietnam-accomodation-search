@@ -265,7 +265,7 @@ describe('bounded offer persistence', () => {
       expect(
         (await failureOf(() => store.saveOffers(syntheticOffers(1)))).message
       ).toBe(
-        'Offer storage budget cannot retain the two-month listing window.'
+        'Offer storage budget cannot retain the configured rolling listing window.'
       );
       expect(await store.listOffers()).toEqual([]);
     } finally {

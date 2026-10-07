@@ -119,7 +119,9 @@ describe('issue 10 defensive storage paths', () => {
       expect(error.message).toContain('candidate failed');
 
       const executable = new LinkCliMirror({ command: process.execPath });
-      await executable.preflight();
+      expect((await capturedFailure(() => executable.preflight())).code).toBe(
+        'CLINK_INCOMPATIBLE'
+      );
       expect(
         (
           await capturedFailure(() =>

@@ -515,7 +515,7 @@ describe('in-page listing extraction', () => {
           return { href: 'https://t.me/rentals/42' };
         }
         if (selector === 'time') {
-          return { dateTime: '2026-07-21T00:00:00Z' };
+          return { dateTime: '2026-06-23T00:00:00Z' };
         }
         return { innerText: 'Sea room 500,000 VND/night' };
       },

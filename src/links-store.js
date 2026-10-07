@@ -457,12 +457,14 @@ export class LinksStore {
   constructor({
     binaryMirror = false,
     directory = '.vietnam-accomodation-search',
+    historyDays = 90,
     maxBytes = 10 * 1024 ** 3,
     maxOfferShardBytes = DEFAULT_OFFER_SHARD_BYTES,
     maxRecordChunkBytes = DEFAULT_RECORD_CHUNK_BYTES,
     mirror,
   } = {}) {
     this.directory = directory;
+    this.historyDays = historyDays;
     this.offersPath = join(directory, 'offers.lino');
     this.searchStatePath = join(directory, 'search-state.lino');
     this.sourcesPath = join(directory, 'sources.lino');
@@ -815,6 +817,7 @@ export class LinksStore {
   #saveOffers(offers) {
     return writeOfferCollection({
       directory: this.directory,
+      historyDays: this.historyDays,
       maxBytes: this.maxBytes,
       maxShardBytes: this.maxOfferShardBytes,
       mirror: this.mirror,

@@ -375,7 +375,11 @@ export const DEFAULT_TELEGRAM_SOURCES = [
   telegramSource('phuquoc_realestate', 'Phu Quoc Real Estate', 746),
   telegramSource('nhatrangapartment_rental', 'Nha Trang Apartment Rental', 642),
   telegramSource('vietnam_rent', 'Vietnam Rent', 600),
-  telegramSource('phuquoc_rental', 'Phu Quoc Rental', 580),
+  {
+    ...telegramSource('phuquoc_rental', 'Phu Quoc Rental', 580),
+    enabled: false,
+    reason: 'public-handle-resolves-to-user',
+  },
   telegramSource('phuquocrealestate_chat', 'Phu Quoc Real Estate Chat', 560),
   telegramSource('danang_home', 'Da Nang Home', 540),
   telegramSource('Danangcityapartment', 'Da Nang City Apartment', 520),

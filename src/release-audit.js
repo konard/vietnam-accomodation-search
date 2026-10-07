@@ -26,6 +26,7 @@ export const RELEASE_AUDIT_GATES = Object.freeze([
   'private-dialog-filter',
   'nha-trang-40-discovery',
   'two-month-resume',
+  'rolling-90-day-history',
   'reviewed-parser-corpus',
   'typed-lino-clink',
   'telegram-terminal-accounting',

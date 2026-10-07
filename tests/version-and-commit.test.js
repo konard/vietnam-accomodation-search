@@ -255,11 +255,19 @@ describe('version-and-commit.mjs passes the commit message as one argument', () 
       return;
     }
     const message = `v1.0.0 "q" $(echo pwned) \`id\` \\ 's`;
-    const { $ } = await loadCommandStream();
-    const result = await $`printf %s ${message}`.run({
-      capture: true,
-      mirror: false,
-    });
-    expect(await result.text()).toBe(message);
+    // Native Node argv echo avoids relying on Git Bash's printf.exe.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = spawnSync(
+        process.execPath,
+        ['experiments/command-stream-literal-argv.mjs', message],
+        { encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL' }
+      );
+      if (result.error || result.status !== 0) {
+        throw new Error(
+          `Literal argv probe failed: ${result.error?.message || result.status}\n${result.stderr}`
+        );
+      }
+      expect(result.stdout).toBe(message);
+    }
   });
 });

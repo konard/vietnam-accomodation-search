@@ -319,7 +319,7 @@ describe('complete recent Telegram parsing', () => {
     expect(durationMs < 500).toBe(true);
   });
 
-  it('paginates public previews until reaching the two-month cutoff', async () => {
+  it('paginates public previews until reaching the 90-day cutoff', async () => {
     const navigated = [];
     let currentUrl = '';
     const collector = new BrowserCollector({
@@ -338,7 +338,7 @@ describe('complete recent Telegram parsing', () => {
             currentUrl.includes('before=101')
               ? [
                   {
-                    date: '2026-07-01T00:00:00Z',
+                    date: '2026-06-01T00:00:00Z',
                     text: 'Old apartment\nPrice: 7 million VND/month',
                     url: 'https://t.me/example/80',
                   },

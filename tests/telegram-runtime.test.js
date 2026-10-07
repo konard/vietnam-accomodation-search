@@ -283,7 +283,7 @@ describe('persisted update deduplication', () => {
 });
 
 describe('MTProto history collection', () => {
-  it('uses the two-month cutoff, normalizer, and transport provenance', async () => {
+  it('uses the 90-day cutoff, normalizer, and transport provenance', async () => {
     const requested = [];
     const router = {
       history: async (_source, options) => {
@@ -315,6 +315,6 @@ describe('MTProto history collection', () => {
     expect(offers.length).toBe(1);
     expect(offers[0].provenance.transport).toBe('mtproto');
     expect(offers[0].provenance.topicId).toBe(4);
-    expect(requested[0].since.toISOString()).toBe('2026-07-22T00:00:00.000Z');
+    expect(requested[0].since.toISOString()).toBe('2026-06-24T00:00:00.000Z');
   });
 });

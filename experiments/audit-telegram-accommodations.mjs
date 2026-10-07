@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+import {
+  folderContainsDialog,
+  folderUsesCategories,
+} from './telegram-folder-filter.mjs';
+import { telegramHistoryWindow } from '../src/telegram-window.js';
+import { createTelegramOcr } from '../src/telegram-ocr.js';
+
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
@@ -69,9 +76,9 @@ const STORAGE_SAMPLE_RECORDS = 200;
 export function parseArguments(values) {
   const result = {
     folder: DEFAULT_FOLDER,
-    maxMessages: 3_000,
-    maxSources: 40,
-    months: 2,
+    maxMessages: Number.MAX_SAFE_INTEGER,
+    maxSources: 100,
+    months: 3,
     redactedExcerpts: false,
     stateDirectory: '.vietnam-accomodation-search/telegram-live-audit',
   };
@@ -110,9 +117,9 @@ export function parseArguments(values) {
       throw new RangeError(`${property} must be a positive integer.`);
     }
   }
-  if (result.maxSources > 40) {
+  if (result.maxSources > 100) {
     throw new RangeError(
-      'maxSources must not exceed the audited 40-source limit.'
+      'maxSources must not exceed the 100-source safety limit.'
     );
   }
   parseSourceSelection(result.sources, result.maxSources);
@@ -131,38 +138,8 @@ function dateValue(value) {
 function cutoffDate(now, months) {
   const cutoff = new Date(now);
   cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
-  return cutoff;
-}
-
-function tesseract(command, bytes) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      command,
-      ['stdin', 'stdout', '--dpi', '150', '-l', 'eng+rus+vie'],
-      { shell: false, stdio: ['pipe', 'pipe', 'pipe'] }
-    );
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => {
-      stdout = `${stdout}${chunk}`.slice(0, 1024 * 1024);
-    });
-    child.stderr.on('data', (chunk) => {
-      stderr = `${stderr}${chunk}`.slice(-4096);
-    });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-      } else {
-        const error = new Error(
-          `Media extraction exited with ${code}: ${stderr.trim()}`
-        );
-        error.code = 'MEDIA_EXTRACTION_FAILED';
-        reject(error);
-      }
-    });
-    child.stdin.end(bytes);
-  });
+  const minimum = telegramHistoryWindow({ now }).since;
+  return months >= 3 && cutoff > minimum ? minimum : cutoff;
 }
 
 function commandOutput(command, arguments_) {
@@ -227,16 +204,55 @@ function mediaOcr(client, messages, command) {
       .map((message) => [mediaIdentity(message), message.media])
       .filter(([identity, media]) => identity !== undefined && media)
   );
-  return async (identity) => {
-    const media = byIdentity.get(identity);
-    if (!media) {
-      const error = new Error('Telegram media was not present in the batch.');
-      error.code = 'MEDIA_NOT_FOUND';
-      throw error;
-    }
-    const bytes = await client.downloadMedia(media);
-    return tesseract(command, bytes);
-  };
+  return createTelegramOcr(
+    {
+      photo: async (identity, { signal, maxBytes = 16 * 1024 * 1024 }) => {
+        const media = byIdentity.get(identity);
+        if (!media) {
+          const error = new Error(
+            'Telegram media was not present in the batch.'
+          );
+          error.code = 'MEDIA_NOT_FOUND';
+          throw error;
+        }
+        if (!media.photo) {
+          throw Object.assign(
+            new Error('Only Telegram photos are supported for rental OCR.'),
+            { code: 'OCR_MEDIA_UNSUPPORTED' }
+          );
+        }
+        if (
+          (media.photo.sizes || []).some(
+            (size) =>
+              Number(
+                size.size ||
+                  Math.max(0, ...(size.sizes || [])) ||
+                  size.bytes?.byteLength ||
+                  0
+              ) > maxBytes
+          )
+        ) {
+          throw Object.assign(
+            new Error('Telegram photo exceeds the OCR input budget.'),
+            { code: 'OCR_INPUT_BUDGET' }
+          );
+        }
+        return await client.downloadMedia(media, {
+          signal,
+          requestTimeout: 15000,
+          progressCallback: (downloaded, total) => {
+            if (Number(downloaded) > maxBytes || Number(total) > maxBytes) {
+              throw Object.assign(
+                new Error('Telegram photo exceeds the OCR input budget.'),
+                { code: 'OCR_INPUT_BUDGET' }
+              );
+            }
+          },
+        });
+      },
+    },
+    { command }
+  );
 }
 
 function folderTitle(filter) {
@@ -260,7 +276,7 @@ function sourceEntity(entity, discoveredBy) {
   };
 }
 
-async function resolveFolderEntities(client, filter) {
+export async function resolveFolderEntities(client, filter) {
   const resolved = new Map();
   const ignoredPrivateDialogs = new Set();
   const ignoredUnsupportedPeers = new Set();
@@ -283,25 +299,30 @@ async function resolveFolderEntities(client, filter) {
   const peers = [...(filter.pinnedPeers || []), ...(filter.includePeers || [])];
   for (const peer of peers) {
     try {
-      add(
-        await retryTelegramFloodWait(() => client.getEntity(peer)),
-        'folder-filter'
-      );
+      const entity = await retryTelegramFloodWait(() => client.getEntity(peer));
+      if (folderContainsDialog(filter, { entity })) {
+        add(entity, 'folder-filter');
+      }
     } catch {
       // One inaccessible peer must not hide the remaining folder.
       resolutionErrors += 1;
     }
   }
-  try {
-    const dialogs = await retryTelegramFloodWait(() =>
-      client.getDialogs({ folder: filter.id, limit: 500 })
-    );
-    for (const dialog of dialogs) {
-      add(dialog.entity, 'folder-dialog');
+  if (folderUsesCategories(filter)) {
+    for (const folder of [0, 1]) {
+      try {
+        const dialogs = await retryTelegramFloodWait(() =>
+          client.getDialogs({ folder })
+        );
+        for (const dialog of dialogs) {
+          if (folderContainsDialog(filter, dialog)) {
+            add(dialog.entity, 'folder-dialog');
+          }
+        }
+      } catch {
+        resolutionErrors += 1;
+      }
     }
-  } catch {
-    // Custom folders may be fully represented by includePeers alone.
-    resolutionErrors += 1;
   }
   return {
     entities: resolved,
@@ -551,6 +572,7 @@ export async function auditSource(
     batch = await timing.measure('parse', () =>
       auditTelegramBatch(normalizedMessages, {
         now: new Date(report.generatedAt),
+        since: report.cutoff,
         ocr: (...args) => timing.measure('ocr', () => ocr(...args)),
         sourceAlias: alias,
       })
@@ -609,11 +631,7 @@ export async function auditSource(
   audit.messagesScanned =
     (resume?.messagesScanned || 0) + audit.currentRunMessages;
   audit.parserOffers = batch.offers.length;
-  audit.relevantOffers =
-    batch.offers.length +
-    batch.reviewQueue.filter(
-      ({ reason }) => reason === 'offer-extraction-failed'
-    ).length;
+  audit.relevantOffers = batch.eligibleAttempts;
   audit.segments = batch.segments;
   audit.terminalMaterials = batch.materials.terminal;
   audit.traces = countBy(batch.traceRecords.map(({ status }) => status));
@@ -1047,11 +1065,10 @@ export async function runAudit(options) {
       checks: {
         botIdentity: report.bot.active === true,
         canonicalTypedStorage: Object.values(report.storage).every(Boolean),
-        completeFortySourceCohort:
-          options.maxSources === 40 &&
-          sources.length === 40 &&
+        completePublicSourceCohort:
+          sources.length >= 40 &&
           sources.every((source) => Boolean(source.public)),
-        rollingTwoMonthWindow: options.months === 2,
+        rollingThreeMonthWindow: options.months >= 3,
         correlatedTerminalTraces:
           Object.values(report.parser.traces).reduce(
             (total, count) => total + count,

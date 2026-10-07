@@ -5,6 +5,7 @@ function errorText(error) {
     error?.message,
     error?.description,
     error?.errorMessage,
+    error?.text,
     error?.cause?.message,
   ]
     .filter(Boolean)
@@ -22,9 +23,18 @@ export function classifyTelegramError(error) {
   const code = String(error?.code || '');
   const text = errorText(error);
   const flood = text.match(/FLOOD_WAIT_?(\d+)/iu);
-  const retryAfter = Number(error?.parameters?.retry_after ?? flood?.[1]);
+  const retryAfter = Number(
+    error?.parameters?.retry_after ??
+      error?.seconds ??
+      error?.value ??
+      flood?.[1]
+  );
 
-  if (status === 429 || flood) {
+  if (
+    status === 429 ||
+    flood ||
+    (status === 420 && /FLOOD_WAIT/iu.test(text))
+  ) {
     return {
       category: 'rate-limit',
       delayMs: Number.isFinite(retryAfter) ? retryAfter * 1000 : undefined,
@@ -129,6 +139,12 @@ export async function retryTelegramOperation(
       const requested =
         policy.delayMs ?? exponential + exponential * 0.25 * boundedJitter;
       const remainingMs = maxElapsedMs - (now() - startedAt);
+      if (
+        policy.category === 'rate-limit' &&
+        (requested > maxDelayMs || requested >= remainingMs)
+      ) {
+        throw error;
+      }
       const delayMs = Math.min(maxDelayMs, requested, remainingMs);
       if (delayMs <= 0) {
         throw error;

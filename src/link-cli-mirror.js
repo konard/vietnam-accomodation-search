@@ -5,6 +5,7 @@ import {
   copyFile,
   link,
   mkdir,
+  mkdtemp,
   open,
   readFile,
   readdir,
@@ -12,7 +13,7 @@ import {
   rm,
   stat,
 } from 'node:fs/promises';
-import { availableParallelism } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 import { Parser, formatLinks } from 'links-notation';
@@ -472,6 +473,27 @@ export class LinkCliMirror {
 
   async preflight() {
     await this.run(this.command, ['--help'], this.runOptions);
+    const directory = await mkdtemp(join(tmpdir(), 'clink-capability-'));
+    try {
+      const notation = '(probe: probe value)\n';
+      await this.#buildDatabase(
+        directory,
+        'capability-probe',
+        notation,
+        sha256(notation),
+        this.runOptions
+      );
+    } catch (cause) {
+      throw Object.assign(
+        new Error(
+          `Incompatible clink executable ${this.command}: requires link-cli import/export support (tested with Rust link-cli 0.2.11). Set the configured clink command to a compatible executable.`,
+          { cause }
+        ),
+        { code: 'CLINK_INCOMPATIBLE' }
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   }
 
   #report(event) {

@@ -99,6 +99,12 @@ function startTimer(milliseconds, onElapsed) {
   return () => clearTimeout(timer);
 }
 
+function historyCoverage(value) {
+  return value.historyComplete === undefined
+    ? {}
+    : { historyComplete: value.historyComplete };
+}
+
 // `run(source, { signal, worker })` collects one source; `openWorker(index)`
 // returns the per-worker context (for example a browser page) or undefined
 // when no further worker can be opened. `isWorkerLost(error)` marks failures
@@ -163,6 +169,7 @@ export async function runSourcePool(
         {
           durationMs: now() - startedAt,
           offers: value.length,
+          ...historyCoverage(value),
           sourceId: source.id,
           status: value.length ? SOURCE_STATUSES.OFFERS : SOURCE_STATUSES.EMPTY,
         },

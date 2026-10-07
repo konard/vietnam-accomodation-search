@@ -1,3 +1,5 @@
+import { FLOOR_PATTERN } from '../src/listing-fields.js';
+import { rentalPriceOptions } from '../src/pricing.js';
 import { readFile } from 'node:fs/promises';
 
 export function errorSummary(error) {
@@ -34,7 +36,7 @@ const OFFER_PATTERN =
 const DEMAND_PATTERN =
   /\blooking\s+for\b|\bwanted\b|\bneed\s+(?:a|an|to\s+rent)\b|\bищу\b|\bсниму\b|\bнужн\p{L}*\s+(?:квартир|комнат|дом|жиль)|\btìm\s+(?:căn|phòng|nhà)|\bcần\s+thuê\b/iu;
 const PRICE_PATTERN =
-  /(?:\d[\d\s.,]{0,15}\s*(?:₫|đ|vnd|vnđ|usd|us\$|\$|eur|€|gbp|£|triệu|tr(?:iệu)?|million|mio|tỷ|billion))|(?:(?:₫|đ|vnd|vnđ|usd|us\$|\$|eur|€|gbp|£)\s*\d)/iu;
+  /(?:\d[\d\s.,]{0,15}\s*(?:m\s*)?(?:₫|đ|vnd|vnđ|usd|us\$|\$|eur|€|gbp|£|triệu|tr(?:iệu)?|million|mio|tỷ|billion))|(?:(?:₫|đ|vnd|vnđ|usd|us\$|\$|eur|€|gbp|£)\s*\d)/iu;
 const NHA_TRANG_PATTERN = /nha\s*trang|nhatrang|ня\s*чанг|нячанг|芽庄/iu;
 
 const EXPECTED_SIGNALS = [
@@ -52,8 +54,15 @@ const EXPECTED_SIGNALS = [
     /\b\d{1,2}\s*(?:beds?\b|кроват\p{L}*|giường)|(?:\bbeds?\b|кроват\p{L}*|giường)\D{0,10}\d{1,2}/iu,
   ],
   ['areaM2', /\d{1,4}(?:[.,]\d{1,2})?\s*(?:m²|m2|м²|кв\.?\s*м)/iu],
-  ['floor', /(?:floor|этаж|tầng)\D{0,10}\d{1,3}|\d{1,3}\s*(?:floor|этаж)/iu],
-  ['depositMonths', /deposit|депозит|залог|đặt\s*cọc|tiền\s*cọc/iu],
+  ['floor', FLOOR_PATTERN],
+  [
+    'depositMonths',
+    /(?:deposit|депозит|залог|đặt\s*cọc|tiền\s*cọc)[^\n]{0,20}\d+[ \t]*(?:months?|месяц\p{L}*|tháng)/iu,
+  ],
+  [
+    'deposit',
+    /(?:deposit|депозит|залог|đặt\s*cọc|tiền\s*cọc)[^\n]{0,30}(?:VND|USD|million|млн|triệu|\$)/iu,
+  ],
   [
     'minimumStayMonths',
     /minimum\s+stay|minimum\s+lease|аренд\p{L}*\s+от|tối\s*thiểu|hợp\s*đồng/iu,
@@ -73,8 +82,14 @@ const EXPECTED_SIGNALS = [
   ['email', /[\p{L}\d.!#$%&'*+/=?^_`{|}~-]+@[\p{L}\d-]+(?:\.[\p{L}\d-]+)+/iu],
   ['location', /address|location|адрес|локаци|địa\s*chỉ|vị\s*trí/iu],
   ['furnished', /furnished|unfurnished|меблирован|без\s*мебел|nội\s*thất/iu],
-  ['petsAllowed', /pets?|животн|thú\s*cưng/iu],
-  ['utilitiesIncluded', /utilities|коммунальн|điện|nước|tiện\s*ích/iu],
+  [
+    'petsAllowed',
+    /pets?\s*(?:allowed|welcome)|no\s+pets|можно\s+с[^\n]{0,30}животн|без\s+животн|cho\s*phép\s*thú\s*cưng|không\s*thú\s*cưng/iu,
+  ],
+  [
+    'utilitiesIncluded',
+    /utilities\s+(?:not\s+)?included|коммунальн\p{L}*\s+(?:не\s+)?включен|(?:chưa|đã)\s*bao\s*gồm\s*(?:điện|nước|tiện\s*ích)/iu,
+  ],
 ];
 
 export const DEFAULT_DISCOVERY_QUERIES = [
@@ -182,10 +197,22 @@ export function classifyAccommodationPost(value = '', hasMedia = false) {
 }
 
 export function expectedDetails(value = '') {
-  const text = String(value);
-  return EXPECTED_SIGNALS.filter(([, pattern]) => pattern.test(text)).map(
-    ([name]) => name
-  );
+  const text = String(value).normalize('NFKC');
+  return EXPECTED_SIGNALS.filter(([name, pattern]) => {
+    const evidence =
+      name === 'price'
+        ? text
+            .split(/\r?\n/u)
+            .filter(
+              (line) =>
+                !/\b(?:minutes?|mins?|phút|km|receipt|balance)\b|минут|км/iu.test(
+                  line
+                )
+            )
+            .join('\n')
+        : text;
+    return pattern.test(evidence);
+  }).map(([name]) => name);
 }
 
 function parsedDetail(offer, detail) {
@@ -202,7 +229,45 @@ function parsedDetail(offer, detail) {
 }
 
 export function missingExpectedDetails(offer, text) {
-  return expectedDetails(text).filter((detail) => !parsedDetail(offer, detail));
+  const options = rentalPriceOptions(text, { includeUnlabeled: true });
+  const distinctBedrooms = new Set(
+    options
+      .map(
+        ({ context }) =>
+          context.match(
+            /\d{1,2}[ \t]*(?:br|bedrooms?|спальн\p{L}*|pn\b|phòng[ \t]*ngủ)/iu
+          )?.[0]
+      )
+      .filter(Boolean)
+  );
+  const independent =
+    options.length > 1 &&
+    (distinctBedrooms.size > 1 ||
+      options.some(({ context, preceding }) =>
+        /studio|студия|only\s+.*floor|только.*этаж/iu.test(
+          `${preceding}\n${context}`
+        )
+      ));
+  const selected = options.filter(
+    ({ amount, currency, period }) =>
+      amount === offer?.price?.amount &&
+      currency === offer?.price?.currency &&
+      (period || 'month') === offer?.price?.period
+  );
+  const layoutEvidence = independent
+    ? selected.length === 1
+      ? `${selected[0].preceding}\n${selected[0].context}`
+      : ''
+    : text;
+  const layoutDetails = new Set(expectedDetails(layoutEvidence));
+  return expectedDetails(text)
+    .filter(
+      (detail) =>
+        !['bedrooms', 'bathrooms', 'beds', 'floor', 'areaM2'].includes(
+          detail
+        ) || layoutDetails.has(detail)
+    )
+    .filter((detail) => !parsedDetail(offer, detail));
 }
 
 export function anonymizeListing(value = '', maximum = 900) {

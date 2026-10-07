@@ -1,3 +1,4 @@
+import { telegramHistoryWindow } from './telegram-window.js';
 import { deduplicateOffers } from './offers.js';
 import { TraceRecorder } from './trace.js';
 import {
@@ -168,10 +169,14 @@ function matchesNamedFilters(offer, options) {
 
 // Sold-out, rented, and occupied listings stay stored so a later copy can
 // update them, but search and subscriptions skip them unless asked.
-function isAvailable(offer, options) {
+function isAvailable(offer, options, since) {
   return (
     options.includeUnavailable === true ||
-    (offer.attributes?.availability !== 'unavailable' &&
+    ((offer.sourceType !== 'telegram' ||
+      !offer.postedAt ||
+      new Date(offer.postedAt) >= since) &&
+      offer.attributes?.reviewRequired !== true &&
+      offer.attributes?.availability !== 'unavailable' &&
       offer.attributes?.availableNow !== false)
   );
 }
@@ -179,6 +184,7 @@ function isAvailable(offer, options) {
 export class SearchService {
   constructor({
     collector,
+    historyDays = 90,
     maxAgeMs = 6 * 60 * 60 * 1000,
     mediaCache,
     now,
@@ -187,6 +193,7 @@ export class SearchService {
     traceRecorder,
   }) {
     this.collector = collector;
+    this.historyDays = historyDays;
     this.maxAgeMs = maxAgeMs;
     this.mediaCache = mediaCache;
     this.now = now || (() => new Date());
@@ -240,7 +247,10 @@ export class SearchService {
         attemptedAt: timestamp,
         status: outcome.status,
       };
-      if (['offers', 'empty'].includes(outcome.status)) {
+      if (
+        ['offers', 'empty'].includes(outcome.status) &&
+        outcome.historyComplete !== false
+      ) {
         state.collectedAt = timestamp;
       }
       return [...current.filter((entry) => entry.id !== id), state];
@@ -411,10 +421,14 @@ export class SearchService {
         }
       }
 
+      const since = telegramHistoryWindow({
+        now: this.now(),
+        historyDays: this.historyDays,
+      }).since;
       const unique = deduplicateOffers(offers).filter(
         (offer) =>
           Number.isFinite(offer.priceVnd) &&
-          isAvailable(offer, options) &&
+          isAvailable(offer, options, since) &&
           isForQuery(offer, query) &&
           telegramOfferMatches(offer, query) &&
           matchesFilters(offer, filters) &&

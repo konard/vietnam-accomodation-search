@@ -553,7 +553,10 @@ describe('issue 20 concrete MTProto edge behavior', () => {
     expect(messages.map(({ id }) => id)).toEqual([301, 249]);
     expect(calls[0][1]).toEqual({ minId: 250 });
     expect(calls[1][1]).toEqual({
-      offset: { date: new Date('2026-09-20T00:00:00Z'), id: 250 },
+      offset: {
+        date: Math.floor(new Date('2026-09-20T00:00:00Z').getTime() / 1000),
+        id: 250,
+      },
     });
     await provider.destroy();
   });

@@ -2,6 +2,11 @@ import { canonicalizeUrl } from './utils.js';
 import { detectListingLanguage } from './language.js';
 import { namesPlace, nhaTrangPlace } from './nha-trang-places.js';
 import { parsePrice, rentalPriceOptions } from './pricing.js';
+import {
+  listingAvailabilityDate,
+  listingFloor,
+  minimumLeaseMonths,
+} from './listing-fields.js';
 
 function matchedNumber(text, patterns) {
   for (const pattern of patterns) {
@@ -78,27 +83,6 @@ function firstLabeledValue(fields, labels) {
     }
   }
   return undefined;
-}
-
-function isoDate(text, referenceDate = new Date()) {
-  const match = text.match(
-    /(?:свобод\p{L}*|available|доступ\p{L}*|có\s*sẵn)[^\d]{0,24}(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/iu
-  );
-  if (!match) {
-    return undefined;
-  }
-  const suppliedYear = match[3];
-  const year = suppliedYear
-    ? Number(suppliedYear) + (suppliedYear.length === 2 ? 2000 : 0)
-    : new Date(referenceDate).getUTCFullYear();
-  const month = Number(match[2]);
-  const day = Number(match[1]);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
-    ? date.toISOString().slice(0, 10)
-    : undefined;
 }
 
 function extractContacts(text) {
@@ -235,6 +219,7 @@ function bedroomCount(text) {
   }
   const numeric = matchedNumber(text, [
     countBefore('bedrooms?|спальн\\p{L}*|phòng\\s*ngủ'),
+    /(?<![\p{L}\d])(\d{1,2})[ \t]+(?:отдельн\p{L}*|separate|private|individual)[ \t]+(?:bedrooms?|спальн\p{L}*)(?!\p{L})/iu,
     /(?:bedrooms?|спальн\p{L}*|phòng\s*ngủ)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
     countBefore('BR|BHK|PN'),
   ]);
@@ -281,12 +266,18 @@ function fees(fields) {
     );
 }
 
-function extractAttributes(text, fields, referenceDate, bedrooms) {
+function extractAttributes(
+  text,
+  fields,
+  referenceDate,
+  bedrooms,
+  floorText = text
+) {
   // "ID: A2293", "mã căn A12", "Код квартиры: ALAB": the label may name what
   // it codes, and the id is a token with a digit or in capitals, so a plain
   // word after the label ("Idea", "mã căn đẹp") is no id.
   const propertyId = text.match(
-    /(?:\b[Ii][Dd]|(?<!\p{L})(?:[Кк]од|КОД|[Mm]ã|MÃ))(?!\p{L})(?:\s+(?:\p{Ll}{2,12}|\p{Lu}{2,12}(?=\s*[:#№])))?\s{0,8}[#:№-]?\s{0,8}((?=[\p{L}_-]{0,31}\d)[\p{L}\d][\p{L}\d_-]{0,31}|\p{Lu}[\p{Lu}\d_-]{1,31})(?![\p{L}\d_-]|\s*[:#№])/u
+    /(?:\b[Ii][Dd]|(?<!\p{L})(?:[Кк]од|КОД|[Mm]ã|MÃ))(?!\p{L})(?:\s+(?:\p{Ll}{2,12}|\p{Lu}{2,12}(?=\s*[:#№])))?\s{0,8}[#:№-]?\s{0,8}((?=[\p{L}_\p{Pd}]{0,31}\p{Nd})[\p{L}\p{Nd}][\p{L}\p{Nd}_\p{Pd}]{0,31}|\p{Lu}[\p{Lu}\p{Nd}_\p{Pd}]{1,31})(?![\p{L}\p{Nd}_\p{Pd}]|\s*[:#№])/u
   )?.[1];
   const bathrooms = matchedNumber(text, [
     countBefore('bathrooms?|сануз\\p{L}*|phòng\\s*tắm'),
@@ -304,18 +295,11 @@ function extractAttributes(text, fields, referenceDate, bedrooms) {
   const areaM2 = matchedNumber(text, [
     /(\d{1,4}(?:[.,]\d{1,2})?)[ \t]*(?:m²|m2|м²|кв\.?\s*м)/iu,
   ]);
-  const floor = matchedNumber(text, [
-    /(?:floor|этаж|tầng)\s{0,8}[:#-]?\s{0,8}(\d{1,3})/iu,
-    countBefore('floor|этаж\\p{L}*', 3),
-  ]);
+  const floor = listingFloor(floorText);
   const rooms = matchedNumber(text, [
     countBefore('rooms?|комнат\\p{L}*|phòng(?!\\s*(?:ngủ|tắm))'),
   ]);
-  const minimumStayMonths = matchedNumber(text, [
-    /(?:minimum|аренд\p{L}*\s+от|tối\s*thiểu)\D{0,24}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
-    /(?:hợp\s*đồng)\D{0,24}(\d{1,3})\s*tháng/iu,
-    /(?:contract|контракт)\s{0,8}[:#-]?\s{0,8}(\d{1,3})\s*(?:months?|месяц\p{L}*)/iu,
-  ]);
+  const minimumStayMonths = minimumLeaseMonths(text);
   const depositMonths =
     matchedNumber(text, [
       /(?:deposit|депозит|đặt\s*cọc)\D{0,16}(\d{1,3})\s*(?:months?|месяц\p{L}*|tháng)/iu,
@@ -372,7 +356,7 @@ function extractAttributes(text, fields, referenceDate, bedrooms) {
       'khu vực',
       'quận',
     ]),
-    availableFrom: isoDate(text, referenceDate),
+    availableFrom: listingAvailabilityDate(text, referenceDate),
     ...availability(text),
     minimumStayMonths,
     maximumStayMonths,
@@ -441,6 +425,7 @@ function hasLayout(text) {
 // Scope layout facts to the selected rent when the priced clauses describe
 // distinct properties. Contract/occupancy prices for one property retain
 // their shared layout. A descriptor immediately before a price belongs to it.
+// eslint-disable-next-line complexity -- Layout selection distinguishes whole properties, partial floors and shared price alternatives.
 function selectedRentalLayout(text, price) {
   const options = rentalPriceOptions(text, { includeUnlabeled: true });
   const distinctContexts = new Set(options.map(({ context }) => context));
@@ -450,16 +435,26 @@ function selectedRentalLayout(text, price) {
       .map(({ context }) => bedroomCount(context))
       .filter((count) => count !== undefined)
   );
+  const partial =
+    /(?:только|only|лишь)[^\n]{0,30}(?:этаж|floor)|первый\s+этаж[^\n]{0,30}пространств|open\s+space/iu.test(
+      text
+    );
+  const perFloor = options.some(({ context }) =>
+    /этаж|floor|tầng/iu.test(context)
+  );
+  const sharedFloorLayout =
+    perFloor &&
+    !partial &&
+    distinctBedrooms.size <= 1 &&
+    options.every(({ context }) => !STUDIO.test(context));
   const mixed =
+    !sharedFloorLayout &&
     distinctContexts.size > 1 &&
     (distinctPrices.size > 1 || distinctBedrooms.size > 1) &&
     options.some(
       (option, index) =>
         hasLayout(option.context) || (index > 0 && hasLayout(option.preceding))
     );
-  if (!mixed) {
-    return { bedrooms: bedroomCount(text), kind: detectKind(text) };
-  }
   const minimum = price?.amount ?? parsePrice(text)?.amount;
   const selected = options.filter(
     ({ amount, currency, period }) =>
@@ -467,12 +462,25 @@ function selectedRentalLayout(text, price) {
       (!price ||
         (price.currency === currency && price.period === (period || 'month')))
   );
+  if (!mixed) {
+    return {
+      bedrooms: bedroomCount(text),
+      kind: detectKind(text),
+      fieldText:
+        sharedFloorLayout && options.length > 1
+          ? selected.length === 1
+            ? selected[0].context
+            : ''
+          : text,
+    };
+  }
   if (!selected.length) {
-    return { bedrooms: undefined, kind: 'accommodation' };
+    return { bedrooms: undefined, kind: 'accommodation', fieldText: '' };
   }
   const layouts = selected.map(({ context, preceding }) => {
     const local = hasLayout(context) ? context : `${preceding}\n${context}`;
     return {
+      fieldText: local,
       bedrooms: bedroomCount(local),
       kind: STUDIO.test(local) ? 'studio' : detectKind(local),
     };
@@ -484,6 +492,7 @@ function selectedRentalLayout(text, price) {
   const header = text.slice(0, text.indexOf(options[0].context));
   const kind = common('kind');
   return {
+    fieldText: selected.length === 1 ? layouts[0].fieldText : '',
     bedrooms: common('bedrooms'),
     kind: kind && kind !== 'accommodation' ? kind : detectKind(header),
   };
@@ -515,7 +524,7 @@ const LOCATION_LABEL =
   /(?:address|location|district|địa\s*chỉ|vị\s*trí|khu\s*vực|quận|адрес|район|локация|местоположение|расположение)\s*:[ \t]*([^\n\r]*)/iu;
 // A card whose location slot holds another fact ("Area m²: 60", "Deposit:
 // $393") names no place there.
-const NUMERIC_FACT = /^[^:\d\n]{1,24}:\s*[$€£₫\d]/u;
+const NUMERIC_FACT = /^[^:\n]{1,24}:\s*[$€£₫\d]/u;
 const BULLET = /^\s*[•·▪◦‣\-–]\s*(\S.*)$/u;
 // Bullets such as "≈ 5 минут пешком до моря" give a distance, not a place.
 const DISTANCE = /^≈|\d\s*(?:минут|мин|min|phút)/iu;
@@ -616,17 +625,31 @@ export function parseListingText(
   value = '',
   { locationHint, referenceDate, price } = {}
 ) {
-  const text = String(value);
+  const original = String(value);
+  const text = original.normalize('NFKC');
   const fields = parseLabeledFields(text);
   const { location, method } = detectLocation(text, fields, locationHint);
   const layout = selectedRentalLayout(text, price);
   return {
-    attributes: extractAttributes(text, fields, referenceDate, layout.bedrooms),
-    contacts: extractContacts(text),
+    attributes: {
+      ...extractAttributes(
+        text,
+        fields,
+        referenceDate,
+        layout.bedrooms,
+        layout.fieldText
+      ),
+      // Identifiers keep their source spelling, including compatibility dashes.
+      ...definedProperties({
+        propertyId: extractAttributes(original, {}, referenceDate, undefined)
+          .propertyId,
+      }),
+    },
+    contacts: extractContacts(original),
     kind: layout.kind,
     language: detectListingLanguage(text),
     location,
     locationProvenance: { method, source: 'message-text' },
-    officialUrl: officialUrl(text),
+    officialUrl: officialUrl(original),
   };
 }

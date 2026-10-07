@@ -21,7 +21,7 @@ driven through `browser-commander`. Creating the bot registers its Bot API
 discovery provider ahead of the user-only MTProto provider. Bot API, MTProto,
 and preview records pass through the same normalizer/reconciler and carry
 transport, source, topic, album, and edit provenance. History uses a strict
-rolling two-month cutoff. Incomplete backfills persist the oldest message
+rolling 90-day cutoff. Incomplete backfills persist the oldest message
 ID/date, reload stored material, and scan both newer arrivals and the remaining
 older side of the checkpoint on restart. Bot-only mode reports private-history
 unavailability and continues other sources. The service never auto-joins a
@@ -117,7 +117,7 @@ is an explicit action.
 Only messages from public or explicitly configured member-visible communities
 enter local ingestion storage. Raw public text is retained only in the bounded
 `telegram-events` working set (10,000 events by default) and entries older than
-the rolling two-month ingestion window are pruned at startup. It is excluded
+the rolling 90-day ingestion window are pruned at startup. It is excluded
 from traces, CI artifacts, issue evidence, and release-audit output. Extracted
 public listing contacts are local application data, never authorization
 identities: typed contact links carry `local-listing-lifetime`, are removed with

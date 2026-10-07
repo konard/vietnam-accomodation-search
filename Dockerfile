@@ -31,7 +31,7 @@ RUN node -e "const p=require('./package.json'); if (p.version!==process.argv[1] 
 RUN npm ci --omit=dev --ignore-scripts \
     && npx playwright install --with-deps chromium \
     && apt-get update \
-    && apt-get install --no-install-recommends --yes tini \
+    && apt-get install --no-install-recommends --yes tini tesseract-ocr tesseract-ocr-eng tesseract-ocr-rus tesseract-ocr-vie \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 COPY --from=clink /usr/local/cargo/bin/clink /usr/local/bin/clink

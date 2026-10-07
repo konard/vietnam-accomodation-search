@@ -24,7 +24,7 @@ spelling, so the executable and npm package are named
   searching in English, Russian, and Vietnamese.
 - Navigates each configured source's web UI rather than calling a private
   accommodation API.
-- Paginates public Telegram previews through the latest two months of history.
+- Paginates public Telegram previews through the latest 90 days of history.
 - Parses English, Vietnamese, and Russian listing text into searchable fields
   such as bedrooms, bathrooms, area, floor, district, availability date,
   minimum stay, deposit, furnishing, pets, amenities, and owner contacts.
@@ -193,8 +193,8 @@ source record is the authoritative snapshot for a particular deployment.
 
 Search and public-preview ingestion need no user session. Public channel
 history is read through browser-commander, following older-message links until
-the two-month cutoff. A bot token adds Bot API commands and updates from chats
-where the bot is present. An MTProto user session adds a two-month backfill and
+the 90-day cutoff. A bot token adds Bot API commands and updates from chats
+where the bot is present. An MTProto user session adds a 90-day backfill and
 continuous updates for configured sources the account can already access:
 
 ```bash
