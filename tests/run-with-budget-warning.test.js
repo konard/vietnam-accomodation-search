@@ -85,14 +85,66 @@ describe('run-with-budget-warning.sh', () => {
       return;
     }
 
-    const result = runBudget(['3', 'warned step', 'sleep', '2'], {
-      BUDGET_WARN_PERCENT: '30',
-    });
-
-    expect(result.status).toBe(0);
-    expect(result.output).toContain(
-      '::warning title=warned step is approaching its execution budget::'
+    const root = mkdtempSync(path.join(tmpdir(), 'budget-warning-'));
+    const clockPath = path.join(root, 'clock.sh');
+    writeFileSync(
+      clockPath,
+      [
+        '#!/usr/bin/env bash',
+        'deadline=$((SECONDS + 20))',
+        'while [ ! -f "$BUDGET_FIXTURE_DIRECTORY/ready" ]; do',
+        '  [ "$SECONDS" -lt "$deadline" ] || exit 2',
+        '  sleep 0.05',
+        'done',
+        'if [ -f "$BUDGET_FIXTURE_DIRECTORY/tick" ]; then',
+        '  touch "$BUDGET_FIXTURE_DIRECTORY/release"',
+        'else',
+        '  touch "$BUDGET_FIXTURE_DIRECTORY/tick"',
+        'fi',
+        'echo 1',
+        '',
+      ].join('\n')
     );
+    chmodSync(clockPath, 0o755);
+    try {
+      // The first clock tick warns with the command blocked; the next tick
+      // releases it. CI scheduling cannot turn this warning into a timeout.
+      const result = runBudget(
+        [
+          '3',
+          'warned step',
+          'bash',
+          '-c',
+          [
+            'touch "$BUDGET_FIXTURE_DIRECTORY/ready"',
+            'deadline=$((SECONDS + 20))',
+            'while [ ! -f "$BUDGET_FIXTURE_DIRECTORY/release" ]; do',
+            '  [ "$SECONDS" -lt "$deadline" ] || exit 2',
+            '  sleep 0.05',
+            'done',
+            'echo command-completed',
+          ].join('\n'),
+        ],
+        {
+          BUDGET_CLOCK_COMMAND: clockPath,
+          BUDGET_FIXTURE_DIRECTORY: root,
+          BUDGET_POLL_SECONDS: '0.05',
+          BUDGET_WARN_PERCENT: '34',
+        }
+      );
+
+      expect(result.status).toBe(0);
+      const warning =
+        '::warning title=warned step is approaching its execution budget::';
+      expect(result.output).toContain(warning);
+      expect(result.output).toContain('command-completed');
+      expect(
+        result.output.indexOf(warning) <
+          result.output.indexOf('command-completed')
+      ).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('kills workers spawned by the command, not just the direct child', () => {

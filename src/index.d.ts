@@ -92,6 +92,9 @@ export interface PriceObservation {
   sourceId: string;
   sourceType?: 'web' | 'official-web' | 'telegram';
   observedAt: string;
+  postedAt?: string;
+  updatedAt?: string;
+  provenance?: AccommodationOffer['provenance'];
   url?: string;
   official: boolean;
 }
@@ -127,6 +130,7 @@ export interface AccommodationOfferVariant {
   price: Price | null;
   priceVnd: number | null;
   postedAt?: string;
+  updatedAt?: string;
   collectedAt: string;
   provenance?: AccommodationOffer['provenance'];
   raw: unknown;
@@ -157,6 +161,7 @@ export interface AccommodationOffer {
   searchQueries?: string[];
   photos: string[];
   postedAt?: string;
+  updatedAt?: string;
   collectedAt: string;
   raw: unknown;
   variants?: AccommodationOfferVariant[];

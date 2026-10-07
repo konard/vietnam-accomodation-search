@@ -1,6 +1,7 @@
 import { telegramHistoryWindow } from './telegram-window.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { reconcileTelegramMaterials } from './telegram-pipeline.js';
+import { chronologyTimestamp } from './offer-chronology.js';
 
 async function values(iterable) {
   const result = [];
@@ -60,7 +61,8 @@ export class TelegramHistoryCollector {
         const previous = byMessage.get(key);
         if (
           !previous ||
-          Number(message.editDate || 0) >= Number(previous.editDate || 0)
+          chronologyTimestamp(message.editDate ?? message.edit_date) >=
+            chronologyTimestamp(previous.editDate ?? previous.edit_date)
         ) {
           byMessage.set(key, { ...message, source });
         }

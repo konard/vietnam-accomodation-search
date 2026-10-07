@@ -1,5 +1,6 @@
 import { parsePrice, rentalPriceOptions } from './pricing.js';
 import { mediaIdentity } from './offer-bounds.js';
+import { chronologyTimestamp } from './offer-chronology.js';
 
 export { mediaIdentity };
 
@@ -149,13 +150,6 @@ export function classifyTelegramPost(
   };
 }
 
-function editTimestamp(message) {
-  const value = message.editDate ?? message.edit_date ?? 0;
-  const parsed =
-    typeof value === 'string' ? new Date(value).getTime() : Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function messageId(message) {
   return message.id ?? message.messageId;
 }
@@ -164,12 +158,28 @@ function chatId(message) {
   return message.chatId ?? message.chat?.id ?? message.sourceId ?? 'unknown';
 }
 
+function latestEdit(members) {
+  const timestamp = members.reduce(
+    (latest, member) =>
+      Math.max(
+        latest,
+        chronologyTimestamp(member.editDate ?? member.edit_date)
+      ),
+    0
+  );
+  return timestamp ? new Date(timestamp).toISOString() : undefined;
+}
+
 export function assembleTelegramAlbums(messages) {
   const latest = new Map();
   for (const message of messages) {
     const key = `${chatId(message)}:${String(messageId(message))}`;
     const previous = latest.get(key);
-    if (!previous || editTimestamp(message) >= editTimestamp(previous)) {
+    if (
+      !previous ||
+      chronologyTimestamp(message.editDate ?? message.edit_date) >=
+        chronologyTimestamp(previous.editDate ?? previous.edit_date)
+    ) {
       latest.set(key, message);
     }
   }
@@ -209,6 +219,7 @@ export function assembleTelegramAlbums(messages) {
     );
     const material = {
       ...first,
+      editDate: latestEdit(members),
       id:
         groupedId === undefined
           ? `telegram-message:${chatId(first)}:${String(messageId(first))}`
@@ -234,6 +245,11 @@ export function assembleTelegramAlbums(messages) {
         date: members.find(
           (member) => messageId(member) === caption.messageIds[0]
         ).date,
+        editDate: latestEdit(
+          members.filter((member) =>
+            caption.messageIds.includes(messageId(member))
+          )
+        ),
         url: members.find(
           (member) => messageId(member) === caption.messageIds[0]
         ).url,

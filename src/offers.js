@@ -8,6 +8,15 @@ import {
 } from './offer-bounds.js';
 import { convertToVnd, parsePrice } from './pricing.js';
 import { canonicalizeUrl, firstPresent, stableHash } from './utils.js';
+import {
+  chronologyTimestamp,
+  compareOfferChronology,
+} from './offer-chronology.js';
+import {
+  conflictingIdentityGroups,
+  mergeIdentityConstraints,
+  offerIdentityConstraints,
+} from './offer-identity-conflicts.js';
 
 function compact(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -168,10 +177,12 @@ export function offerIdentityKeys(offer) {
     ...urlIdentityKeys(offer),
     ...externalIdentityKeys(offer.identifiers),
   ];
-  const propertyId = normalizedIdentifier(offer.attributes?.propertyId);
-  const sourceId = normalizedIdentifier(offer.sourceId);
-  if (propertyId && sourceId) {
-    keys.push(`source-property:${sourceId}:${propertyId}`);
+  for (const variant of offer.variants?.length ? offer.variants : [offer]) {
+    const propertyId = normalizedIdentifier(variant.attributes?.propertyId);
+    const sourceId = normalizedIdentifier(variant.sourceId);
+    if (propertyId && sourceId) {
+      keys.push(`source-property:${sourceId}:${propertyId}`);
+    }
   }
   const fingerprint = fingerprintKey(offer);
   if (fingerprint) {
@@ -262,6 +273,7 @@ export function normalizeOffer(input, options = {}) {
     ...optional('searchQuery', compact(input.searchQuery)),
     photos: boundedPhotos(firstPresent(input.photos, [])),
     ...optional('postedAt', optionalDate(input.postedAt)),
+    ...optional('updatedAt', optionalDate(input.updatedAt)),
     collectedAt: firstPresent(options.now, new Date()).toISOString(),
     raw: boundedRaw(firstPresent(input.raw, { ...input })),
   };
@@ -291,6 +303,7 @@ function sourceVariant(offer) {
     photos: boundedPhotos(offer.photos),
     ...optional('searchQuery', offer.searchQuery),
     ...optional('postedAt', offer.postedAt),
+    ...optional('updatedAt', offer.updatedAt),
     collectedAt: offer.collectedAt,
     ...optional('provenance', offer.provenance),
     ...optional(
@@ -308,6 +321,11 @@ function observationFromVariant(variant) {
   if (!Number.isFinite(variant.priceVnd)) {
     return undefined;
   }
+  const updatedAt = Math.max(
+    chronologyTimestamp(variant.updatedAt),
+    chronologyTimestamp(variant.provenance?.editedAt),
+    chronologyTimestamp(variant.raw?.editDate ?? variant.raw?.edit_date)
+  );
   return {
     amount: variant.price?.amount,
     currency: variant.price?.currency,
@@ -316,30 +334,63 @@ function observationFromVariant(variant) {
     sourceId: variant.sourceId,
     sourceType: variant.sourceType,
     observedAt: variant.collectedAt,
+    ...optional('postedAt', variant.postedAt),
+    ...optional(
+      'updatedAt',
+      updatedAt ? new Date(updatedAt).toISOString() : undefined
+    ),
+    ...optional('provenance', variant.provenance),
     ...optional('url', variant.officialUrl || variant.url),
     official: variant.sourceType === 'official-web',
   };
 }
 
+function observationKey(observation) {
+  return [
+    observation.sourceId,
+    observation.observedAt,
+    observation.priceVnd,
+    observation.currency,
+    observation.period,
+  ].join('\n');
+}
+
 function priceHistory(offers, variants) {
+  const sourceObservations = variants
+    .map(observationFromVariant)
+    .filter(Boolean);
+  const knownChronology = new Map();
+  for (const observation of [...sourceObservations].sort(
+    compareOfferChronology
+  )) {
+    knownChronology.set(observationKey(observation), observation);
+  }
+  // Older persisted observations predate source chronology fields. Restore
+  // those fields from matching retained variants before selecting current price.
   const observations = offers
     .flatMap((offer) => offer.priceHistory || [])
-    .concat(variants.map(observationFromVariant).filter(Boolean));
+    .map((observation) => {
+      const known = knownChronology.get(observationKey(observation));
+      return known && !observation.postedAt && !observation.updatedAt
+        ? {
+            ...observation,
+            ...optional('postedAt', known.postedAt),
+            ...optional('updatedAt', known.updatedAt),
+          }
+        : observation;
+    })
+    .concat(sourceObservations);
   const uniqueObservations = new Map();
   for (const observation of observations) {
     const key = [
-      observation.sourceId,
-      observation.observedAt,
-      observation.priceVnd,
-      observation.currency,
-      observation.period,
+      observationKey(observation),
+      observation.postedAt,
+      observation.updatedAt,
     ].join('\n');
     uniqueObservations.set(key, observation);
   }
   return newestEntries(
-    [...uniqueObservations.values()].sort(
-      (left, right) => timestamp(left.observedAt) - timestamp(right.observedAt)
-    ),
+    [...uniqueObservations.values()].sort(compareOfferChronology),
     PRICE_HISTORY_LIMIT
   );
 }
@@ -397,18 +448,12 @@ function deduplicateVariants(collected) {
   for (const variant of collected) {
     const key = [variant.id, variant.sourceId].join('\n');
     const previous = variants.get(key);
-    if (
-      !previous ||
-      timestamp(variant.collectedAt) >= timestamp(previous.collectedAt)
-    ) {
+    if (!previous || compareOfferChronology(variant, previous) >= 0) {
       variants.set(key, variant);
     }
   }
   return newestEntries(
-    [...variants.values()].sort(
-      (left, right) =>
-        timestamp(left.collectedAt) - timestamp(right.collectedAt)
-    ),
+    [...variants.values()].sort(compareOfferChronology),
     VARIANT_LIMIT
   );
 }
@@ -418,9 +463,7 @@ function mergeIdentifiers(offers) {
 }
 
 function mergeOfferGroup(group) {
-  const offers = [...group].sort(
-    (left, right) => timestamp(left.collectedAt) - timestamp(right.collectedAt)
-  );
+  const offers = [...group].sort(compareOfferChronology);
   const oldest = offers[0];
   const newest = offers.at(-1);
   const collected = offers.flatMap(variantsFrom);
@@ -477,7 +520,13 @@ function mergeOfferGroup(group) {
     priceChanges: changes,
     ...optional('priceChange', changes.at(-1)),
     variants,
-    collectedAt: newest.collectedAt,
+    collectedAt: offers.reduce(
+      (latest, offer) =>
+        timestamp(offer.collectedAt) > timestamp(latest)
+          ? offer.collectedAt
+          : latest,
+      newest.collectedAt
+    ),
   };
 }
 
@@ -500,6 +549,7 @@ export function deduplicateOffers(offers) {
   const parents = offers.map((_, index) => index);
   const keyedOffer = new Map();
   const ids = new Map();
+  const fingerprints = new Map();
   for (const [index, offer] of offers.entries()) {
     if (ids.has(offer.id)) {
       union(parents, index, ids.get(offer.id));
@@ -507,11 +557,43 @@ export function deduplicateOffers(offers) {
       ids.set(offer.id, index);
     }
     for (const key of offerIdentityKeys(offer)) {
+      if (key.startsWith('fingerprint:')) {
+        const candidates = fingerprints.get(key) || new Set();
+        candidates.add(index);
+        fingerprints.set(key, candidates);
+        continue;
+      }
       if (keyedOffer.has(key)) {
         union(parents, index, keyedOffer.get(key));
       } else {
         keyedOffer.set(key, index);
       }
+    }
+  }
+  // Strong aliases are resolved first. Weak evidence cannot connect distinct
+  // explicit identities, even indirectly through an unidentified bridge.
+  const constraints = new Map();
+  for (const [index, offer] of offers.entries()) {
+    const root = find(parents, index);
+    const combined = constraints.get(root) || new Map();
+    mergeIdentityConstraints(
+      combined,
+      offerIdentityConstraints(offer, offerIdentityKeys(offer))
+    );
+    constraints.set(root, combined);
+  }
+  for (const candidates of fingerprints.values()) {
+    const roots = unique([...candidates].map((index) => find(parents, index)));
+    const ambiguous = conflictingIdentityGroups(
+      roots.map((root) => constraints.get(root))
+    );
+    if (ambiguous) {
+      continue;
+    }
+    const root = roots[0];
+    for (const other of roots.slice(1)) {
+      union(parents, root, other);
+      mergeIdentityConstraints(constraints.get(root), constraints.get(other));
     }
   }
   const groups = new Map();
