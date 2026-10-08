@@ -1,6 +1,7 @@
 /* eslint local/no-changelog-comments: "off" */
 
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 
 import { describe, it, expect } from 'test-anywhere';
 
@@ -11,12 +12,21 @@ import {
   describeModule,
   loadCommandStream,
   loadLinoArguments,
-  loadUse,
+  loadUse as loadPinnedUse,
   resolveNamedExport,
   USE_M_URL,
+  USE_M_MIRROR_URL,
+  USE_M_SHA256,
 } from '../scripts/use-module.mjs';
 
 const dollar = () => {};
+const fixture = '({ use: async () => ({}) })';
+const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const loadUse = (options) =>
+  loadPinnedUse({
+    expectedSha256: sha256(fixture),
+    ...options,
+  });
 
 function commandStreamExports() {
   return Object.assign(() => {}, { $: dollar, sh: () => {}, run: () => {} });
@@ -153,7 +163,7 @@ describe('use-module interop shim', () => {
       return nodeTwentyFourNamespace();
     };
     const module = await loadCommandStream(use);
-    expect(calls).toEqual(['command-stream']);
+    expect(calls).toEqual(['command-stream@1.3.0']);
     expect(typeof module.$).toBe('function');
   });
 
@@ -164,12 +174,12 @@ describe('use-module interop shim', () => {
       return { default: { makeConfig: () => ({}) } };
     };
     const module = await loadLinoArguments(use);
-    expect(calls).toEqual(['lino-arguments']);
+    expect(calls).toEqual(['lino-arguments@0.3.0']);
     expect(typeof module.makeConfig).toBe('function');
   });
 
-  it('points at the unpinned use-m entry point', () => {
-    expect(USE_M_URL).toBe('https://unpkg.com/use-m/use.js');
+  it('pins the bootstrap bundle to the installed use-m version', () => {
+    expect(USE_M_URL).toBe('https://unpkg.com/use-m@8.16.4/use.js');
   });
 
   it('reports the HTTP status when use.js cannot be fetched', async () => {
@@ -196,6 +206,7 @@ describe('use-module interop shim', () => {
     try {
       await loadUse({
         fetchImpl: async () => textResponse('({ nope: 1 })'),
+        expectedSha256: sha256('({ nope: 1 })'),
         attempts: 1,
       });
     } catch (error) {
@@ -419,5 +430,154 @@ describe('use-m load survives a stalled connection', () => {
     // 3 x 15s of attempts plus 2s + 4s of backoff = 51s.
     expect(DEFAULT_ATTEMPTS * DEFAULT_TIMEOUT_MS).toBe(45000);
     expect(DEFAULT_RETRY_DELAY_MS).toBe(2000);
+  });
+});
+
+describe('bootstrap integrity and whole-operation cancellation', () => {
+  it('does not start a request when the caller already cancelled', async () => {
+    const controller = new AbortController();
+    const reason = new Error('cancelled before request');
+    controller.abort(reason);
+    let calls = 0;
+    let error;
+    await loadUse({
+      signal: controller.signal,
+      fetchImpl: async () => {
+        calls += 1;
+        return textResponse(fixture);
+      },
+    }).catch((caught) => {
+      error = caught;
+    });
+    expect(calls).toBe(0);
+    expect(error).toBe(reason);
+  });
+
+  it('never evaluates a body that completes after caller cancellation', async () => {
+    const controller = new AbortController();
+    let complete;
+    globalThis.issue156LateEvaluation = false;
+    const source =
+      '(globalThis.issue156LateEvaluation = true, { use: () => ({}) })';
+    let error;
+    const pending = loadUse({
+      signal: controller.signal,
+      expectedSha256: sha256(source),
+      fetchImpl: async () => ({
+        ok: true,
+        text: () =>
+          new Promise((resolve) => {
+            complete = resolve;
+            controller.abort(new Error('caller stopped body'));
+          }),
+      }),
+    }).catch((caught) => {
+      error = caught;
+    });
+    await pending;
+    complete(source);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(globalThis.issue156LateEvaluation).toBe(false);
+    delete globalThis.issue156LateEvaluation;
+    expect(error.message).toBe('caller stopped body');
+  });
+
+  it('rejects changed bytes before executing the bundle', async () => {
+    let error;
+    await loadPinnedUse({
+      fetchImpl: async () => textResponse('throw new Error("executed")'),
+      attempts: 1,
+    }).catch((caught) => {
+      error = caught;
+    });
+    expect(error.cause.message.includes('SHA-256 mismatch')).toBe(true);
+    expect(USE_M_SHA256.length).toBe(64);
+  });
+
+  it('tries the pinned mirror after a CDN failure', async () => {
+    const urls = [];
+    const use = await loadUse({
+      fetchImpl: async (url) => {
+        urls.push(url);
+        if (urls.length === 1) {
+          throw new Error('CDN unavailable');
+        }
+        return textResponse(fixture);
+      },
+      sleep: async () => {},
+    });
+    expect(urls).toEqual([USE_M_URL, USE_M_MIRROR_URL]);
+    expect(typeof use).toBe('function');
+  });
+
+  it('rejects an oversized streamed body before evaluation', async () => {
+    let cancelled = false;
+    let error;
+    await loadUse({
+      fetchImpl: async () => ({
+        ok: true,
+        body: new globalThis.ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(20));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+      }),
+      maxBytes: 10,
+      attempts: 1,
+    }).catch((caught) => {
+      error = caught;
+    });
+    expect(error.cause.message.includes('byte limit')).toBe(true);
+    expect(cancelled).toBe(true);
+  });
+
+  it('bounds a stalled body even when it ignores the fetch signal', async () => {
+    let error;
+    await loadUse({
+      fetchImpl: async () => ({ ok: true, text: () => new Promise(() => {}) }),
+      timeoutMs: 20,
+      attempts: 1,
+    }).catch((caught) => {
+      error = caught;
+    });
+    expect(error.cause.message.includes('Timed out')).toBe(true);
+  });
+
+  it('cancels the whole retry backoff and preserves the caller reason', async () => {
+    const controller = new AbortController();
+    const reason = new Error('caller cancelled bootstrap');
+    let calls = 0;
+    let error;
+    await loadUse({
+      signal: controller.signal,
+      fetchImpl: async () => {
+        calls += 1;
+        throw new Error('offline');
+      },
+      sleep: async () => {
+        controller.abort(reason);
+      },
+    }).catch((caught) => {
+      error = caught;
+    });
+    expect(error).toBe(reason);
+    expect(calls).toBe(1);
+  });
+
+  it('bounds all attempts and a stalled retry delay with one deadline', async () => {
+    let error;
+    await loadUse({
+      fetchImpl: async () => {
+        throw new Error('offline');
+      },
+      totalTimeoutMs: 20,
+      sleep: () => new Promise(() => {}),
+    }).catch((caught) => {
+      error = caught;
+    });
+    expect(error.message.includes('retry budget')).toBe(true);
   });
 });
