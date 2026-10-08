@@ -424,12 +424,22 @@ jobs:
   # which have no registry credentials. Skipped when no Dockerfile exists.
   docker-build:
     name: Docker Image Build Check
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     # Typical run: a few minutes with a warm GHA layer cache. 30min covers
     # a cold, uncached build without allowing a 6h hang.
     timeout-minutes: 30
     concurrency:
-      group: check-${{ github.workflow }}-${{ github.ref }}-docker-build
+      group: check-${{ github.workflow }}-${{ github.ref }}-docker-build-${{ matrix.arch }}
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     needs: [detect-changes]
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.any-code-changed == 'true'
@@ -474,6 +484,7 @@ jobs:
           file: ${{ steps.docker_config.outputs.dockerfile }}
           push: false
           load: true
+          platforms: ${{ matrix.platform }}
           tags: pr-check:${{ github.sha }}
           build-args: |
             NPM_PACKAGE_VERSION=${{ steps.image_identity.outputs.version }}
@@ -484,8 +495,8 @@ jobs:
           # 10 GB repository-wide pool with LRU eviction, and unscoped
           # mode=max exports of every intermediate layer crowd out the caches
           # the rest of the pipeline reads.
-          cache-from: type=gha,scope=docker-image
-          cache-to: type=gha,mode=max,scope=docker-image
+          cache-from: type=gha,scope=docker-image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-image-${{ matrix.arch }}
 
       - name: Check image size budget
         if: steps.docker_config.outputs.enabled == 'true'
@@ -509,6 +520,25 @@ jobs:
         run: |
           docker run --rm --entrypoint node "pr-check:${{ github.sha }}" bin/vietnam-accomodation-search.js --help
           docker run --rm --entrypoint clink "pr-check:${{ github.sha }}" --help
+          docker run --rm --entrypoint node "pr-check:${{ github.sha }}" --input-type=module -e "
+            import { NodePlatform, SqliteStorage } from '@mtcute/node';
+            import { LogManager } from '@mtcute/core/utils.js';
+            import { createMtcuteClient } from './src/telegram-user.js';
+            const platform = new NodePlatform();
+            const storage = new SqliteStorage(':memory:');
+            storage.driver.setup(new LogManager('image-smoke', platform), platform);
+            try {
+              await storage.driver.load();
+              const value = new Uint8Array([1, 2, 255]);
+              storage.kv.set('image-smoke', value);
+              await storage.driver.save();
+              if (String(new Uint8Array(storage.kv.get('image-smoke'))) !== String(value)) throw new Error('SQLite round-trip failed');
+            } finally {
+              await storage.driver.destroy();
+            }
+            const client = await createMtcuteClient({ apiId: 1, apiHash: '0'.repeat(32) });
+            await client.destroy();
+          "
           # The browser checks use compose.yaml's security options and the
           # app's own launch path, so they fail when a search would.
           hardened=(--rm --read-only --tmpfs /tmp:mode=1777 --shm-size 1g --cap-drop ALL --security-opt no-new-privileges:true -e BROWSER_NO_SANDBOX=1 --entrypoint node)
