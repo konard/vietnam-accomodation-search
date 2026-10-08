@@ -144,7 +144,7 @@ describe('container runtime contract', () => {
     expect(deploy).toContain('loadCommandStream');
     expect(deploy).toContain('loadLinoArguments');
     expect(await source('scripts/use-module.mjs')).toContain(
-      "useModule('command-stream'"
+      "useModule('command-stream@1.3.0'"
     );
     expect(deploy).toContain('operation.lock');
     expect(deploy).toContain("option('data-directory'");

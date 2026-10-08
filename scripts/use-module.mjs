@@ -1,41 +1,29 @@
 #!/usr/bin/env node
 
 /**
- * Interop shim around `use-m`.
+ * Downloaded-loader policy shared by every release helper.
  *
- * `use-m` resolves a package with `createRequire(...).resolve` and imports the
- * resolved file, so a dual package such as `command-stream@>=0.19.0` loads
- * through its **CommonJS** entry point. It unwraps the callable `default` only
- * when the namespace carries nothing but known metadata keys.
+ * use-m 8.16.4 fixes the CommonJS metadata and Windows file-URL defects.
+ * The named-export normalizer retains the tested Node/Bun namespace shapes.
+ * Its separate load entry point still clears deadlines before response-body
+ * completion (https://github.com/link-foundation/use-m/issues/80), so keep
+ * byte/digest verification, trusted pinned mirrors and cancellable deadlines
+ * here until the published contract passes the runtime matrix.
  *
- * Node.js 22.12+ adds a synthetic `'module.exports'` named export to CommonJS
- * namespaces whose names `cjs-module-lexer` cannot infer
- * (https://nodejs.org/api/esm.html#commonjs-namespaces). That extra key is not
- * in the metadata set of `use-m`, so the unwrap is skipped:
- *
- *   node v20.20.2  -> keys [default]                    typeof loaded.$ : function
- *   node v24.19.0  -> keys [default, 'module.exports']  typeof loaded.$ : undefined
- *
- * On Node 24 — the version every workflow in this template requests —
- * `const { $ } = await use('command-stream')` therefore yields `undefined` and
- * the first tagged template dies with `TypeError: $ is not a function`.
- * Upstream tracker: https://github.com/link-foundation/use-m/issues/72
- *
- * This module normalises every shape observed so far (Node 20, 22, 24 and Bun)
- * and, when nothing callable is found, fails with an error naming the keys it
- * did see, in place of the opaque `$ is not a function`.
- *
- * Set CI_SCRIPTS_DEBUG=1 to trace the resolved module shape (default off).
- *
- * Usage:
- *   import { loadCommandStream } from './use-module.mjs';
- *   const { $ } = await loadCommandStream();
+ * Set CI_SCRIPTS_DEBUG=1 for module-shape diagnostics (default off).
  */
 
 import { debug } from './debug-print.mjs';
+import { createHash } from 'node:crypto';
 
-/** Unpinned CDN entry point for use-m, kept in one place. */
-export const USE_M_URL = 'https://unpkg.com/use-m/use.js';
+/** Immutable, byte-identical CDN copies of the package-lock bootstrap. */
+export const USE_M_URL = 'https://unpkg.com/use-m@8.16.4/use.js';
+export const USE_M_MIRROR_URL =
+  'https://cdn.jsdelivr.net/npm/use-m@8.16.4/use.js';
+export const USE_M_SHA256 =
+  '6cc5be008885fd2ee1f4eec0482652c4162f5d6d9703efa5116edd270d6b63f9';
+export const DEFAULT_MAX_BYTES = 1024 * 1024;
+export const DEFAULT_TOTAL_TIMEOUT_MS = 51000;
 
 /** Cached `use` function, so a process fetches use.js at most once. */
 let cachedUse = null;
@@ -109,60 +97,129 @@ export const DEFAULT_ATTEMPTS = 3;
 /** Delay before the second attempt; doubled for each attempt after it. */
 export const DEFAULT_RETRY_DELAY_MS = 2000;
 
-/**
- * One fetch-and-evaluate attempt, with a deadline on the request.
- *
- * The deadline is an `AbortController` armed by a timer that is always
- * cleared. `AbortSignal.timeout()` would leave the deadline unref'd, so a
- * stalled fetch would go unaborted when nothing else keeps the event loop
- * alive.
- *
- * A non-2xx response is reported as an HTTP failure; eval-ing an error page as
- * JavaScript would only produce an opaque `SyntaxError`.
- *
- * @param {{fetchImpl: typeof fetch, url: string, timeoutMs: number}} options
- * @returns {Promise<(name: string) => Promise<unknown>>}
- */
-async function fetchUseOnce({ fetchImpl, url, timeoutMs }) {
-  const controller = timeoutMs > 0 ? new AbortController() : null;
-  const timer = controller
-    ? setTimeout(
-        () =>
-          controller.abort(
-            new Error(
-              `Timed out after ${timeoutMs}ms while fetching use-m from ${url}`
-            )
-          ),
-        timeoutMs
-      )
-    : null;
+// Link a caller's lifetime without changing its cancellation reason.
+function forwardAbort(controller, signal) {
+  const abort = () => controller.abort(signal.reason);
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) {
+    abort();
+  }
+  return () => signal?.removeEventListener('abort', abort);
+}
+
+async function withAbort(signal, operation) {
+  signal.throwIfAborted();
+  let rejectAbort;
+  const aborted = new Promise((_resolve, reject) => {
+    rejectAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', rejectAbort, { once: true });
+  });
   try {
-    const response = await (controller
-      ? fetchImpl(url, { signal: controller.signal })
-      : fetchImpl(url));
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch use-m from ${url}: ${response.status} ${response.statusText || ''}`.trim()
-      );
+    return await Promise.race([aborted, operation()]);
+  } finally {
+    signal.removeEventListener('abort', rejectAbort);
+  }
+}
+
+async function readBoundedSource(response, maxBytes, signal) {
+  let source;
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    const abort = () => {
+      void reader.cancel(signal.reason).catch(() => {});
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    const chunks = [];
+    let bytes = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        bytes += value.byteLength;
+        if (bytes > maxBytes) {
+          throw new Error('use-m bundle exceeds byte limit');
+        }
+        chunks.push(Buffer.from(value));
+      }
+      source = Buffer.concat(chunks).toString('utf8');
+    } finally {
+      signal.removeEventListener('abort', abort);
+      void reader.cancel().catch(() => {});
+      reader.releaseLock();
     }
-    const source = await response.text();
-    // use-m ships as an eval-able bundle; this is its documented entry point.
-    const evaluated = await eval(source);
-    const use = evaluated?.use ?? evaluated?.default?.use;
-    if (typeof use !== 'function') {
-      throw new Error(
-        `use-m loaded from ${url} did not export a callable "use". ` +
-          `Received ${describeModule(evaluated)}.`
+  } else {
+    source = await response.text();
+  }
+  if (Buffer.byteLength(source) > maxBytes) {
+    throw new Error('use-m bundle exceeds byte limit');
+  }
+  return source;
+}
+
+// Keep deadlines armed through body reads and digest verification, and race
+// cancellation even when a collaborator ignores the fetch signal.
+async function fetchUseOnce({
+  fetchImpl,
+  url,
+  timeoutMs,
+  signal,
+  expectedSha256,
+  maxBytes,
+}) {
+  const controller = new AbortController();
+  const timer =
+    timeoutMs > 0
+      ? setTimeout(
+          () =>
+            controller.abort(
+              new Error(
+                `Timed out after ${timeoutMs}ms while fetching use-m from ${url}`
+              )
+            ),
+          timeoutMs
+        )
+      : null;
+  const unlink = forwardAbort(controller, signal);
+  try {
+    return await withAbort(controller.signal, async () => {
+      const response = await fetchImpl(url, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch use-m from ${url}: ${response.status} ${response.statusText || ''}`.trim()
+        );
+      }
+      const source = await readBoundedSource(
+        response,
+        maxBytes,
+        controller.signal
       );
-    }
-    return use;
+      if (
+        createHash('sha256').update(source).digest('hex') !== expectedSha256
+      ) {
+        throw new Error('use-m bundle SHA-256 mismatch; refusing evaluation');
+      }
+      controller.signal.throwIfAborted();
+      // use-m ships as an eval-able bundle; this is its documented entry point.
+      const evaluated = await eval(source);
+      const use = evaluated?.use ?? evaluated?.default?.use;
+      if (typeof use !== 'function') {
+        throw new Error(
+          `use-m loaded from ${url} did not export a callable "use". ` +
+            `Received ${describeModule(evaluated)}.`
+        );
+      }
+      return use;
+    });
   } catch (error) {
     // `fetch` reports an abort as its own error; the reason says what happened.
-    throw controller?.signal.aborted ? controller.signal.reason : error;
+    throw controller.signal.aborted ? controller.signal.reason : error;
   } finally {
     if (timer) {
       clearTimeout(timer);
     }
+    unlink();
   }
 }
 
@@ -177,6 +234,10 @@ function loadSettings(options) {
   return {
     fetchImpl: options.fetchImpl ?? fetch,
     url: options.url ?? USE_M_URL,
+    mirrorUrl: options.url ? options.url : USE_M_MIRROR_URL,
+    expectedSha256: options.expectedSha256 ?? USE_M_SHA256,
+    maxBytes: options.maxBytes ?? DEFAULT_MAX_BYTES,
+    totalTimeoutMs: options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS,
     attempts: options.attempts ?? DEFAULT_ATTEMPTS,
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     retryDelayMs: options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS,
@@ -199,44 +260,75 @@ function loadSettings(options) {
  * look like a defect in the release logic.
  *
  * @param {{fetchImpl?: typeof fetch, url?: string, attempts?: number,
- *   timeoutMs?: number, retryDelayMs?: number,
+ *   timeoutMs?: number, totalTimeoutMs?: number, retryDelayMs?: number,
+ *   maxBytes?: number, expectedSha256?: string, signal?: AbortSignal,
  *   sleep?: (ms: number) => Promise<void>}} [options] injection seam for tests
  * @returns {Promise<(name: string) => Promise<unknown>>}
  */
 export async function loadUse(options = {}) {
   const settings = loadSettings(options);
   const { url, attempts } = settings;
-  if (cachedUse && !options.fetchImpl) {
+  const cacheable = Object.keys(options).length === 0;
+  if (cachedUse && cacheable) {
     return cachedUse;
   }
+  const controller = new AbortController();
+  const unlink = forwardAbort(controller, options.signal);
+  const timer = setTimeout(
+    () =>
+      controller.abort(
+        new Error(`use-m retry budget exceeded ${settings.totalTimeoutMs}ms`)
+      ),
+    settings.totalTimeoutMs
+  );
   let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      const use = await fetchUseOnce(settings);
-      debug('loaded use-m', { url, attempt });
-      if (!options.fetchImpl) {
-        cachedUse = use;
-      }
-      return use;
-    } catch (error) {
-      lastError = error;
-      debug('use-m load attempt failed', {
-        url,
-        attempt,
-        attempts,
-        error: error?.message,
-      });
-      if (attempt < attempts) {
-        await settings.sleep(settings.retryDelayMs * 2 ** (attempt - 1));
+  try {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        if (controller.signal.aborted) {
+          throw controller.signal.reason;
+        }
+        const use = await fetchUseOnce({
+          ...settings,
+          url: attempt % 2 === 0 ? settings.mirrorUrl : url,
+          signal: controller.signal,
+        });
+        debug('loaded use-m', { url, attempt });
+        if (cacheable) {
+          cachedUse = use;
+        }
+        return use;
+      } catch (error) {
+        lastError = error;
+        if (controller.signal.aborted) {
+          throw controller.signal.reason;
+        }
+        debug('use-m load attempt failed', {
+          url,
+          attempt,
+          attempts,
+          error: error?.message,
+        });
+        if (attempt < attempts) {
+          await withAbort(controller.signal, () =>
+            settings.sleep(settings.retryDelayMs * 2 ** (attempt - 1))
+          );
+        }
       }
     }
+    throw bootstrapFailure(url, attempts, lastError);
+  } finally {
+    clearTimeout(timer);
+    unlink();
   }
-  throw new Error(
+}
+
+function bootstrapFailure(url, attempts, cause) {
+  return new Error(
     `Failed to load use-m from ${url} after ${attempts} attempt(s): ` +
-      `${lastError?.message ?? String(lastError)}. This is a network ` +
-      'dependency of the release scripts, not a defect in the published ' +
-      'package; re-run the job when the CDN answers again.',
-    { cause: lastError }
+      `${cause?.message ?? String(cause)}. This is a network dependency ` +
+      'of the release scripts; verify the pinned bundle or retry a CDN outage.',
+    { cause }
   );
 }
 
@@ -275,7 +367,7 @@ export async function useModule(moduleName, exportName, use) {
  * @returns {Promise<Record<string, unknown>>} command-stream exports
  */
 export async function loadCommandStream(use) {
-  const commandStream = await useModule('command-stream', '$', use);
+  const commandStream = await useModule('command-stream@1.3.0', '$', use);
   const shell = commandStream.shell;
 
   if (shell && typeof shell.errexit === 'function') {
@@ -296,5 +388,5 @@ export async function loadCommandStream(use) {
  * @returns {Promise<Record<string, unknown>>} lino-arguments exports
  */
 export function loadLinoArguments(use) {
-  return useModule('lino-arguments', 'makeConfig', use);
+  return useModule('lino-arguments@0.3.0', 'makeConfig', use);
 }

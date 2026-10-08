@@ -4,7 +4,7 @@
  * End-to-end guard for the use-m interop shim.
  *
  * The unit tests in use-module.test.js pin the shapes we normalise; this file
- * loads `command-stream` through the real, unpinned use-m on the same Node
+ * loads pinned `command-stream` through the verified use-m bundle on the same Node
  * version the release jobs run (`node-version: '24.x'`) and asserts `$` is
  * callable. Without it the interop breakage only surfaces on `main`, inside a
  * job that pushes tags and publishes to npm.
@@ -13,12 +13,8 @@
  * install fails, it logs the reason and passes, so offline development and
  * sandboxed runs are not blocked by an unreachable CDN.
  *
- * It also skips on Windows: use-m imports the resolved file by its bare
- * absolute path, which the ESM loader rejects there with
- * ERR_UNSUPPORTED_ESM_URL_SCHEME ("On Windows, absolute paths must be valid
- * file:// URLs"). That is an upstream loader bug in use-m, independent of the
- * namespace shape this shim normalises, and the Linux and macOS runs of this
- * same test still cover the interop.
+ * use-m 8.16.4 converts resolved paths with pathToFileURL, so Windows runs
+ * exercise the same pinned loader instead of retaining the obsolete skip.
  */
 
 import { describe, it, expect } from 'test-anywhere';
@@ -27,7 +23,10 @@ import { loadCommandStream, USE_M_URL } from '../scripts/use-module.mjs';
 
 async function hasNetwork() {
   try {
-    const response = await fetch(USE_M_URL, { method: 'HEAD' });
+    const response = await fetch(USE_M_URL, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(5000),
+    });
     return response.ok;
   } catch {
     return false;
@@ -36,18 +35,10 @@ async function hasNetwork() {
 
 /**
  * Load command-stream through the real use-m, or return null after logging
- * why the test environment cannot (offline, sandboxed fetch, Windows).
+ * why the test environment cannot (offline or sandboxed fetch).
  * @returns {Promise<Record<string, unknown>|null>} command-stream exports
  */
 async function loadOrSkip() {
-  if (process.platform === 'win32') {
-    console.log(
-      'Skipping: use-m imports resolved paths without a file:// scheme, ' +
-        'which the Windows ESM loader rejects (ERR_UNSUPPORTED_ESM_URL_SCHEME).'
-    );
-    return null;
-  }
-
   if (!(await hasNetwork())) {
     console.log(
       `Skipping: ${USE_M_URL} is unreachable, so use-m cannot be evaluated.`
@@ -58,6 +49,9 @@ async function loadOrSkip() {
   try {
     return await loadCommandStream();
   } catch (error) {
+    if (/SHA-256|byte limit|callable/.test(error.cause?.message || '')) {
+      throw error;
+    }
     if (
       /fetch|network|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|registry/i.test(
         error.message
