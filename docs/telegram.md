@@ -155,7 +155,7 @@ then removes its test messages and preset. A synthetic offer is seeded in the
 real LiNo/`clink` cache so this test is deterministic; source discovery and
 real-message parsing remain covered by the separate live audit harnesses.
 
-Stop every other poller for the same bot token, use Node.js 22 or newer, and
+Stop every other poller for the same bot token, use Node.js 22.13 or newer, and
 run explicitly from a local terminal (never CI):
 
 ```bash

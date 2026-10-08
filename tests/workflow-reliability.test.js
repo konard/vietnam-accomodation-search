@@ -228,7 +228,6 @@ describe('workflow concurrency policy', () => {
       'version-check',
       'changeset-check',
       'lint',
-      'docker-build',
       'validate-docs',
     ]) {
       expectCancellableCheckConcurrency(
@@ -238,6 +237,12 @@ describe('workflow concurrency policy', () => {
         "${{ github.ref != 'refs/heads/main' }}"
       );
     }
+    expectCancellableCheckConcurrency(
+      getJobBlock(releaseWorkflow, 'docker-build'),
+      'docker-build',
+      '-${{ matrix.arch }}',
+      "${{ github.ref != 'refs/heads/main' }}"
+    );
     expectCancellableCheckConcurrency(
       getJobBlock(releaseWorkflow, 'test'),
       'test',

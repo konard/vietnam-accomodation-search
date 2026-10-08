@@ -17,6 +17,7 @@ import {
   mergeIdentityConstraints,
   offerIdentityConstraints,
 } from './offer-identity-conflicts.js';
+import { sharedOfferUrl, telegramPostUrl } from './offer-url-identity.js';
 
 function compact(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -545,11 +546,9 @@ function union(parents, left, right) {
   }
 }
 
-export function deduplicateOffers(offers) {
-  const parents = offers.map((_, index) => index);
+function collectOfferAliases(offers, parents, urls, fingerprints) {
   const keyedOffer = new Map();
   const ids = new Map();
-  const fingerprints = new Map();
   for (const [index, offer] of offers.entries()) {
     if (ids.has(offer.id)) {
       union(parents, index, ids.get(offer.id));
@@ -557,6 +556,14 @@ export function deduplicateOffers(offers) {
       ids.set(offer.id, index);
     }
     for (const key of offerIdentityKeys(offer)) {
+      if (key.startsWith('url:') && !telegramPostUrl(key.slice(4))) {
+        if (!sharedOfferUrl(key.slice(4))) {
+          const candidates = urls.get(key) || new Set();
+          candidates.add(index);
+          urls.set(key, candidates);
+        }
+        continue;
+      }
       if (key.startsWith('fingerprint:')) {
         const candidates = fingerprints.get(key) || new Set();
         candidates.add(index);
@@ -570,8 +577,16 @@ export function deduplicateOffers(offers) {
       }
     }
   }
-  // Strong aliases are resolved first. Weak evidence cannot connect distinct
-  // explicit identities, even indirectly through an unidentified bridge.
+}
+
+export function deduplicateOffers(offers) {
+  const parents = offers.map((_, index) => index);
+  const fingerprints = new Map();
+  const urls = new Map();
+  collectOfferAliases(offers, parents, urls, fingerprints);
+  // Message and explicit identifier aliases are resolved first. URL evidence
+  // must be checked before union, including learned URLs from older stores.
+  // Neither URLs nor fingerprints can bridge distinct known rental units.
   const constraints = new Map();
   for (const [index, offer] of offers.entries()) {
     const root = find(parents, index);
@@ -582,7 +597,7 @@ export function deduplicateOffers(offers) {
     );
     constraints.set(root, combined);
   }
-  for (const candidates of fingerprints.values()) {
+  for (const candidates of [...urls.values(), ...fingerprints.values()]) {
     const roots = unique([...candidates].map((index) => find(parents, index)));
     const ambiguous = conflictingIdentityGroups(
       roots.map((root) => constraints.get(root))

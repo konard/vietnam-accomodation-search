@@ -54,7 +54,7 @@ spelling, so the executable and npm package are named
 
 ## Quick Start
 
-Node.js 22 or newer is required.
+Node.js 22.13 or newer is required.
 
 ```bash
 npm install

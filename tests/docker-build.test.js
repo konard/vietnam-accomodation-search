@@ -33,6 +33,18 @@ describe('pull-request Docker build check', () => {
     expect(dockerBuildJob).toContain('timeout-minutes:');
   });
 
+  it('checks the native SQLite provider on native amd64 and arm64 runners', () => {
+    expect(dockerBuildJob).toContain('runner: ubuntu-24.04');
+    expect(dockerBuildJob).toContain('runner: ubuntu-24.04-arm');
+    expect(dockerBuildJob).toContain('platform: linux/amd64');
+    expect(dockerBuildJob).toContain('platform: linux/arm64');
+    expect(dockerBuildJob).toContain('runs-on: ${{ matrix.runner }}');
+    expect(dockerBuildJob).toContain('platforms: ${{ matrix.platform }}');
+    expect(dockerBuildJob).toContain('new SqliteStorage');
+    expect(dockerBuildJob).toContain('storage.kv.set');
+    expect(dockerBuildJob).toContain('createMtcuteClient');
+  });
+
   it('builds without pushing so fork pull requests work without credentials', () => {
     expect(dockerBuildJob).toContain('uses: docker/build-push-action@v7');
     expect(dockerBuildJob).toContain('push: false');
