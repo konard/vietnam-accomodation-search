@@ -166,7 +166,7 @@ is unknown outside Actions and is not presented as authentication success.
 The prepared-branch initial run [37752173242](https://github.com/konard/vietnam-accomodation-search/actions/runs/37752173242)
 is on `61a63700450bfc04fd563b9d1081db0dce0aaff2`, created
 2026-10-08T08:47:22Z. Its actionable PR failure is missing Changesets, at local
-downloaded log lines 10747–10748; its pipeline reports `changeset-check` at 11031. This PR adds patch Changesets. Release preflight separately still reports
+downloaded log lines 10747–10748; its pipeline reports `changeset-check` at 11031. This PR adds one patch Changeset. Release preflight separately still reports
 the absent external configuration at line 167; release reporting is not hidden.
 
 Remaining operational acceptance is concrete: authorized bootstrap and Docker
@@ -196,3 +196,7 @@ fixture initially had fewer than the configured 30 tokens; the corrected
 40-comment fixture supplies a real positive control. Those initial attempts
 are preserved alongside the passing final logs. Native arm64 and exact-head
 remote CI results are recorded in the PR after the push.
+
+The first implementation CI run correctly rejected two Changesets at log line
+253: the repository requires exactly one per PR. Their release notes were
+combined into one patch Changeset, retaining all three fixes.
