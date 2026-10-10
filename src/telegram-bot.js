@@ -1,3 +1,4 @@
+import { diagnosticLogger } from './diagnostic-log.js';
 import { parseSearchCommand } from './commands.js';
 import { SubscriptionScheduler } from './presets.js';
 import {
@@ -7,6 +8,7 @@ import {
 } from './source-pool.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { stableHash } from './utils.js';
+import { offerPhotoMedia, sendPhotoMedia } from './telegram-offer-media.js';
 
 const SEARCH_USAGE =
   'Usage: /search [--cheapest [1-50]] [--filter field=value] [location]';
@@ -114,13 +116,11 @@ async function sendOfferPhotos(context, offers) {
     return;
   }
   for (const offer of offers) {
-    const media = (offer.photos || []).slice(0, 10).map((photo) => ({
-      media: photo,
-      type: 'photo',
-    }));
-    if (media.length) {
-      await context.replyWithMediaGroup(media);
-    }
+    await sendPhotoMedia(
+      await offerPhotoMedia(offer),
+      context.replyWithPhoto?.bind(context),
+      context.replyWithMediaGroup.bind(context)
+    );
   }
 }
 
@@ -181,13 +181,14 @@ export async function deliverSubscriptionOffers(
         api.sendMessage(chatId, message)
       );
     }
-    const media = (offer.photos || []).slice(0, 10).map((photo) => ({
-      media: photo,
-      type: 'photo',
-    }));
+    const media = await offerPhotoMedia(offer);
     if (media.length) {
       await runStep(`${deliveryId}:media`, () =>
-        api.sendMediaGroup(chatId, media)
+        sendPhotoMedia(
+          media,
+          api.sendPhoto ? (photo) => api.sendPhoto(chatId, photo) : undefined,
+          (photos) => api.sendMediaGroup(chatId, photos)
+        )
       );
     }
   }
@@ -211,7 +212,7 @@ export function registerTelegramHandlers(bot, dependencies) {
   const {
     availabilityService,
     accessPolicy,
-    logger = console,
+    logger = diagnosticLogger,
     presetService,
     rateProvider,
     registry,

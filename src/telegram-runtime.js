@@ -1,3 +1,4 @@
+import { diagnosticLogger } from './diagnostic-log.js';
 import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -82,7 +83,7 @@ export class TelegramRuntime {
     drainDeadlineMs = 15_000,
     healthHost = '127.0.0.1',
     healthPort = 8080,
-    logger = console,
+    logger = diagnosticLogger,
     random = Math.random,
     resources = [],
     scheduler,

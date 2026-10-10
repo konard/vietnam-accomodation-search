@@ -636,7 +636,9 @@ export async function appendIndexedRecords(context, incoming, options) {
         }))
       );
     }
+    const before = chunks.reduce((sum, chunk) => sum + chunk.count, 0);
     chunks = await evictHead(context, chunks, options, write);
-    return commitIndex(context, chunks);
+    const result = await commitIndex(context, chunks);
+    return { ...result, dropped: before - result.count };
   });
 }

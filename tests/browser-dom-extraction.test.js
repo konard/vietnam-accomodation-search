@@ -171,7 +171,7 @@ describe('in-page listing extraction', () => {
     }
   });
 
-  it('keeps only Nha Trang cards from a countrywide rental page', () => {
+  it('extracts countrywide cards before the search location filter', () => {
     const previous = globalThis.document;
     const adapter = browserAdapterFor('https://vietnam-real.estate/ru/rent/');
     const card = (city) => ({
@@ -191,11 +191,78 @@ describe('in-page listing extraction', () => {
     };
     try {
       const cards = extractPageListings('web', adapter.selectors);
-      expect(cards.length).toBe(1);
+      expect(cards.length).toBe(2);
       expect(cards[0].attributes.propertyId).toBe('Нячанг');
+      expect(
+        extractPageListings('web', {
+          ...adapter.selectors,
+          locationTerms: ['Nha Trang', 'Нячанг'],
+        }).length
+      ).toBe(1);
     } finally {
       globalThis.document = previous;
     }
+  });
+
+  it('scopes the Vietnam detail page to its property and keeps its URL identity', () => {
+    const previous = globalThis.document;
+    const adapter = browserAdapterFor(
+      'https://vietnam-real.estate/ru/property/o123/'
+    );
+    const card = {
+      getAttribute: () => null,
+      innerText: 'QA studio for rent in Nha Trang',
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    };
+    globalThis.document = {
+      location: {
+        pathname: '/ru/property/o123/',
+        href: 'https://vietnam-real.estate/ru/property/o123/',
+      },
+      querySelectorAll: (selector) =>
+        selector === '.object' ? [card] : [card, card],
+    };
+    try {
+      const rows = extractPageListings('web', adapter.selectors);
+      expect(rows.length).toBe(1);
+      expect(rows[0].url).toBe(globalThis.document.location.href);
+      expect(rows[0].attributes.propertyId).toBe('o123');
+    } finally {
+      globalThis.document = previous;
+    }
+  });
+
+  it('keeps countrywide extraction while filtering a Nha Trang search', async () => {
+    const collector = new BrowserCollector();
+    collector.collectListingRows = async () => [
+      {
+        location: 'Nha Trang',
+        text: 'Studio for rent 13 million VND / month',
+        title: 'Studio',
+        url: 'https://vietnam-real.estate/ru/property/o123/',
+      },
+      {
+        location: 'Hoi An',
+        text: 'Studio for rent 13 million VND / month',
+        title: 'Studio',
+        url: 'https://vietnam-real.estate/ru/property/o124/',
+      },
+      { text: 'Unstated location studio 13 million VND / month' },
+    ];
+    const source = {
+      id: 'vietnam-real-estate',
+      type: 'web',
+      searchUrl: 'https://vietnam-real.estate/ru/rent/',
+    };
+    const offers = await collector.collectSource({}, source, 'Nha Trang', {
+      VND: 1,
+    });
+    expect(offers.length).toBe(1);
+    expect(offers[0].location).toBe('Nha Trang');
+    expect(
+      (await collector.collectSource({}, source, '', { VND: 1 })).length
+    ).toBe(3);
   });
 
   it('takes a listing id from the link, not from the card text after it', () => {

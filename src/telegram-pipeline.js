@@ -242,6 +242,8 @@ export function assembleTelegramAlbums(messages) {
         ...material,
         id: `${material.id}:caption:${caption.messageIds[0]}`,
         text: caption.text,
+        // Offsets belong to original member text, retained in the event journal.
+        entities: [],
         date: members.find(
           (member) => messageId(member) === caption.messageIds[0]
         ).date,
@@ -353,6 +355,14 @@ export async function reconcileTelegramMaterials(
     try {
       const extracted = extract ? await extract(reconciled) : reconciled;
       if (extracted) {
+        if (extracted.mediaStatus === 'incomplete') {
+          reviewQueue.push({
+            id: material.id,
+            reason: 'native-photo-upload-unavailable',
+            state: 'degraded',
+            accepted: true,
+          });
+        }
         if (ocrState === 'completed') {
           extracted.attributes = {
             ...extracted.attributes,

@@ -174,6 +174,7 @@ export interface AccommodationOffer {
     size: number;
     url: string;
   }>;
+  mediaStatus?: 'cached' | 'incomplete';
   provenance?: {
     editedAt?: number | string;
     groupedId?: number | string;
@@ -633,7 +634,7 @@ export declare class LinksStore {
     kind: string,
     records: T[],
     options?: { maxBytes?: number; maxRecords?: number; replace?: boolean }
-  ): Promise<void>;
+  ): Promise<{ dropped: number; retained: number } | undefined>;
   queryRecords<T = Record<string, unknown>>(
     kind: string,
     query: { path: string; value: unknown }
@@ -790,8 +791,18 @@ export declare class MediaCache {
     directory?: string;
     fetchImpl?: typeof fetch;
     maxBytes?: number;
+    photoTimeoutMs?: number;
   });
-  cacheOffers(offers: AccommodationOffer[]): Promise<AccommodationOffer[]>;
+  cacheOffers(
+    offers: AccommodationOffer[],
+    options?: { signal?: AbortSignal }
+  ): Promise<AccommodationOffer[]>;
+  cacheTelegramPhotos(
+    offer: AccommodationOffer,
+    material: Record<string, unknown>,
+    provider: Pick<MtcuteTelegramProvider, 'photo'>,
+    options?: { signal?: AbortSignal }
+  ): Promise<AccommodationOffer>;
   enforceBudget(offers?: AccommodationOffer[]): Promise<{
     removed: string[];
     usage: number;
@@ -913,6 +924,7 @@ export declare function telegramDeduplicationMiddleware(updateDeduplicator: {
 }): (context: { update: unknown }, next: () => unknown) => Promise<unknown>;
 export declare function deliverSubscriptionOffers(
   api: {
+    sendPhoto?(chatId: string, photo: unknown): Promise<unknown>;
     sendMediaGroup(chatId: string, media: unknown[]): Promise<unknown>;
     sendMessage(chatId: string, text: string): Promise<unknown>;
   },
@@ -1089,6 +1101,15 @@ export declare class MtcuteTelegramProvider {
   ): Promise<{ stop(): void }>;
   resolveEntity(value: unknown): Promise<unknown>;
   media(location: unknown, options?: Record<string, unknown>): Promise<unknown>;
+  photo(
+    mediaId: string,
+    options?: {
+      material?: Record<string, unknown>;
+      signal?: AbortSignal;
+      maxBytes?: number;
+      timeoutMs?: number;
+    }
+  ): Promise<Uint8Array>;
   membership(chatId: unknown, userId?: unknown): Promise<unknown>;
   popularity(chatId: unknown): Promise<{ members: number | null }>;
   send(

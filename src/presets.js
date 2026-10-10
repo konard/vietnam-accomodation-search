@@ -1,3 +1,4 @@
+import { diagnosticLogger } from './diagnostic-log.js';
 import { clearInterval, setInterval } from 'node:timers';
 
 import { TraceRecorder } from './trace.js';
@@ -332,7 +333,7 @@ export class SubscriptionScheduler {
   constructor({
     deliver,
     intervalMs = 15 * 60 * 1000,
-    logger = console,
+    logger = diagnosticLogger,
     maxAgeMs = 6 * 60 * 60 * 1000,
     now = () => new Date(),
     presets,

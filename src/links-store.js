@@ -756,23 +756,21 @@ export class LinksStore {
       }
       const index = await this.#indexFor(collection, true);
       if (index) {
-        await appendIndexedRecords(
+        const result = await appendIndexedRecords(
           this.#chunkContext(collection),
           records.map(normalized),
           budget
         );
-        return;
+        return { dropped: result.dropped, retained: result.count };
       }
-      const next = retainNewest(
-        singular(collection),
-        mergeRecords(
-          await this.#currentRecords(collection),
-          records.map(normalized),
-          replace
-        ),
-        budget
+      const merged = mergeRecords(
+        await this.#currentRecords(collection),
+        records.map(normalized),
+        replace
       );
+      const next = retainNewest(singular(collection), merged, budget);
       await this.#saveRecords(collection, next, budget.maxBytes);
+      return { dropped: merged.length - next.length, retained: next.length };
     });
   }
 

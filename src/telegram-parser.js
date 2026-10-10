@@ -4,6 +4,7 @@ import { parseListingText } from './listing-parser.js';
 import { normalizeOffer } from './offers.js';
 import { firstPresent } from './utils.js';
 import { chronologyTimestamp } from './offer-chronology.js';
+import { telegramEntityEvidence } from './telegram-text-entities.js';
 
 function postedDate(message) {
   const value =
@@ -20,6 +21,7 @@ function messageUrl(message, username) {
     : undefined;
 }
 
+// eslint-disable-next-line complexity -- Original text, linked contacts and inherited location retain distinct evidence.
 export function parseTelegramOffer(message, options = {}) {
   const { now, since } = telegramHistoryWindow(options);
   const postedAt = postedDate(message);
@@ -47,6 +49,31 @@ export function parseTelegramOffer(message, options = {}) {
     locationHint: message.inheritedLocation,
     referenceDate: postedAt,
   });
+  const targets = telegramEntityEvidence(message);
+  const linked = parseListingText(
+    targets
+      .map(
+        ({ target }) => `Contact: ${target.replace(/^(?:mailto:|tel:)/iu, '')}`
+      )
+      .join('\n')
+  );
+  for (const [method, values] of Object.entries(linked.contacts)) {
+    details.contacts[method] = [
+      ...new Set([...details.contacts[method], ...values]),
+    ];
+  }
+  details.officialUrl ||= targets
+    .filter(
+      ({ context }) =>
+        /(?:official(?:\s+(?:website|site))?|property\s+(?:website|site)|trang\s*(?:web\s*)?chính\s*thức|официальн\p{L}*\s+сайт)/iu.test(
+          context
+        ) && !/agency|агентств/iu.test(context)
+    )
+    .map(
+      ({ context, target }) =>
+        parseListingText(`${context}: ${target}`).officialUrl
+    )
+    .find(Boolean);
   const location = details.location || message.inheritedLocation;
   const locationProvenance = details.location
     ? details.locationProvenance

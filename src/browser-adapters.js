@@ -645,22 +645,32 @@ export const BROWSER_SOURCE_ADAPTERS = Object.freeze({
     '/ru/rent/',
     {
       availabilityFallback: 'not stated on source card',
-      cards: '.objects-list ul > li[data-object]',
-      details: 'main, .object-page',
+      cards:
+        '.catalogy__items-blocks > .good-item, .objects-list ul > li[data-object]',
+      detailCards: '.object',
+      detailPath: '/(?:ru/)?property/',
+      searchLocationTerms: ['Нячанг', 'Nha Trang'],
+      details: '.object, .object-page',
       fields: {
-        bathrooms: '.params .bathrooms',
-        bedrooms: '.params .bedrooms',
-        contact: '.links',
-        description: '.excerpt',
-        location: '.title',
-        metadata: '.params, .agency',
-        price: '.price',
+        area: '.tag:has(.ruler), .object-bottom__badges .badge-decor:has(.ruler)',
+        bathrooms:
+          '.params .bathrooms, .tag:has(.bath), .object-bottom__badges .badge-decor:has(.bath)',
+        bedrooms:
+          '.params .bedrooms, .tag:has(.bed), .object-bottom__badges .badge-decor:has(.bed)',
+        contact:
+          '.links, a[href^="tel:"], a[href^="mailto:"], a[href*="t.me/"]:not([href*="/share/"])',
+        description: '.excerpt, .good-item__text, .object-bottom__description',
+        location: '.title, .good-item__desc, .object-bottom h1',
+        metadata:
+          '.params, .good-item__tags, .list-info, .object-bottom__badges',
+        price:
+          '.good-item__top--rental, .good-item__content > .price, .price__top, .price__block > p.medium-font, .objects-list .price',
       },
       identityAttributes: ['data-object'],
-      link: '.title a[href]',
-      locationTerms: ['Нячанг', 'Nha Trang'],
-      media: '.image img[src]',
-      title: '.title',
+      link: '.good-item__desc[href], .title a[href]',
+      media:
+        '.image img[src], .good-item__img img, .gallery-simple__img-box img',
+      title: '.title, .good-item__desc, .object-bottom h1',
     }
   ),
   skyscanner: adapter('skyscanner', ['skyscanner.com'], '/hotels/'),

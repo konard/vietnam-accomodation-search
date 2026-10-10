@@ -65,20 +65,39 @@ export function canonicalizeUrl(value) {
   }
 }
 
-// browser-commander's network tracker waits for 30 s without any request after
-// every goto(), and its goto() ignores `waitForNetworkIdle: false`. Readiness
-// then rests on the URL settling, and each caller reads the DOM it needs.
+// Published 0.27 honors per-call readiness and shared deadlines. Keep its
+// tracker available; each collection selects the DOM readiness it needs.
 export function openCommander(runtime, page) {
-  return runtime.makeBrowserCommander({ enableNetworkTracking: false, page });
+  return runtime.makeBrowserCommander({ page });
 }
 
-// browser-commander's goto() waits up to 240 s for a page that never answers.
-// Requests to one domain run one at a time, so a single stalled response
-// would hold every later request to that domain.
+// Application policy bounds each navigation on top of the dependency API.
 export const NAVIGATION_TIMEOUT_MS = 30_000;
 
-export function gotoPage(commander, url, timeout = NAVIGATION_TIMEOUT_MS) {
-  return commander.goto({ timeout, url, waitForNetworkIdle: false });
+export async function gotoPage(
+  commander,
+  url,
+  timeout = NAVIGATION_TIMEOUT_MS,
+  signal
+) {
+  const result = await commander.goto({
+    timeout,
+    url,
+    signal,
+    waitForNetworkIdle: false,
+    waitForStableUrlBefore: false,
+    waitForStableUrlAfter: false,
+  });
+  if (result?.navigated === false) {
+    if (signal?.aborted) {
+      throw signal.reason;
+    }
+    throw Object.assign(
+      new Error(`Browser navigation ${result.status || 'failed'}.`),
+      { code: 'BROWSER_NAVIGATION_FAILED' }
+    );
+  }
+  return result;
 }
 
 // Playwright's own Chromium launcher adds --disable-dev-shm-usage, but
