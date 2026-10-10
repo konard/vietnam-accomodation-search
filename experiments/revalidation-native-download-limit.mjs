@@ -20,6 +20,12 @@ const photo = new Photo({
   date: 1,
   sizes: [{ _: 'photoSize', type: 'x', w: 800, h: 600, size: 100 }],
 });
+const { downloadAsIterable } = await import(
+  new URL(
+    './highlevel/methods/files/download-iterable.js',
+    import.meta.resolve('@mtcute/core')
+  )
+);
 let rpcCalls = 0;
 const sdkClient = {
   getPrimaryDcId: () => Promise.resolve(2),
@@ -39,6 +45,8 @@ const client = {
   getMessages: () => Promise.resolve([{ media: photo }]),
   downloadAsBuffer: (location, options) =>
     downloadAsBuffer(sdkClient, location, options),
+  downloadAsIterable: (location, options) =>
+    downloadAsIterable(sdkClient, location, options),
   destroy: () => Promise.resolve(),
 };
 const provider = new MtcuteTelegramProvider({

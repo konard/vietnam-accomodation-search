@@ -1,0 +1,94 @@
+{
+  "manualLocalOnly": true,
+  "outcomes": {
+    "success": 8,
+    "parse_incomplete": 2
+  },
+  "searchService": {
+    "fields": {
+      "offer": {
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.95
+        },
+        "truePositive": 39
+      },
+      "price": {
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 39
+      },
+      "period": {
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 39
+      },
+      "availability": {
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.98
+        },
+        "truePositive": 0
+      },
+      "location": {
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 39
+      },
+      "rooms": {
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 38
+      }
+    },
+    "matchedReviewedCards": 39,
+    "pass": true,
+    "stored": 133
+  },
+  "liveTelegram": "not-tested",
+  "privateBodiesCommitted": false
+}

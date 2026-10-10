@@ -1,7 +1,7 @@
 // Self-authored native ingestion control. Requires the actual Rust clink.
 // Deliberately exits nonzero if graph loss is reported as complete history.
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LinksStore, TelegramIngestionService } from '../src/index.js';
@@ -57,6 +57,7 @@ async function probe(maxEvents) {
     };
   } finally {
     await service.destroy();
+    await rm(directory, { recursive: true, force: true });
   }
 }
 

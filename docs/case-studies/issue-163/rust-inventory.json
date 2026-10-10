@@ -1,0 +1,56 @@
+{
+  "clink": "0.2.11",
+  "cargoLockSha256": "3862ff9d269542715758bea8de358fa1e0e35056ca973865eecc181680bd4aba",
+  "packages": [
+    {
+      "name": "link-cli",
+      "version": "0.2.11",
+      "repository": "https://github.com/link-foundation/link-cli"
+    },
+    {
+      "name": "links-notation",
+      "version": "0.16.1",
+      "repository": "https://github.com/link-foundation/links-notation"
+    },
+    {
+      "name": "links-notation-macro",
+      "version": "0.1.0",
+      "repository": "https://github.com/link-foundation/links-notation"
+    },
+    {
+      "name": "lino-arguments",
+      "version": "0.3.0",
+      "repository": "https://github.com/link-foundation/lino-arguments"
+    },
+    {
+      "name": "lino-env",
+      "version": "0.1.0",
+      "repository": "https://github.com/link-foundation/lino-env"
+    },
+    {
+      "name": "doublets",
+      "version": "0.5.0",
+      "repository": "https://github.com/linksplatform/doublets-rs"
+    },
+    {
+      "name": "platform-data",
+      "version": "2.0.0",
+      "repository": "https://github.com/linksplatform/data-rs"
+    },
+    {
+      "name": "platform-mem",
+      "version": "0.3.0",
+      "repository": "https://github.com/linksplatform/mem-rs"
+    },
+    {
+      "name": "platform-num",
+      "version": "0.8.0",
+      "repository": "https://github.com/linksplatform/Numbers"
+    },
+    {
+      "name": "platform-trees",
+      "version": "0.3.4",
+      "repository": "https://github.com/linksplatform/trees-rs"
+    }
+  ]
+}
