@@ -25,8 +25,9 @@ function options(values) {
     ['--data-directory', 'dataDirectory'],
     ['--converter-module', 'converterModule'],
     ['--output', 'output'],
+    ['--require-ocr', 'requireOcr'],
   ]);
-  const result = {};
+  const result = { requireOcr: '1' };
   for (let index = 0; index < values.length; index += 2) {
     const name = names.get(values[index]);
     if (!name || !values[index + 1]) {
@@ -35,6 +36,8 @@ function options(values) {
     result[name] = values[index + 1];
   }
   assert([...names.values()].every((name) => result[name]));
+  assert(['0', '1'].includes(result.requireOcr));
+  result.requireOcr = result.requireOcr === '1';
   result.sourceOrdinal = Number(result.sourceOrdinal);
   assert(Number.isInteger(result.sourceOrdinal) && result.sourceOrdinal > 0);
   result.dataDirectory = resolve(result.dataDirectory);
@@ -197,7 +200,7 @@ async function verifyReadback(store, source, observed, result) {
   return fresh;
 }
 
-function markOwnedMessages(api, owner, marker, created) {
+function markOwnedMessages(api, owner, marker, created, result) {
   api.config.use(async (previous, method, payload, signal) => {
     let outgoing = payload;
     if (method.startsWith('send')) {
@@ -220,6 +223,9 @@ function markOwnedMessages(api, owner, marker, created) {
         if (message.message_id) {
           created.add(message.message_id);
         }
+        if (message.photo?.length) {
+          result.notificationPhotoDelivered = true;
+        }
       }
     }
     return response;
@@ -231,15 +237,30 @@ async function notify(application, token, owner, marker, created, result) {
   const identity = await bot.api.getMe();
   assert.equal(String(identity.id), token.split(':', 1)[0]);
   assert.notEqual(owner, String(identity.id));
-  markOwnedMessages(bot.api, owner, marker, created);
+  markOwnedMessages(bot.api, owner, marker, created, result);
+  const candidate = (await application.store.listOffers()).find(
+    (offer) =>
+      offer.photos?.length &&
+      offer.cachedPhotos?.length &&
+      offer.attributes?.reviewRequired !== true
+  );
+  assert(
+    candidate,
+    'No eligible native photo offer is available for notification acceptance.'
+  );
   await application.presetService.save(owner, 'qa-real-source', {
     query: '',
     refresh: false,
     limit: 1,
+    filters: { id: candidate.id },
   });
   await application.presetService.subscribe(owner, 'qa-real-source');
   await bot.subscriptionScheduler.tick();
   assert(created.size > 0, 'No actual notification was sent.');
+  assert(
+    result.notificationPhotoDelivered,
+    'Real notification must include an accepted photo, not only text.'
+  );
   assert(
     (await application.presetService.subscription(owner)).lastSuccessfulRunAt
   );
@@ -252,7 +273,7 @@ async function notify(application, token, owner, marker, created, result) {
     binaryMirror: true,
   });
   const second = await restarted.createBot(token);
-  markOwnedMessages(second.api, owner, marker, created);
+  markOwnedMessages(second.api, owner, marker, created, result);
   await second.subscriptionScheduler.tick();
   assert.equal(created.size, beforeRestart);
   result.noDuplicateAfterRestart = true;
@@ -310,6 +331,7 @@ async function run(paths) {
     startedAt: new Date().toISOString(),
     historyDays: 90,
     syntheticCacheUsed: false,
+    requireOcr: paths.requireOcr,
     messages: 0,
     ocrCalls: 0,
     ocrCompleted: 0,
@@ -334,6 +356,7 @@ async function run(paths) {
   const silent = { debug() {}, info() {}, warn() {}, error() {} };
   const nativeMedia = new Map();
   const application = createApplication({
+    directory: paths.dataDirectory,
     store,
     logger: silent,
     mtcuteClientFactory: (credentials) =>
@@ -359,14 +382,29 @@ async function run(paths) {
     const fresh = await verifyReadback(store, source, observed, result);
     result.phase = 'native-media-preservation';
     verifyMedia(observed, nativeMedia, result);
+    if (paths.requireOcr) {
+      assert(
+        result.ocrCalls > 0 && result.ocrCompleted > 0,
+        'Actual native OCR must execute and complete in this acceptance source.'
+      );
+    }
     assert(result.storedOffers > 0);
-    const restored = createApplication({ store: fresh, logger: silent });
+    const restored = createApplication({
+      directory: paths.dataDirectory,
+      store: fresh,
+      logger: silent,
+    });
     result.phase = 'notification';
     bot = await notify(restored, secret.token, owner, marker, created, result);
     result.phase = 'complete';
     result.pass = true;
   } catch (error) {
-    result.error = { type: error.constructor.name, code: error.code };
+    result.error = {
+      type: error.constructor.name,
+      code: error.code,
+      assertion:
+        error instanceof assert.AssertionError ? error.message : undefined,
+    };
   } finally {
     await cleanup({
       application,

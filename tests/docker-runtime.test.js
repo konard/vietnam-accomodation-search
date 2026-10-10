@@ -33,7 +33,7 @@ describe('container runtime contract', () => {
     expect(dockerfile).toContain('FROM rust@sha256:');
     expect(dockerfile).toContain('FROM node@sha256:');
     expect(dockerfile).toContain(
-      'cargo install link-cli --version 0.2.11 --locked'
+      'cargo install link-cli --version 1.0.0 --locked'
     );
     expect(dockerfile).toContain('USER node');
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini"');
@@ -144,7 +144,7 @@ describe('container runtime contract', () => {
     expect(deploy).toContain('loadCommandStream');
     expect(deploy).toContain('loadLinoArguments');
     expect(await source('scripts/use-module.mjs')).toContain(
-      "useModule('command-stream@1.3.0'"
+      "useModule('command-stream@1.5.0'"
     );
     expect(deploy).toContain('operation.lock');
     expect(deploy).toContain("option('data-directory'");

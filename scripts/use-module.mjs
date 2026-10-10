@@ -367,7 +367,7 @@ export async function useModule(moduleName, exportName, use) {
  * @returns {Promise<Record<string, unknown>>} command-stream exports
  */
 export async function loadCommandStream(use) {
-  const commandStream = await useModule('command-stream@1.3.0', '$', use);
+  const commandStream = await useModule('command-stream@1.5.0', '$', use);
   const shell = commandStream.shell;
 
   if (shell && typeof shell.errexit === 'function') {

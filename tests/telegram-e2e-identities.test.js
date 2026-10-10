@@ -112,4 +112,14 @@ describe('manual Telegram E2E identity pins', () => {
     expect(countLeftovers(messages, 5, (item) => item.id)).toBe(1);
     expect(countLeftovers(messages, 9, (item) => item.id)).toBe(0);
   });
+
+  it('does not mistake service events or deleted placeholders for QA leftovers', () => {
+    const messages = [
+      { id: 6, className: 'MessageService' },
+      { id: 7, className: 'MessageEmpty' },
+      { id: 8, className: 'Message', message: '' },
+    ];
+    expect(countLeftovers(messages, 5, (item) => item.id)).toBe(1);
+    expect(countLeftovers(messages, 8, (item) => item.id)).toBe(0);
+  });
 });

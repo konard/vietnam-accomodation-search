@@ -163,7 +163,7 @@ describe('use-module interop shim', () => {
       return nodeTwentyFourNamespace();
     };
     const module = await loadCommandStream(use);
-    expect(calls).toEqual(['command-stream@1.3.0']);
+    expect(calls).toEqual(['command-stream@1.5.0']);
     expect(typeof module.$).toBe('function');
   });
 

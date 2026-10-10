@@ -516,7 +516,7 @@ export class LinkCliMirror {
     } catch (cause) {
       throw Object.assign(
         new Error(
-          `Incompatible clink executable ${this.command}: requires link-cli import/export support (tested with Rust link-cli 0.2.11). Set the configured clink command to a compatible executable.`,
+          `Incompatible clink executable ${this.command}: requires link-cli import/export support (tested with Rust link-cli 1.0.0). Set the configured clink command to a compatible executable.`,
           { cause }
         ),
         { code: 'CLINK_INCOMPATIBLE' }

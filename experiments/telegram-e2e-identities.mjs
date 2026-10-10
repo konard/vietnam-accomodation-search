@@ -106,10 +106,13 @@ export function assertDegradedToBotOnly(redactedLog) {
 
 /**
  * Count the messages that still exist after cleanup. The caller re-reads the
- * conversation after deletion; anything newer than the boundary is a
- * leftover of this run.
+ * conversation after deletion. Telegram's history-clear service event and
+ * deleted-message placeholders are not surviving conversation messages.
  */
 export function countLeftovers(messages, baselineMessageId, messageId) {
-  return messages.filter((message) => messageId(message) > baselineMessageId)
-    .length;
+  return messages.filter(
+    (message) =>
+      messageId(message) > baselineMessageId &&
+      !['MessageService', 'MessageEmpty'].includes(message.className)
+  ).length;
 }

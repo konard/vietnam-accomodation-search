@@ -323,8 +323,8 @@ describe('clink-safe associative names (#55)', () => {
   }
   if (required) {
     const version = spawnSync(command, ['--version'], { encoding: 'utf8' });
-    if (version.stdout?.trim() !== 'clink 0.2.11') {
-      throw new Error('Required real-clink integration needs clink 0.2.11.');
+    if (version.stdout?.trim() !== 'clink 1.0.0') {
+      throw new Error('Required real-clink integration needs clink 1.0.0.');
     }
   }
   if (command) {

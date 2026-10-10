@@ -384,7 +384,7 @@ jobs:
   # This gate runs independently of change detection, including resume-release
   # dispatches. A missing or different binary is a failure, never a skip.
   real-clink:
-    name: Required real clink 0.2.11 integration
+    name: Required real clink 1.0.0 integration
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     concurrency:
@@ -401,7 +401,7 @@ jobs:
 
       - name: Install locked production clink
         run: |
-          bash scripts/run-with-budget-warning.sh 420 "Build pinned clink" cargo install link-cli --version 0.2.11 --locked --root "$RUNNER_TEMP/clink"
+          bash scripts/run-with-budget-warning.sh 420 "Build pinned clink" cargo install link-cli --version 1.0.0 --locked --root "$RUNNER_TEMP/clink"
           echo "$RUNNER_TEMP/clink/bin" >> "$GITHUB_PATH"
 
       - name: Install exact npm dependency graph

@@ -2,10 +2,10 @@
 
 ## Runtime contract
 
-The multi-stage image pins native multi-architecture `rust:1.98.1-trixie` and
+The multi-stage image pins native multi-architecture `rust:1.99.0-trixie` and
 `node:24.21.0-trixie-slim` (Node.js 24 Active LTS) base manifests by digest,
 installs the exact Playwright Chromium runtime dependencies and
-`link-cli` 0.2.11, and runs as the unprivileged `node` user under `tini`.
+`link-cli` 1.0.0, and runs as the unprivileged `node` user under `tini`.
 Credentials enter only at runtime. `/data` is the sole persistent writable
 path; the root filesystem is read-only in Compose. Compose maps `/data` to one
 explicit host directory with long bind syntax and
