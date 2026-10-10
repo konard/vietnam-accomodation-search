@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'test-anywhere';
+import { describe, it, expect, afterEach } from 'test-anywhere';
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
@@ -19,15 +19,22 @@ const canRunShellFixtures =
   typeof process !== 'undefined' &&
   process.platform !== 'win32';
 
+const shimDirectories = new Set();
+afterEach(() => {
+  for (const directory of shimDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+    shimDirectories.delete(directory);
+  }
+});
+
 // The real husky always exits 0, and the real `git config --get` exits 1
 // exactly when hooks were never installed. These shims reproduce both
 // behaviours under test control, with a marker file proving whether husky
 // was invoked at all.
 function writeShims() {
-  const binPath = path.join(
-    mkdtempSync(path.join(tmpdir(), 'git-hooks-bin-')),
-    'bin'
-  );
+  const directory = mkdtempSync(path.join(tmpdir(), 'git-hooks-bin-'));
+  shimDirectories.add(directory);
+  const binPath = path.join(directory, 'bin');
   mkdirSync(binPath, { recursive: true });
 
   const npxPath = path.join(binPath, 'npx');

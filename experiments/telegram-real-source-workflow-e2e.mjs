@@ -212,6 +212,16 @@ function markOwnedMessages(api, owner, marker, created, result) {
       outgoing = {
         ...payload,
         ...(payload.text ? { text: `${marker}\n${payload.text}` } : {}),
+        ...(Array.isArray(payload.media)
+          ? {
+              media: payload.media.map((item) => ({
+                ...item,
+                caption: `${marker}\n${item.caption || ''}`,
+              })),
+            }
+          : !payload.text
+            ? { caption: `${marker}\n${payload.caption || ''}` }
+            : {}),
       };
     }
     const response = await previous(method, outgoing, signal);
@@ -289,6 +299,15 @@ async function cleanup({
   created,
   result,
 }) {
+  // Stop ingestion before removing deliveries, so cleanup cannot race a
+  // still-running source producer. Message cleanup still runs if stop fails.
+  try {
+    await ingestion.destroy();
+    result.providerDestroyed = true;
+  } catch {
+    result.providerDestroyed = false;
+    result.pass = false;
+  }
   if (!bot && created.size) {
     try {
       bot = await application.createBot(token);
@@ -309,14 +328,8 @@ async function cleanup({
     created: created.size,
     deleted,
     pass: deleted === created.size,
+    provider: result.providerDestroyed,
   };
-  try {
-    await ingestion.destroy();
-    result.cleanup.provider = true;
-  } catch {
-    result.cleanup.provider = false;
-    result.pass = false;
-  }
 }
 
 async function run(paths) {

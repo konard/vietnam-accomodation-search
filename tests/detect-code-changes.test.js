@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'test-anywhere';
+import { describe, it, expect, afterEach } from 'test-anywhere';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import {
@@ -20,6 +20,14 @@ const scriptPath = fileURLToPath(
 const isDenoRuntime = typeof Deno !== 'undefined';
 const canRunCliFixtures =
   !isDenoRuntime && typeof process !== 'undefined' && process.execPath;
+
+const ownedGitFixtures = new Set();
+afterEach(() => {
+  for (const directory of ownedGitFixtures) {
+    rmSync(directory, { recursive: true, force: true });
+    ownedGitFixtures.delete(directory);
+  }
+});
 
 function runGit(root, args) {
   const result = spawnSync('git', args, {
@@ -43,6 +51,7 @@ function commit(root, message) {
 
 function createMergeCommitFixture() {
   const root = mkdtempSync(path.join(tmpdir(), 'detect-code-changes-'));
+  ownedGitFixtures.add(root);
 
   runGit(root, ['init', '-b', 'main']);
   runGit(root, ['config', 'user.email', 'ci@example.com']);
@@ -196,6 +205,7 @@ describe('detect-code-changes CLI', () => {
 // the real script - offline, no mocking of the code under test.
 function createMultiCommitFixture() {
   const root = mkdtempSync(path.join(tmpdir(), 'detect-code-changes-push-'));
+  ownedGitFixtures.add(root);
 
   runGit(root, ['init', '-b', 'main']);
   runGit(root, ['config', 'user.email', 'ci@example.com']);

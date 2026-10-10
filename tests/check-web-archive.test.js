@@ -129,30 +129,33 @@ describe('check-web-archive.mjs end to end', () => {
   it('fails when the only lychee errors have no http URL to archive', async () => {
     const scriptPath = join(here, '..', 'scripts', 'check-web-archive.mjs');
     const workDir = mkdtempSync(join(tmpdir(), 'web-archive-'));
-    const reportPath = join(workDir, 'out.md');
-    const outputPath = join(workDir, 'github-output.txt');
-    writeFileSync(
-      reportPath,
-      `## Errors per input
+    try {
+      const reportPath = join(workDir, 'out.md');
+      const outputPath = join(workDir, 'github-output.txt');
+      writeFileSync(
+        reportPath,
+        `## Errors per input
 
 ### Errors in docs/index.md
 
 * [ERROR] <file:///repo/docs/api/Some.Type.yml> (at 15:12) | File not found. Check if file exists and path is correct
 `
-    );
-    writeFileSync(outputPath, '');
+      );
+      writeFileSync(outputPath, '');
 
-    const result = spawnSync(process.execPath, [scriptPath], {
-      encoding: 'utf-8',
-      env: {
-        ...process.env,
-        LYCHEE_OUTPUT: reportPath,
-        GITHUB_OUTPUT: outputPath,
-      },
-    });
+      const result = spawnSync(process.execPath, [scriptPath], {
+        encoding: 'utf-8',
+        env: {
+          ...process.env,
+          LYCHEE_OUTPUT: reportPath,
+          GITHUB_OUTPUT: outputPath,
+        },
+      });
 
-    assert.equal(result.status, 1, result.stdout + result.stderr);
-    assert.match(readFileSync(outputPath, 'utf-8'), /all_archived=false/);
-    rmSync(workDir, { recursive: true, force: true });
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.match(readFileSync(outputPath, 'utf-8'), /all_archived=false/);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
   });
 });

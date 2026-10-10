@@ -22,8 +22,9 @@
     }
   },
   "scripts": {
-    "test": "node --test --test-timeout=30000 tests/*.test.js",
-    "test:coverage": "node --test --test-concurrency=1 --test-timeout=30000 --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-lines=100 tests/*.test.js",
+    "test": "node scripts/test-with-cleanup.mjs",
+    "test:cleanup": "node scripts/test-with-cleanup.mjs --strict",
+    "test:coverage": "node scripts/test-with-cleanup.mjs --coverage",
     "lint": "node scripts/lint.mjs",
     "lint:all": "eslint .",
     "lint:fix": "eslint . --fix",

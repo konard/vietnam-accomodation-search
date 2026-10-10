@@ -219,48 +219,55 @@ describe('smoke-test-package entry point checks', () => {
     }
     const calls = [];
     const workspace = mkdtempSync(join(tmpdir(), 'npm-signatures-test-'));
-    const evidenceDirectory = mkdtempSync(join(tmpdir(), 'npm-evidence-test-'));
-    const evidenceOutput = join(evidenceDirectory, 'published-package.json');
-    await smokeTestPackage({
-      evidenceOutput,
-      packageName: 'example-package',
-      packageVersion: '1.2.3',
-      runCommandFn(command, args) {
-        calls.push([command, ...args]);
-        if (args[0] === 'install') {
-          const packageDirectory = join(
-            workspace,
-            'node_modules',
-            'example-package'
-          );
-          mkdirSync(packageDirectory, { recursive: true });
-          writeFileSync(
-            join(packageDirectory, 'package.json'),
-            JSON.stringify({ name: 'example-package', version: '1.2.3' })
-          );
-        }
-        if (args[0] === 'audit') {
-          return JSON.stringify({
-            invalid: [],
-            missing: [],
-            verified: [verifiedPackage()],
-          });
-        }
-      },
-      stdout() {},
-      workspaceFactory: () => workspace,
-    });
-    expect(calls[0]).toContain('--package-lock=true');
-    expect(
-      calls.some(
-        (args) =>
-          JSON.stringify(args) ===
-          '["npm","audit","signatures","--json","--include-attestations"]'
-      )
-    ).toBe(true);
-    const evidence = JSON.parse(readFileSync(evidenceOutput, 'utf8'));
-    expect(evidence.provenance.sourceCommitSha).toBe('c'.repeat(40));
-    rmSync(evidenceDirectory, { force: true, recursive: true });
+    let evidenceDirectory;
+    try {
+      evidenceDirectory = mkdtempSync(join(tmpdir(), 'npm-evidence-test-'));
+      const evidenceOutput = join(evidenceDirectory, 'published-package.json');
+      await smokeTestPackage({
+        evidenceOutput,
+        packageName: 'example-package',
+        packageVersion: '1.2.3',
+        runCommandFn(command, args) {
+          calls.push([command, ...args]);
+          if (args[0] === 'install') {
+            const packageDirectory = join(
+              workspace,
+              'node_modules',
+              'example-package'
+            );
+            mkdirSync(packageDirectory, { recursive: true });
+            writeFileSync(
+              join(packageDirectory, 'package.json'),
+              JSON.stringify({ name: 'example-package', version: '1.2.3' })
+            );
+          }
+          if (args[0] === 'audit') {
+            return JSON.stringify({
+              invalid: [],
+              missing: [],
+              verified: [verifiedPackage()],
+            });
+          }
+        },
+        stdout() {},
+        workspaceFactory: () => workspace,
+      });
+      expect(calls[0]).toContain('--package-lock=true');
+      expect(
+        calls.some(
+          (args) =>
+            JSON.stringify(args) ===
+            '["npm","audit","signatures","--json","--include-attestations"]'
+        )
+      ).toBe(true);
+      const evidence = JSON.parse(readFileSync(evidenceOutput, 'utf8'));
+      expect(evidence.provenance.sourceCommitSha).toBe('c'.repeat(40));
+    } finally {
+      if (evidenceDirectory) {
+        rmSync(evidenceDirectory, { force: true, recursive: true });
+      }
+      rmSync(workspace, { force: true, recursive: true });
+    }
   });
 
   it('resolves npm-installed bin shims for each platform', () => {

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'test-anywhere';
-import { readFileSync, mkdtempSync, writeFileSync, chmodSync } from 'node:fs';
+import {
+  readFileSync,
+  mkdtempSync,
+  writeFileSync,
+  chmodSync,
+  rmSync,
+} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -69,55 +75,59 @@ esac
 
 function runCase({ canonicalOk, mirrorOk }) {
   const work = mkdtempSync(join(tmpdir(), 'buildx-resilient-'));
-  const bin = join(work, 'bin');
-  execFileSync('mkdir', ['-p', bin]);
-
-  const scriptPath = join(work, 'prepull.sh');
-  writeFileSync(scriptPath, extractPrepullScript(action));
-
-  const dockerPath = join(bin, 'docker');
-  writeFileSync(dockerPath, MOCK_DOCKER);
-  chmodSync(dockerPath, 0o755);
-
-  const calls = join(work, 'calls');
-  const pulled = join(work, 'pulled');
-  const tagged = join(work, 'tagged');
-  for (const file of [calls, pulled, tagged]) {
-    writeFileSync(file, '');
-  }
-
-  let status = 0;
-  let output;
   try {
-    output = execFileSync('bash', [scriptPath], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        PATH: `${bin}:${process.env.PATH}`,
-        BUILDKIT_IMAGE: 'moby/buildkit:buildx-stable-1',
-        REGISTRY_MIRROR: 'mirror.gcr.io',
-        VERBOSE: 'false',
-        PREPULL_ATTEMPTS: '2',
-        PREPULL_DELAY: '1',
-        CANONICAL_OK: canonicalOk ? '1' : '0',
-        MIRROR_OK: mirrorOk ? '1' : '0',
-        DOCKER_CALLS: calls,
-        DOCKER_PULLED: pulled,
-        DOCKER_TAGGED: tagged,
-      },
-    });
-  } catch (error) {
-    status = error.status ?? 1;
-    output = `${error.stdout ?? ''}${error.stderr ?? ''}`;
-  }
+    const bin = join(work, 'bin');
+    execFileSync('mkdir', ['-p', bin]);
 
-  return {
-    status,
-    output,
-    calls: readFileSync(calls, 'utf8'),
-    pulled: readFileSync(pulled, 'utf8'),
-    tagged: readFileSync(tagged, 'utf8'),
-  };
+    const scriptPath = join(work, 'prepull.sh');
+    writeFileSync(scriptPath, extractPrepullScript(action));
+
+    const dockerPath = join(bin, 'docker');
+    writeFileSync(dockerPath, MOCK_DOCKER);
+    chmodSync(dockerPath, 0o755);
+
+    const calls = join(work, 'calls');
+    const pulled = join(work, 'pulled');
+    const tagged = join(work, 'tagged');
+    for (const file of [calls, pulled, tagged]) {
+      writeFileSync(file, '');
+    }
+
+    let status = 0;
+    let output;
+    try {
+      output = execFileSync('bash', [scriptPath], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          BUILDKIT_IMAGE: 'moby/buildkit:buildx-stable-1',
+          REGISTRY_MIRROR: 'mirror.gcr.io',
+          VERBOSE: 'false',
+          PREPULL_ATTEMPTS: '2',
+          PREPULL_DELAY: '1',
+          CANONICAL_OK: canonicalOk ? '1' : '0',
+          MIRROR_OK: mirrorOk ? '1' : '0',
+          DOCKER_CALLS: calls,
+          DOCKER_PULLED: pulled,
+          DOCKER_TAGGED: tagged,
+        },
+      });
+    } catch (error) {
+      status = error.status ?? 1;
+      output = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    }
+
+    return {
+      status,
+      output,
+      calls: readFileSync(calls, 'utf8'),
+      pulled: readFileSync(pulled, 'utf8'),
+      tagged: readFileSync(tagged, 'utf8'),
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 const describeSubprocess = CAN_RUN_SUBPROCESS ? describe : () => {};

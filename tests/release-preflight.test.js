@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'test-anywhere';
+import { describe, expect, it, afterEach } from 'test-anywhere';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -32,12 +32,21 @@ const OIDC_URL = 'https://token.actions.githubusercontent.com';
 const PUBLISHING_VARIABLE =
   /^(?:ACTIONS_ID_TOKEN_REQUEST_|NPM_|NODE_AUTH_TOKEN$|DOCKERHUB_|DOCKER_AUTH$|DOCKER_REGISTRY$|PREFLIGHT_|GITHUB_STEP_SUMMARY$)/u;
 
+const ownedFixtures = new Set();
+afterEach(() => {
+  for (const directory of ownedFixtures) {
+    rmSync(directory, { force: true, recursive: true });
+    ownedFixtures.delete(directory);
+  }
+});
+
 function makeFixtures({
   whoamiStatus = 200,
   postStatus = 202,
   packageStatus = 200,
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'preflight-fixtures-'));
+  ownedFixtures.add(dir);
   writeFileSync(join(dir, 'whoami_status'), String(whoamiStatus));
   writeFileSync(join(dir, 'whoami.json'), '{"username":"stub-user"}');
   writeFileSync(join(dir, 'token.json'), '{"token":"stub-registry-token"}');

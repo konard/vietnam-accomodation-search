@@ -1,17 +1,18 @@
 // Self-authored headless trace privacy probe; no credentials or personal tabs.
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { makeBrowserCommander } from 'browser-commander';
+import { withQaCleanup, qaTemporaryDirectory } from './qa-cleanup.mjs';
 
-const directory = await mkdtemp(join(tmpdir(), 'vac-qa-trace-privacy-'));
-const browser = await chromium.launch();
-let commander;
-try {
+await withQaCleanup(async (scope) => {
+  const directory = await qaTemporaryDirectory(scope, 'vac-qa-trace-privacy-');
+  const browser = await chromium.launch();
+  scope.defer('browser', () => browser.close());
   const page = await browser.newPage();
-  commander = makeBrowserCommander({ page, logLevel: 'none' });
+  const commander = makeBrowserCommander({ page, logLevel: 'none' });
+  scope.defer('commander', () => commander.destroy());
   const trace = await commander.startTrace({
     output: directory,
     mode: 'checkpoints',
@@ -46,8 +47,4 @@ try {
     redactionApplied,
     'Configured trace text redaction must apply to checkpoint HTML payloads.'
   );
-} finally {
-  await commander?.destroy();
-  await browser.close();
-  await rm(directory, { recursive: true, force: true });
-}
+});

@@ -64,7 +64,8 @@ describe('publishable package metadata', () => {
     const metadata = JSON.parse(result.stdout);
     const packageFiles = Array.isArray(metadata)
       ? metadata[0].files
-      : metadata[packageJson.name].files;
+      : metadata.files || metadata[packageJson.name]?.files;
+    expect(Array.isArray(packageFiles)).toBe(true);
     expect(
       packageFiles.some(
         ({ path }) => path === packageJson.bin[packageJson.name]

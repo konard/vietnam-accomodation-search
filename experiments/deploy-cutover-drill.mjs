@@ -379,6 +379,31 @@ async function cleanup(state, options) {
   } catch {
     // Reported below; the message cleanup still runs.
   }
+  // Stop the notification producer before taking the final history snapshot
+  // and deleting messages. Compose failure must not skip conversation cleanup.
+  try {
+    const down = await run(
+      'docker',
+      [
+        'compose',
+        '-f',
+        BASE_COMPOSE,
+        '-p',
+        options.projectName,
+        'down',
+        '--remove-orphans',
+      ],
+      { env: composeEnvironment(options), log: options.log }
+    );
+    result.project = down.code === 0;
+  } catch {
+    result.project = false;
+  }
+  try {
+    await messagesSince(state, state.baselineMessageId);
+  } catch {
+    result.conversation = false;
+  }
   const identifiers = [...state.messageIds].filter((value) => value > 0);
   try {
     if (identifiers.length) {
@@ -394,12 +419,6 @@ async function cleanup(state, options) {
   } catch {
     result.conversation = false;
   }
-  const down = await run(
-    'docker',
-    ['compose', '-f', BASE_COMPOSE, '-p', options.projectName, 'down'],
-    { env: composeEnvironment(options), log: options.log }
-  );
-  result.project = down.code === 0;
   if (result.project) {
     // The next drill starts with first-deploy on a new data directory, which
     // a kept record would refuse as a data-directory move.
@@ -503,6 +522,12 @@ export async function runDeployDrill(options, environment = process.env) {
   );
   if (!cleanupResult.conversation) {
     failures.push('cleanup: drill messages remain in the conversation');
+  }
+  if (!cleanupResult.project) {
+    failures.push('cleanup: drill Docker project remains');
+  }
+  if (!cleanupResult.state) {
+    failures.push('cleanup: drill subscription or preset remains');
   }
   return {
     cleanup: cleanupResult,

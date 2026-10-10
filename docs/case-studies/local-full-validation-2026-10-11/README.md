@@ -2,6 +2,8 @@
 
 ## Verdict and scope
 
+Cleanup correction: subsequent user-visible rental leftovers disproved the earlier deploy QA cleanup oracle. See [the cleanup revalidation](../qa-cleanup-revalidation-2026-10-11/README.md) and issues #172–176; successful deletion of tracked replies was not proof that every scheduled notification or Docker artifact was removed.
+
 The merged fixes in PR #164 pass fresh local regression tests. The latest-dependency candidate is based on `9cec904e7242c44f2cfea03b986eab444eaf4607`; it updates dependency/tool pins, lockfiles, associated version assertions, QA experiments and documentation. It does not implement new application ranking, exhaustive-source selection or native-media retry logic. These production changes remain assigned through issues under the user's QA-only instruction.
 
 **Not fully production-ready for the newly requested “best offers from exactly all supported sources” requirement.** Per-bedroom value ranking and comparable stay prices are missing (#165), exhaustive source completion is not implemented (#166), legacy “rooms” accuracy metrics actually measure bedrooms (#167), and native-media scheduling/retry needs scale acceptance (#170). A successful tested workflow is not a claim that every source, image and field is complete or that global false positives/negatives are zero.

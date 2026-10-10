@@ -60,17 +60,22 @@ esac
 }
 
 function runFreshMerge(binPath, counterFile) {
-  return spawnSync('bash', [scriptPath], {
-    encoding: 'utf8',
-    cwd: mkdtempSync(path.join(tmpdir(), 'fresh-merge-cwd-')),
-    env: {
-      ...process.env,
-      PATH: `${binPath}${path.delimiter}${process.env.PATH ?? ''}`,
-      BASE_REF: 'main',
-      FETCH_COUNT_FILE: counterFile,
-      FRESH_MERGE_RETRY_DELAY_SECONDS: '0',
-    },
-  });
+  const directory = mkdtempSync(path.join(tmpdir(), 'fresh-merge-cwd-'));
+  try {
+    return spawnSync('bash', [scriptPath], {
+      encoding: 'utf8',
+      cwd: directory,
+      env: {
+        ...process.env,
+        PATH: `${binPath}${path.delimiter}${process.env.PATH ?? ''}`,
+        BASE_REF: 'main',
+        FETCH_COUNT_FILE: counterFile,
+        FRESH_MERGE_RETRY_DELAY_SECONDS: '0',
+      },
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 describe('simulate-fresh-merge.sh', () => {

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -335,24 +335,28 @@ describe('persisted accommodation reconciliation', () => {
       return;
     }
     const directory = await mkdtemp(join(tmpdir(), 'offer-reconciliation-'));
-    const store = new LinksStore({ directory });
+    try {
+      const store = new LinksStore({ directory });
 
-    await store.saveOffers([officialOffer()]);
-    await store.saveOffers([
-      officialOffer({
-        collectedAt: '2026-09-21T00:00:00.000Z',
-        id: 'booking:later',
-        priceVnd: 8_000_000,
-      }),
-    ]);
+      await store.saveOffers([officialOffer()]);
+      await store.saveOffers([
+        officialOffer({
+          collectedAt: '2026-09-21T00:00:00.000Z',
+          id: 'booking:later',
+          priceVnd: 8_000_000,
+        }),
+      ]);
 
-    const restored = await store.listOffers();
-    expect(restored.length).toBe(1);
-    expect(restored[0].priceHistory.length).toBe(2);
-    expect(restored[0].priceChange.direction).toBe('down');
-    expect(
-      (await readFile(store.offersPath, 'utf8')).startsWith('(offer')
-    ).toBe(true);
+      const restored = await store.listOffers();
+      expect(restored.length).toBe(1);
+      expect(restored[0].priceHistory.length).toBe(2);
+      expect(restored[0].priceChange.direction).toBe('down');
+      expect(
+        (await readFile(store.offersPath, 'utf8')).startsWith('(offer')
+      ).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('retains previously learned aliases on later writes', async () => {
@@ -360,31 +364,35 @@ describe('persisted accommodation reconciliation', () => {
       return;
     }
     const directory = await mkdtemp(join(tmpdir(), 'offer-aliases-'));
-    const store = new LinksStore({ directory });
-    const booking = webOffer({
-      contacts: { phone: ['+84123456789'], telegram: [] },
-    });
-    const telegram = webOffer({
-      contacts: { phone: ['+84123456789'], telegram: [] },
-      id: 'telegram:alias',
-      officialUrl: undefined,
-      sourceId: 'telegram:rent',
-      sourceType: 'telegram',
-      url: 'https://t.me/rent/10',
-    });
+    try {
+      const store = new LinksStore({ directory });
+      const booking = webOffer({
+        contacts: { phone: ['+84123456789'], telegram: [] },
+      });
+      const telegram = webOffer({
+        contacts: { phone: ['+84123456789'], telegram: [] },
+        id: 'telegram:alias',
+        officialUrl: undefined,
+        sourceId: 'telegram:rent',
+        sourceType: 'telegram',
+        url: 'https://t.me/rent/10',
+      });
 
-    await store.saveOffers([booking, telegram]);
-    await store.saveOffers([
-      webOffer({
-        contacts: undefined,
-        id: 'booking:later',
-      }),
-    ]);
+      await store.saveOffers([booking, telegram]);
+      await store.saveOffers([
+        webOffer({
+          contacts: undefined,
+          id: 'booking:later',
+        }),
+      ]);
 
-    const restored = await store.listOffers();
-    expect(restored.length).toBe(1);
-    expect(restored[0].sourceIds).toEqual(['booking', 'telegram:rent']);
-    expect(restored[0].variants.length).toBe(3);
+      const restored = await store.listOffers();
+      expect(restored.length).toBe(1);
+      expect(restored[0].sourceIds).toEqual(['booking', 'telegram:rent']);
+      expect(restored[0].variants.length).toBe(3);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('shows detected price movement in bot and CLI output', () => {
