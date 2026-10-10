@@ -72,6 +72,12 @@ export function extractPageListings(sourceType, selectors = {}) {
 
   // Keep these helpers inside the evaluated function. Browser Commander sends
   // the function into the page realm, where module-scope closures do not exist.
+  const detailPage = Boolean(
+    selectors.detailPath &&
+    new RegExp(selectors.detailPath, 'u').test(
+      documentRef.location?.pathname || ''
+    )
+  );
   const selectedText = (element, selector) => {
     if (!selector) {
       return undefined;
@@ -142,7 +148,7 @@ export function extractPageListings(sourceType, selectors = {}) {
         return value;
       }
     }
-    const href = anchor?.href || '';
+    const href = anchor?.href || (detailPage ? documentRef.location.href : '');
     const context = `${href}\n${element.innerText || ''}`;
     // A page such as ".../cho-thue-nha-13735772.html" names the listing id
     // right before ".html"; the card text after the link holds no id.
@@ -151,6 +157,7 @@ export function extractPageListings(sourceType, selectors = {}) {
         /(?:\/rooms\/|[?&](?:hotel|property|listing)_id=)([\p{L}\d_-]{1,64})/iu
       )?.[1] ||
       href.match(/[-_/](\d{3,64})\.html?(?:[?#]|$)/iu)?.[1] ||
+      href.match(/\/property\/(o?[\p{L}\d_-]{2,64})\//iu)?.[1] ||
       context.match(
         /(?:\bID(?!\p{L})|\bpr-|\btg-|\bproperty[-_/]|\blisting[-_/])([\p{L}\d_-]{2,64})/iu
       )?.[1]
@@ -213,7 +220,7 @@ export function extractPageListings(sourceType, selectors = {}) {
 
   const cards = [
     ...documentRef.querySelectorAll(
-      selectors.cards ||
+      (detailPage ? selectors.detailCards : selectors.cards) ||
         '[data-testid="property-card"], [data-testid="card-container"], article, .property-card, [itemtype*="Hotel"]'
     ),
   ]
@@ -267,7 +274,7 @@ export function extractPageListings(sourceType, selectors = {}) {
       segments: accountedSegments(element, semantic, title),
       text: [element.innerText, semanticText].filter(Boolean).join('\n'),
       title,
-      url: anchor?.href,
+      url: anchor?.href || (detailPage ? documentRef.location.href : undefined),
       officialUrl: officialAnchor?.href,
       ...(semantic.location ? { location: semantic.location } : {}),
     };
@@ -428,7 +435,7 @@ export class BrowserCollector {
   async navigate(commander, url, { signal } = {}) {
     await this.scheduler.run(
       url,
-      () => gotoPage(commander, url, this.navigationTimeoutMs),
+      () => gotoPage(commander, url, this.navigationTimeoutMs, signal),
       { signal }
     );
   }
@@ -443,7 +450,7 @@ export class BrowserCollector {
     return this.scheduler.run(
       url,
       async () => {
-        await gotoPage(commander, url, this.navigationTimeoutMs);
+        await gotoPage(commander, url, this.navigationTimeoutMs, signal);
         const rows =
           (await commander.evaluate(
             extractPageListings,
@@ -644,6 +651,17 @@ export class BrowserCollector {
     const offers = [];
 
     for (const row of rows || []) {
+      if (
+        adapter.selectors?.searchLocationTerms?.length &&
+        /nha\s*trang|nhatrang|нячанг/iu.test(query) &&
+        !adapter.selectors.searchLocationTerms.some((term) =>
+          String(row.location || row.title || '')
+            .toLocaleLowerCase('en')
+            .includes(term.toLocaleLowerCase('en'))
+        )
+      ) {
+        continue;
+      }
       if (row.attributes?.availableNow === false) {
         continue;
       }
@@ -727,7 +745,7 @@ export class BrowserCollector {
         const row = await this.scheduler.run(
           url,
           async () => {
-            await gotoPage(commander, url, this.navigationTimeoutMs);
+            await gotoPage(commander, url, this.navigationTimeoutMs, signal);
             const extracted =
               (await commander.evaluate(extractOfficialListing)) || {};
             await this.assertListingPage(commander, url, 1, {

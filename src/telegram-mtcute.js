@@ -1,3 +1,4 @@
+import { diagnosticLogger } from './diagnostic-log.js';
 import { resilientTelegramHistory } from './telegram-iterate.js';
 import { telegramHistoryWindow } from './telegram-window.js';
 import {
@@ -12,6 +13,11 @@ import { retryTelegramOperation } from './telegram-errors.js';
 import { createMtcuteClient } from './telegram-user.js';
 import { TraceRecorder, createSegmentLedger } from './trace.js';
 import { settleCleanup } from './utils.js';
+import { scalarId } from './offer-bounds.js';
+import { normalizeTextEntities } from './telegram-text-entities.js';
+import { downloadBoundedPhoto } from './telegram-photo-download.js';
+import { untilAborted } from './browser-adapters.js';
+import { pruneGraphReferences } from './telegram-retention.js';
 
 const CAPABILITIES = new Set([
   'discovery',
@@ -95,10 +101,13 @@ function mediaMetadata(media) {
   if (!raw) {
     return undefined;
   }
-  const content = raw.photo || raw.document || raw.webpage;
+  const content = raw.photo || raw.document || raw.webpage || raw;
+  const id = scalarId(content.id) || scalarId(media.id);
   return {
-    ...(content?.id === undefined ? {} : { id: String(content.id) }),
-    ...(content?.mimeType ? { mimeType: content.mimeType } : {}),
+    ...(id === undefined ? {} : { id }),
+    ...(typeof content.mimeType === 'string'
+      ? { mimeType: content.mimeType.slice(0, 256) }
+      : {}),
     type: raw._ || media.constructor?.name || 'media',
   };
 }
@@ -117,6 +126,7 @@ function actionMetadata(message) {
   };
 }
 
+// eslint-disable-next-line complexity -- SDK optional fields are normalized into bounded scalar metadata.
 export function normalizeMtcuteMessage(message, source) {
   const chat = message.chat || {};
   const reply = message.raw?.replyTo;
@@ -143,6 +153,10 @@ export function normalizeMtcuteMessage(message, source) {
         }
       : {}),
     id: message.id,
+    entities: normalizeTextEntities(
+      message.text || '',
+      message.raw?.entities || message.entities
+    ),
     isPinned: Boolean(message.isPinned),
     isService: Boolean(message.isService),
     media: mediaMetadata(message.media),
@@ -167,7 +181,7 @@ export class MtcuteTelegramProvider {
     apiId,
     clientFactory = createMtcuteClient,
     expectedUserId,
-    logger = console,
+    logger = diagnosticLogger,
     session,
     sessionFormat = SESSION_FORMAT,
     discoveryFolders = ['Нячанг жильё'],
@@ -413,7 +427,18 @@ export class MtcuteTelegramProvider {
     return (await this.#connect()).downloadAsBuffer(location, options);
   }
 
-  async photo(mediaId, { material, signal, maxBytes = 16 * 1024 * 1024 } = {}) {
+  // eslint-disable-next-line complexity -- Photo identity, byte limits and cancellation share one download boundary.
+  async photo(
+    mediaId,
+    { material, signal, maxBytes = 16 * 1024 * 1024, timeoutMs = 15000 } = {}
+  ) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      throw new TypeError('Photo byte budget must be a positive integer.');
+    }
+    const deadline = AbortSignal.timeout(timeoutMs);
+    const operationSignal = signal
+      ? AbortSignal.any([signal, deadline])
+      : deadline;
     const member = material?.members?.find(
       (message) => String(message.media?.id) === String(mediaId)
     );
@@ -422,10 +447,13 @@ export class MtcuteTelegramProvider {
         code: 'OCR_MEDIA_UNAVAILABLE',
       });
     }
-    const client = await this.#connect();
-    const [message] = await client.getMessages(
-      sourcePeer({ id: member.sourceId }),
-      Number(member.id)
+    const client = await untilAborted(this.#connect(), operationSignal);
+    const [message] = await untilAborted(
+      client.getMessages(
+        sourcePeer({ id: member.sourceId }),
+        Number(member.id)
+      ),
+      operationSignal
     );
     const media = message?.media;
     if (!media || media.type !== 'photo') {
@@ -438,9 +466,16 @@ export class MtcuteTelegramProvider {
         code: 'OCR_INPUT_BUDGET',
       });
     }
-    return client.downloadAsBuffer(media, {
-      abortSignal: signal,
-      limit: maxBytes + 1,
+    const currentId = mediaMetadata(media)?.id;
+    if (currentId && currentId !== String(mediaId)) {
+      throw Object.assign(
+        new Error('Native photo identity changed since ingestion.'),
+        { code: 'OCR_MEDIA_CHANGED' }
+      );
+    }
+    return downloadBoundedPhoto(client, media, {
+      signal: operationSignal,
+      maxBytes,
     });
   }
 
@@ -555,12 +590,13 @@ export class MtcuteTelegramProvider {
 
 export class TelegramIngestionService {
   constructor({
-    logger = console,
+    logger = diagnosticLogger,
     historyDays = 90,
     since,
     ocr,
     maxEvents = 10_000,
     maxRecordBytes,
+    mediaCache,
     now = () => new Date(),
     provider,
     rateProvider,
@@ -574,6 +610,7 @@ export class TelegramIngestionService {
     this.since = since;
     this.ocr = ocr;
     this.maxRecordBytes = maxRecordBytes;
+    this.mediaCache = mediaCache;
     this.now = now;
     this.provider = provider;
     this.rateProvider = rateProvider;
@@ -582,6 +619,7 @@ export class TelegramIngestionService {
     this.trace =
       traceRecorder || new TraceRecorder({ maxEvents: 2_000, now, store });
     this.pending = Promise.resolve();
+    this.retentionLoss = {};
   }
 
   async #appendRecords(kind, records) {
@@ -594,22 +632,68 @@ export class TelegramIngestionService {
         validatePublicRecord(record);
         byId.set(record.id, record);
       }
-      return [...byId.values()].slice(-this.maxEvents * 10);
+      const merged = [...byId.values()];
+      const retained = merged.slice(-this.maxEvents * 10);
+      if (retained.length < merged.length) {
+        this.retentionLoss[kind] = true;
+      }
+      return retained;
     };
     if (typeof this.store.appendRecords === 'function') {
       for (const record of records) {
         validatePublicRecord(record);
       }
-      await this.store.appendRecords(
+      const retention = await this.store.appendRecords(
         kind,
         records,
         this.#appendBudget(this.maxEvents * 10)
       );
+      if (retention?.dropped) {
+        this.retentionLoss[kind] = true;
+      }
     } else if (typeof this.store.updateRecords === 'function') {
       await this.store.updateRecords(kind, merge);
     } else {
       const existing = (await this.store.loadRecords?.(kind)) || [];
       await this.store.saveRecords(kind, merge(existing));
+    }
+  }
+
+  async #persistRetentionLoss() {
+    if (!Object.keys(this.retentionLoss).length) {
+      return;
+    }
+    if (this.retentionLoss['domain-records']) {
+      const graph = await this.store.loadRecords('domain-records');
+      const retained = pruneGraphReferences(graph);
+      if (retained.length < graph.length) {
+        await this.store.saveRecords('domain-records', retained);
+      }
+    }
+    const summary = {
+      id: 'native-retention',
+      complete: false,
+      state: 'degraded',
+      retentionLoss: this.retentionLoss,
+      updatedAt: this.now().toISOString(),
+    };
+    await this.store.saveRecords('telegram-retentions', [summary]);
+    const checkpoints =
+      (await this.store.loadRecords('telegram-ingestion-checkpoints')) || [];
+    const degraded = checkpoints.map((checkpoint) => ({
+      ...checkpoint,
+      complete: false,
+      state: 'degraded',
+      retentionLoss: this.retentionLoss,
+    }));
+    if (typeof this.store.appendRecords === 'function') {
+      await this.store.appendRecords(
+        'telegram-ingestion-checkpoints',
+        degraded,
+        this.#appendBudget(this.maxEvents * 10)
+      );
+    } else {
+      await this.store.saveRecords('telegram-ingestion-checkpoints', degraded);
     }
   }
 
@@ -691,7 +775,8 @@ export class TelegramIngestionService {
     }
   }
 
-  #materialOffer(
+  // eslint-disable-next-line complexity -- Caption identity and shared upload cache are resolved during extraction.
+  async #materialOffer(
     material,
     rates,
     window = telegramHistoryWindow({
@@ -719,12 +804,18 @@ export class TelegramIngestionService {
     offer.provenance = {
       editedAt: material.editDate,
       groupedId: material.groupedId,
-      messageId: material.messageIds?.[0] ?? material.id,
+      messageId:
+        material.captionMessageIds?.[0] ??
+        material.messageIds?.[0] ??
+        material.id,
       messageIds: material.messageIds || [material.id],
       sourceId: material.sourceId,
       topicId: material.topicId,
       transport: 'mtproto',
     };
+    if (material.mediaIds?.length && this.mediaCache) {
+      await this.mediaCache.cacheTelegramPhotos(offer, material, this.provider);
+    }
     return offer;
   }
 
@@ -909,13 +1000,24 @@ export class TelegramIngestionService {
           byId.set(record.id, record);
         }
       }
-      return [...byId.values()].slice(-this.maxEvents);
+      const merged = [...byId.values()];
+      if (merged.length > this.maxEvents) {
+        this.retentionLoss['telegram-events'] = true;
+      }
+      return merged.slice(-this.maxEvents);
     };
     if (typeof this.store.appendRecords === 'function') {
-      await this.store.appendRecords('telegram-events', records, {
-        ...this.#appendBudget(this.maxEvents),
-        replace: false,
-      });
+      const retention = await this.store.appendRecords(
+        'telegram-events',
+        records,
+        {
+          ...this.#appendBudget(this.maxEvents),
+          replace: false,
+        }
+      );
+      if (retention?.dropped) {
+        this.retentionLoss['telegram-events'] = true;
+      }
     } else if (typeof this.store.updateRecords === 'function') {
       await this.store.updateRecords('telegram-events', merge);
     } else {
@@ -983,6 +1085,7 @@ export class TelegramIngestionService {
     }
     if (event.type === 'delete' || event.message?.isService) {
       await this.#appendRecords('domain-records', this.#graphRecords(event));
+      await this.#persistRetentionLoss();
       this.trace.record({
         runId,
         stage: 'reconcile',
@@ -1028,6 +1131,7 @@ export class TelegramIngestionService {
         this.#graphRecords(event, offer)
       );
     }
+    await this.#persistRetentionLoss();
     this.trace.record({
       runId,
       stage: 'reconcile',
@@ -1089,6 +1193,10 @@ export class TelegramIngestionService {
           (await this.store.loadRecords('telegram-ingestion-checkpoints')) || []
         ).map((checkpoint) => [checkpoint.id, checkpoint])
       );
+      this.retentionLoss = {
+        ...((await this.store.loadRecords('telegram-retentions')) || [])[0]
+          ?.retentionLoss,
+      };
       for (const source of sources.filter(
         (source) => source.enabled !== false
       )) {
@@ -1240,7 +1348,9 @@ export class TelegramIngestionService {
         await this.#appendRecords('telegram-ingestion-checkpoints', [
           {
             id: source.id,
-            complete: reconciliation.complete,
+            complete:
+              reconciliation.complete &&
+              !Object.keys(this.retentionLoss).length,
             cutoff: cutoff.toISOString(),
             messages: sourceMessages.length,
             ...(oldestMessage
@@ -1249,10 +1359,14 @@ export class TelegramIngestionService {
                   oldestMessageId: oldestMessage.id,
                 }
               : {}),
-            state: reconciliation.complete ? 'complete' : 'degraded',
+            state:
+              reconciliation.complete && !Object.keys(this.retentionLoss).length
+                ? 'complete'
+                : 'degraded',
             updatedAt: this.now().toISOString(),
           },
         ]);
+        await this.#persistRetentionLoss();
       }
       if (eventRecords.length > this.maxEvents) {
         const enabled = new Set(
@@ -1273,6 +1387,7 @@ export class TelegramIngestionService {
       }
       await this.#mergeEvents(eventRecords);
       await this.#appendRecords('domain-records', graphRecords);
+      await this.#persistRetentionLoss();
       await this.trace.persist();
       this.subscription = await this.provider.liveUpdates(
         (event) => {

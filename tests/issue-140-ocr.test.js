@@ -256,9 +256,9 @@ it('downloads native photo references with byte and cancellation budgets', async
       calls.push({ peer, id });
       return [{ media }];
     },
-    downloadAsBuffer: async (_media, options) => {
+    async *downloadAsIterable(_media, options) {
       calls.push(options);
-      return bytes;
+      yield bytes;
     },
     destroy: async () => {},
   };
@@ -280,7 +280,8 @@ it('downloads native photo references with byte and cancellation budgets', async
     })
   ).toEqual(bytes);
   expect(calls[0]).toEqual({ peer: '@fixture', id: 2 });
-  expect(calls[1].limit).toBe(9);
+  expect(calls[1].limit).toBe(undefined);
+  expect(calls[1].fileSize).toBe(Infinity);
   expect(
     (await failure(() => provider.photo('absent', { material }))).code
   ).toBe('OCR_MEDIA_UNAVAILABLE');
@@ -293,5 +294,13 @@ it('downloads native photo references with byte and cancellation budgets', async
     (await failure(() => provider.photo('photo', { material, maxBytes: 8 })))
       .code
   ).toBe('OCR_INPUT_BUDGET');
+  media = { type: 'photo', id: 'changed', fileSize: 2 };
+  expect(
+    (await failure(() => provider.photo('photo', { material }))).code
+  ).toBe('OCR_MEDIA_CHANGED');
+  expect(
+    (await failure(() => provider.photo('photo', { material, maxBytes: 0 })))
+      .message
+  ).toContain('positive integer');
   await provider.destroy();
 });

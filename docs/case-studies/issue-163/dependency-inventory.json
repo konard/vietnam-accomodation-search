@@ -1,0 +1,93 @@
+{
+  "inventory": [
+    {
+      "name": "browser-commander",
+      "version": "0.27.0",
+      "previousVersion": "0.21.0",
+      "direct": true,
+      "path": "node_modules/browser-commander",
+      "repository": "git+https://github.com/link-foundation/browser-commander.git"
+    },
+    {
+      "name": "command-stream",
+      "version": "1.4.0",
+      "previousVersion": null,
+      "direct": false,
+      "path": "node_modules/browser-commander/node_modules/command-stream",
+      "repository": "git+https://github.com/link-foundation/command-stream.git"
+    },
+    {
+      "name": "links-notation",
+      "version": "0.23.0",
+      "previousVersion": "0.20.0",
+      "direct": false,
+      "path": "node_modules/browser-commander/node_modules/links-notation",
+      "repository": "git+https://github.com/link-foundation/links-notation.git"
+    },
+    {
+      "name": "command-stream",
+      "version": "1.3.0",
+      "previousVersion": "1.3.0",
+      "direct": true,
+      "path": "node_modules/command-stream",
+      "repository": "git+https://github.com/link-foundation/command-stream.git"
+    },
+    {
+      "name": "links-notation",
+      "version": "0.25.1",
+      "previousVersion": "0.22.0",
+      "direct": true,
+      "path": "node_modules/links-notation",
+      "repository": "git+https://github.com/link-foundation/links-notation.git"
+    },
+    {
+      "name": "lino-arguments",
+      "version": "0.3.0",
+      "previousVersion": "0.3.0",
+      "direct": true,
+      "path": "node_modules/lino-arguments",
+      "repository": "https://github.com/link-foundation/lino-arguments.git"
+    },
+    {
+      "name": "lino-env",
+      "version": "0.2.8",
+      "previousVersion": "0.2.8",
+      "direct": false,
+      "path": "node_modules/lino-env",
+      "repository": "git+https://github.com/link-foundation/lino-env.git"
+    },
+    {
+      "name": "log-lazy",
+      "version": "1.0.4",
+      "previousVersion": "1.0.4",
+      "direct": true,
+      "path": "node_modules/log-lazy",
+      "repository": "git+https://github.com/link-foundation/log-lazy.git"
+    },
+    {
+      "name": "test-anywhere",
+      "version": "0.9.1",
+      "previousVersion": "0.9.1",
+      "direct": true,
+      "path": "node_modules/test-anywhere",
+      "repository": "https://github.com/link-foundation/test-anywhere"
+    },
+    {
+      "name": "use-m",
+      "version": "8.16.4",
+      "previousVersion": "8.16.4",
+      "direct": true,
+      "path": "node_modules/use-m",
+      "repository": "git+https://github.com/link-foundation/use-m.git"
+    }
+  ],
+  "measurements": {
+    "baselineInstallBytes": 190639454,
+    "candidateInstallBytes": 195822588,
+    "baselineStartupMs": [282, 263, 193, 201, 162],
+    "candidateStartupMs": [231, 236, 227, 251, 269],
+    "typedCodecUnchanged": true,
+    "typedCodecSha256": "4637786734f7d5bcaee31ccbcd3b0808102e9f960126f273351f612b2b54b9d4",
+    "mixedQuoteReferenceRoundtrip": true
+  }
+}

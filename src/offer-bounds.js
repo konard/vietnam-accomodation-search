@@ -29,6 +29,7 @@ const CORE_RAW_KEYS = [
   'groupedId',
   'topicId',
   'media',
+  'entities',
   'ocrState',
   'discoveredFrom',
   'caption',
@@ -88,6 +89,7 @@ function mediaContentId(media) {
     content?.document?.id,
     content?.webpage?.photo?.id,
     content?.webpage?.document?.id,
+    content?.id,
     media?.id,
   ]);
 }

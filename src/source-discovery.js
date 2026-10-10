@@ -61,7 +61,11 @@ export class BrowserSourceDiscoverer {
   }
 
   navigate(commander, url, { signal } = {}) {
-    return this.scheduler.run(url, () => gotoPage(commander, url), { signal });
+    return this.scheduler.run(
+      url,
+      () => gotoPage(commander, url, undefined, signal),
+      { signal }
+    );
   }
 
   async rankWeb(commander, candidates, { signal } = {}) {

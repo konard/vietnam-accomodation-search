@@ -70,11 +70,12 @@
   },
   "dependencies": {
     "@mtcute/node": "^0.32.4",
-    "browser-commander": "^0.21.0",
+    "browser-commander": "0.27.0",
     "command-stream": "1.3.0",
     "grammy": "^1.46.0",
-    "links-notation": "^0.22.0",
+    "links-notation": "0.25.1",
     "lino-arguments": "0.3.0",
+    "log-lazy": "1.0.4",
     "playwright": "^1.63.0",
     "use-m": "8.16.4"
   },
@@ -103,6 +104,9 @@
     ]
   },
   "overrides": {
+    "browser-commander": {
+      "command-stream": "1.4.0"
+    },
     "@mtcute/node": {
       "better-sqlite3": "13.0.3"
     }

@@ -295,6 +295,7 @@ export function createApplication(options = {}) {
       });
       return new TelegramIngestionService({
         logger: options.logger,
+        mediaCache,
         provider,
         historyDays: Number(environment.TELEGRAM_HISTORY_DAYS || 90),
         maxEvents: Number(environment.TELEGRAM_MAX_EVENTS || 10000),

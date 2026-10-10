@@ -28,6 +28,8 @@ import { browserAdapterFor } from '../src/browser-adapters.js';
 import { extractPageListings } from '../src/browser-collector.js';
 import { auditLive } from './audit-search-service.mjs';
 import { loadCorpus } from './field-corpus-metrics.mjs';
+import { redactTraceValue } from '../src/trace.js';
+import { gotoPage, launchSettings } from '../src/utils.js';
 
 import {
   assessSourceCoverage,
@@ -70,6 +72,10 @@ function parseArguments(argv) {
     const name = argv[index];
     if (name === '--headed') {
       values.headed = true;
+      continue;
+    }
+    if (name === '--debug-errors') {
+      values.debugErrors = true;
       continue;
     }
     if (name === '--skip-search-service') {
@@ -189,13 +195,15 @@ async function auditSite({ options, pacer, site, writer }) {
   let outcome = 'unexpected_error';
   const network = { failed: 0, mainStatus: undefined, statuses: {} };
   try {
-    const launched = await launchBrowser({
-      channel: 'chrome',
-      engine: 'playwright',
-      headless: !options.headed,
-      slowMo: 150,
-      userDataDir: join(options.outputDirectory, 'browser-profile', site.id),
-    });
+    const launched = await launchBrowser(
+      launchSettings({
+        channel: 'chrome',
+        engine: 'playwright',
+        headless: !options.headed,
+        slowMo: 150,
+        userDataDir: join(options.outputDirectory, 'browser-profile', site.id),
+      })
+    );
     browser = launched.browser;
     commander = makeBrowserCommander({ page: launched.page });
     launched.page.on('requestfailed', () => {
@@ -222,11 +230,7 @@ async function auditSite({ options, pacer, site, writer }) {
       stage: 'navigation.started',
       url: sanitizedUrl(site.url),
     });
-    await commander.goto({
-      timeout: options.navigationTimeoutMs,
-      url: site.url,
-      waitUntil: 'domcontentloaded',
-    });
+    await gotoPage(commander, site.url, options.navigationTimeoutMs);
     await runningTrace.trace.checkpoint('loaded', {
       actor: 'local-e2e',
       reason: 'post-navigation-evidence',
@@ -298,6 +302,9 @@ async function auditSite({ options, pacer, site, writer }) {
       });
     }
   } catch (error) {
+    if (options.debugErrors) {
+      console.error(redactTraceValue(String(error?.stack || error)));
+    }
     runError = error;
     outcome = errorKind(error);
     await writer.write({
