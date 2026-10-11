@@ -23,6 +23,12 @@ function getStepBlock(stepName) {
 }
 
 describe('broken link workflow', () => {
+  it('limits concurrent requests while retaining strict HTTP status checks', () => {
+    const checker = getStepBlock('Check links with lychee');
+    expect(checker).toContain('--max-concurrency 4');
+    expect(checker).toContain('--retry-wait-time 5');
+    expect(checker).not.toContain('--accept');
+  });
   it('fails for every nonzero Lychee exit even when an archive exists', () => {
     const failureStep = getStepBlock('Fail if broken links were found');
 
