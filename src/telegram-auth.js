@@ -10,6 +10,10 @@ import {
   nativeSessionPayload,
 } from './session-envelope.js';
 import { createMtcuteClient } from './telegram-user.js';
+import {
+  acquireTelegramClient,
+  openTelegramClient,
+} from './telegram-client-pool.js';
 import { telegramSecretValue as secretValue } from './telegram-secrets.js';
 
 function sessionConfiguration(session, sessionFormat) {
@@ -267,7 +271,7 @@ export class TelegramAuthService {
     return { apiHash: this.apiHash, apiId };
   }
 
-  async #withClient(client, operation) {
+  async #withClient(client, operation, dispose = () => client.destroy()) {
     let failure;
     let result;
     try {
@@ -276,7 +280,7 @@ export class TelegramAuthService {
       failure = error;
     }
     try {
-      await client.destroy();
+      await dispose();
     } catch (cleanupError) {
       if (failure) {
         throw new AggregateError(
@@ -375,28 +379,41 @@ export class TelegramAuthService {
     // Validate representation locally before constructing a client. A bad or
     // foreign envelope must never trigger trial network logins.
     const payload = nativeSessionPayload(session, this.sessionFormat);
-    const client = await this.clientFactory(this.credentials());
-    return this.#withClient(client, async () => {
-      await client.importSession(payload);
-      const identity = this.#identity(await client.getMe());
-      if (
-        this.sessionFile &&
-        inspectSessionEnvelope(session).state === 'malformed'
-      ) {
-        await durableWrite(
-          this.sessionFile,
-          createSessionEnvelope(session, {
-            expectedUserId: identity.id,
-            provider: 'mtcute',
-            sessionId: `telegram-user:${String(identity.id)}`,
-          })
-        );
-      }
-      if (this.sessionFile) {
-        await chmod(this.sessionFile, 0o600);
-      }
-      return identity;
-    });
+    const credentials = this.credentials();
+    const lease = await acquireTelegramClient(
+      this.clientFactory,
+      [credentials.apiId, credentials.apiHash, payload],
+      () =>
+        openTelegramClient(this.clientFactory, credentials, async (client) => {
+          await client.importSession(payload);
+          return client.getMe();
+        })
+    );
+    const { client } = lease;
+    return this.#withClient(
+      client,
+      async () => {
+        const identity = this.#identity(await client.getMe());
+        if (
+          this.sessionFile &&
+          inspectSessionEnvelope(session).state === 'malformed'
+        ) {
+          await durableWrite(
+            this.sessionFile,
+            createSessionEnvelope(session, {
+              expectedUserId: identity.id,
+              provider: 'mtcute',
+              sessionId: `telegram-user:${String(identity.id)}`,
+            })
+          );
+        }
+        if (this.sessionFile) {
+          await chmod(this.sessionFile, 0o600);
+        }
+        return identity;
+      },
+      () => lease.release()
+    );
   }
 
   // eslint-disable-next-line complexity -- Status exposes each safe session classification without constructing a client unnecessarily.
@@ -461,13 +478,29 @@ export class TelegramAuthService {
   async logout({ revoke = true } = {}) {
     const session = this.session || (await readOptional(this.sessionFile));
     if (session && revoke) {
-      const client = await this.clientFactory(this.credentials());
-      await this.#withClient(client, async () => {
-        await client.importSession(
-          nativeSessionPayload(session, this.sessionFormat)
-        );
-        await client.logOut?.();
-      });
+      const credentials = this.credentials();
+      const payload = nativeSessionPayload(session, this.sessionFormat);
+      const lease = await acquireTelegramClient(
+        this.clientFactory,
+        [credentials.apiId, credentials.apiHash, payload],
+        () =>
+          openTelegramClient(
+            this.clientFactory,
+            credentials,
+            async (client) => {
+              await client.importSession(payload);
+              return client.getMe?.();
+            }
+          )
+      );
+      const { client } = lease;
+      await this.#withClient(
+        client,
+        async () => {
+          await client.logOut?.();
+        },
+        () => lease.release()
+      );
     }
     if (this.sessionFile) {
       await rm(this.sessionFile, { force: true });

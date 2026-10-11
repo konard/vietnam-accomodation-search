@@ -427,12 +427,13 @@ async function runOwned(paths, scope, signal) {
   const store = guardedStore(paths.dataDirectory, result, started, signal);
   const silent = { debug() {}, info() {}, warn() {}, error() {} };
   const nativeMedia = new Map();
+  const nativeFactory = (credentials) =>
+    observedClient(credentials, nativeMedia, result);
   const application = createApplication({
     directory: paths.dataDirectory,
     store,
     logger: silent,
-    mtcuteClientFactory: (credentials) =>
-      observedClient(credentials, nativeMedia, result),
+    mtcuteClientFactory: nativeFactory,
   });
   const ingestion = application.createTelegramIngestionService(secret.user);
   const observed = new Map();
@@ -452,7 +453,11 @@ async function runOwned(paths, scope, signal) {
     await store.mirror.preflight();
     owner = String((await ingestion.provider.identity()).id);
     assert.equal(owner, String(secret.user.expectedUserId));
-    observer = new MtcuteTelegramProvider({ ...secret.user, logger: silent });
+    observer = new MtcuteTelegramProvider({
+      ...secret.user,
+      logger: silent,
+      clientFactory: nativeFactory,
+    });
     assert.equal(String((await observer.identity()).id), owner);
     peer = await observer.resolveEntity(secret.botPeer);
     const latest = await observer.client.getHistory(peer, { limit: 1 });

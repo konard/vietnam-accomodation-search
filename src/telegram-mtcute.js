@@ -9,6 +9,10 @@ import { normalizeTextEntities } from './telegram-text-entities.js';
 import { downloadBoundedPhoto } from './telegram-photo-download.js';
 import { untilAborted } from './browser-adapters.js';
 import { TelegramPhotoScheduler } from './telegram-photo-scheduler.js';
+import {
+  acquireTelegramClient,
+  openTelegramClient,
+} from './telegram-client-pool.js';
 
 const CAPABILITIES = new Set([
   'discovery',
@@ -195,9 +199,14 @@ export class MtcuteTelegramProvider {
     this.transport = 'mtproto';
     this.photoScheduler = photoScheduler;
     this.mediaRetries = mediaRetries;
+    this.subscriptions = new Set();
+    this.registrations = new Set();
   }
 
   #connect() {
+    if (this.destroying) {
+      return this.destroying.then(() => this.#connect());
+    }
     if (!this.connecting) {
       this.connecting = this.#open();
       this.connecting.catch(() => {
@@ -220,16 +229,14 @@ export class MtcuteTelegramProvider {
       );
     }
     const session = nativeSessionPayload(this.session, this.sessionFormat);
-    const client = await this.clientFactory({
-      apiHash: this.apiHash,
-      apiId,
-      logger: this.logger,
-    });
+    const lease = await acquireTelegramClient(
+      this.clientFactory,
+      [apiId, this.apiHash, session],
+      () => this.#openClient(apiId, session)
+    );
+    const { client } = lease;
     try {
-      await client.start({
-        session,
-      });
-      const me = await client.getMe();
+      const me = lease.me || (await client.getMe());
       if (
         this.expectedUserId !== undefined &&
         String(me.id) !== String(this.expectedUserId)
@@ -238,10 +245,11 @@ export class MtcuteTelegramProvider {
       }
       this.client = client;
       this.me = me;
+      this.lease = lease;
       return client;
     } catch (error) {
       try {
-        await client.destroy();
+        await lease.release();
       } catch (cleanupError) {
         throw new AggregateError(
           [error, cleanupError],
@@ -251,6 +259,21 @@ export class MtcuteTelegramProvider {
       }
       throw error;
     }
+  }
+
+  #openClient(apiId, session) {
+    return openTelegramClient(
+      this.clientFactory,
+      {
+        apiHash: this.apiHash,
+        apiId,
+        logger: this.logger,
+      },
+      async (client) => {
+        await client.start({ session });
+        return client.getMe();
+      }
+    );
   }
 
   async identity() {
@@ -532,6 +555,20 @@ export class MtcuteTelegramProvider {
   }
 
   async liveUpdates(handler, { sources = [] } = {}) {
+    if (this.destroying) {
+      await this.destroying;
+      return this.liveUpdates(handler, { sources });
+    }
+    const registration = this.#registerLiveUpdates(handler, sources);
+    this.registrations.add(registration);
+    try {
+      return await registration;
+    } finally {
+      this.registrations.delete(registration);
+    }
+  }
+
+  async #registerLiveUpdates(handler, sources) {
     const client = await this.#connect();
     const sourcesByHandle = new Map();
     const sourcesByPeer = new Map();
@@ -594,23 +631,37 @@ export class MtcuteTelegramProvider {
     client.onNewMessage.add(onNew);
     client.onEditMessage.add(onEdit);
     client.onDeleteMessage.add(onDelete);
-    return {
+    const subscription = {
       stop: () => {
         client.onNewMessage.remove(onNew);
         client.onEditMessage.remove(onEdit);
         client.onDeleteMessage.remove(onDelete);
+        this.subscriptions.delete(subscription);
       },
     };
+    this.subscriptions.add(subscription);
+    return subscription;
   }
 
-  async destroy() {
+  destroy() {
+    return (this.destroying ||= this.#close().finally(() => {
+      this.destroying = undefined;
+    }));
+  }
+
+  async #close() {
     await this.connecting?.catch(() => {});
+    await Promise.allSettled([...this.registrations]);
     this.connecting = undefined;
     this.photoScheduler.resolved.clear();
-    const client = this.client;
+    for (const subscription of this.subscriptions) {
+      subscription.stop();
+    }
+    const lease = this.lease;
+    this.lease = undefined;
     this.client = undefined;
     this.me = undefined;
-    await client?.destroy();
+    await lease?.release();
   }
 }
 
