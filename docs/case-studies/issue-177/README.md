@@ -57,17 +57,18 @@ Local checks against the committed implementation completed on 2026-10-11:
 
 | Check                                          | Result                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Node with required real clink                  | 1,396 passed; zero failures or skips; 100% product line coverage                        |
-| Bun                                            | 1,396 passed; zero failures                                                             |
-| Deno, ordinary frozen lock                     | 1,279 passed plus 19 steps; zero failures; 11 documented ignored tests                  |
+| Node with required real clink                  | 1,397 passed; zero failures or skips; 100% product line coverage                        |
+| Bun                                            | 1,397 passed; zero failures                                                             |
+| Deno, ordinary frozen lock                     | 1,280 passed plus 19 steps; zero failures; 11 documented ignored tests                  |
 | Strict suite cleanup                           | Empty fixture TMPDIR and independently verified disposal in all three runtimes          |
 | Dependency audits                              | Zero vulnerabilities in both repositories and a clean production consumer               |
 | Release, shell, SQLite and browser conformance | 62 passed                                                                               |
 | Real browser HTTP control                      | Identical rental cards classified correctly for 200, 202, 404, 502 and 503              |
 | Disposable Docker cleanup                      | All six success, failure, signal and hard-kill recovery controls restored the baseline  |
+| Pinned production Docker image                 | Six runtime smoke checks passed; cleanup passed and original inventory was restored     |
 | Repository checks                              | Lint, formatting, duplication, syntax, required docs, line limits and changesets passed |
 | Example web build                              | Passed                                                                                  |
-| Repository link check                          | 219 valid references; zero errors; existing path exclusions retained                    |
+| Repository link check                          | Local GET/HEAD: 219 valid references; remote HEAD: 217; zero errors in each             |
 
 ```sh
 REQUIRE_REAL_CLINK=1 npm run test:coverage
@@ -114,14 +115,38 @@ The logs for the pushed `5cd878d` candidate were downloaded before fixes:
   before the fix; a first-digit search followed by one suffix scan passes it.
 - Link run `38102451557`, second-attempt log lines 289–307: GitHub blob URLs
   returned 503, while all 19 distinct reported URLs passed the local Lychee
-  check. Four concurrent requests and spaced retries reduce remote bursts;
-  HTTP failures remain failures rather than accepted or ignored statuses.
+  check. The reduced-concurrency run `38103859409` still failed with 13 GitHub
+  503s (log lines 287–301), so concurrency alone was insufficient. HEAD
+  availability checking then passed in run `38104426010`, with 217 successful
+  references and zero errors (log lines 293–300). The finite real Lychee
+  control in `experiments/issue-177-link-methods.mjs` verifies 404 and 503
+  remain failures. This check does not claim page-body or fragment validation.
+
+A later local run passed all 1,396 tests but reported 99.99% product line
+coverage (`coverage-committed-final.log`, lines 2084 and 2121): the early return
+for absent/pending/cancelled source outcomes was covered only indirectly. An
+explicit collection-checkpoint restart test now verifies that these outcomes
+do not mark a source fresh, making this guard coverage deterministic. The committed rerun passes all 1,397
+tests with 100% product line coverage, including this guard, and independently
+verified empty fixture cleanup.
 
 The production image also restored its complete Docker baseline while Buildx
 reported a builder-removal failure. Exact journal recovery passed. Buildx's
 shared status deadline covers shutdown and populated-cache removal; cleanup
 now quiesces only the owned builder separately before removal, with an injected
-sequencing regression and optional sanitized acceptance tracing.
+sequencing regression and optional sanitized acceptance tracing. The trace
+identified a later `buildx rm` command killed at its 30-second command bound
+while removing the production cache; the baseline was nevertheless restored,
+and exact journal recovery passed. Removal now has an explicit 60-second
+Buildx deadline with a 70-second command bound. Production acceptance retains
+a separate 120-second disposal bound; other command limits remain unchanged.
+All six disposable controls pass with the revised removal path. The final
+production rebuild of committed candidate `04e76a0` passes all six hardened
+runtime checks and reports `dockerCleanup.pass=true`, no failures, and
+`baselineRestored=true`. A separate inventory comparison confirms the exact
+original containers, networks, volumes, images and builders, and confirms the
+private recovery directory is absent. Later commits add the deterministic
+freshness regression and this report without changing production files.
 
 Deno lock regeneration used the one-time `--min-dep-age=0` opt-in for the newly
 published safe release. Ordinary tests use the frozen lock and normal age policy.

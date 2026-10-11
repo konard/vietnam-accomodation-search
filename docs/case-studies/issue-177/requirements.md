@@ -49,8 +49,13 @@ are part of the baseline, not new evidence for unresolved acceptance.
   after an uncatchable kill, which needs a durable recovery journal.
 - [Lychee rate limits](https://lychee.cli.rs/troubleshooting/rate-limits/)
   recommends limiting concurrent requests. Repeated remote GitHub 503s for
-  locally healthy links motivate lower concurrency and spaced retries; rejected
-  HTTP responses still fail the link check.
+  locally healthy links motivated lower concurrency and spaced retries, which
+  were insufficient alone.
+- [Lychee method selection](https://lychee.cli.rs/guides/cli/) supports HEAD
+  availability checks. [HTTP HEAD semantics](https://www.rfc-editor.org/rfc/rfc9110.html#name-head)
+  omit the response body; this checker does not claim fragment validation.
+  Remote HEAD succeeded after repeated GET failures, and real 404/503 controls
+  retain strict rejected-status handling. The hosting-side cause remains unknown.
 - [command-stream upstream exception](https://github.com/link-foundation/command-stream/issues/221)
   records the original 2.0.0 dependency security problem, now closed. The safe
   2.0.2 runtime dependencies omit ShellJS and its vulnerable compatibility tree.
