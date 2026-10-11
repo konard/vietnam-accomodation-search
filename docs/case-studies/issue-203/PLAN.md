@@ -30,7 +30,10 @@ All implementation is on `issue-203-35b74727260e` in PR 204.
 - [x] Update PR title/body, include every closing reference and explicit limits.
 - [ ] Read final PR diff, ensure main is contained and working tree is clean.
 - [x] List CI runs with timestamps and SHA; preserve/analyze failed logs and
-      repair the missing changeset and read-only Deno regression failures.
+      repair the missing changeset and read-only Deno regression failures;
+      investigate both Bun installation attempts and test lifecycle serialization.
+- [x] Repeat expanded full Node/Bun/Deno checks with strict cleanup and 100%
+      Node product line coverage; preserve the final passing logs.
 - [ ] Repeat expanded runtime checks and wait for final required CI checks
       on the final pushed SHA before marking PR ready.
 

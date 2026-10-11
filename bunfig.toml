@@ -1,3 +1,8 @@
 # Bun configuration
 # Note: Bun doesn't support excluding test files directly in config
 # Use CLI flags or file naming patterns instead
+
+[install]
+# Native dependency scripts can share Bun's temporary node-gyp installation.
+# Serialize acquisition in local installs, the runtime matrix and release checks.
+concurrentScripts = 1

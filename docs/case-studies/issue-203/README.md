@@ -236,16 +236,41 @@ The new tests statically loaded an environment-dependent Telegram CLI driver
 and called `tmpdir` despite Deno's existing `--allow-read` boundary. CLI/file
 controls now follow the existing Node/Bun-only test boundary; pure production
 credential normalization, diagnostics and pagination remain tested in Deno.
-The focused read-only Deno regression run passes all 21 tests. No additional
+The focused read-only Deno regression run passes all 24 tests. No additional
 Deno permissions or weakened production assertions were introduced.
+
+Run `38140566812`, created 2026-10-11T12:46:45Z for `65b2909`, then passed
+every test/build job except the Bun Linux dependency installation and status
+gate. Attempt 1 failed before tests with `Cannot find module 'tar'` in Bun's
+temporary node-gyp installation (complete log line 14913); attempt 2 failed
+with a missing `semver/functions/minor.js` in the same tool tree (line 14725).
+The published node-gyp 13.1.0 manifest declares both dependencies. Both
+attempts also left multiple node-gyp producers for the runner to terminate.
+
+[Bun documents concurrent lifecycle scripts](https://bun.sh/docs/pm/cli/install#lifecycle-scripts)
+and a project-wide
+[`install.concurrentScripts` setting](https://bun.sh/docs/runtime/bunfig#install-concurrentscripts).
+The changing missing files suggest concurrent temporary tool acquisition; this
+is an inference from the logs, not a proven upstream defect. Existing upstream
+[issue 9699](https://github.com/oven-sh/bun/issues/9699) reports similar historical
+installation failures, but does not establish this current failure's cause.
+Two cold parallel/serial tool-only acquisitions in
+`experiments/issue-203-bun-node-gyp-race.mjs` both pass locally, so that probe
+does not reproduce the missing dependency. A separate offline lifecycle control
+in `experiments/issue-203-bun-install-concurrency.mjs` does reproduce overlapping
+ownership under the original configuration: default and repository installs
+both overlap and the repository assertion fails. Setting `concurrentScripts = 1`
+in the existing root `bunfig.toml` eliminates that overlap and covers both
+runtime-matrix and release-candidate installations, as well as local installs.
+Native scripts remain enabled. The actual cold Bun CI install validates whether
+this targeted acquisition control also resolves the observed installation failure.
 
 ### Local validation
 
 - `npm run check`: lint, formatting and duplication checks pass.
-- Full Node source coverage run: 1,468 tests pass, 100% source line coverage;
-  subsequent credential and older-audit changes also have focused regressions.
-- Full Bun run: 1,469 tests pass, zero failures.
-- Full Deno run with `--frozen --allow-read`: 1,354 tests pass, 11 ignored,
+- Full Node source coverage run: 1,473 tests pass, 100% source line coverage.
+- Full Bun run: 1,473 tests pass, zero failures.
+- Full Deno run with `--frozen --allow-read`: 1,358 tests pass, 11 ignored,
   zero failures. Its owned-file/CLI controls follow the existing Node/Bun boundary.
 - Strict cleanup readback reports zero unexpected leftovers and verified teardown
   for each full runtime suite and the actual browser/Docker controls.
