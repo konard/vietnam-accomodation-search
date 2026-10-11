@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'test-anywhere';
-import { spawnSync } from 'node:child_process';
+import {
+  runReleaseFixtureCommand,
+  runReleaseFixtureSync,
+} from '../experiments/release-fixture.mjs';
 import {
   chmodSync,
   mkdirSync,
@@ -22,7 +25,7 @@ const canRunGitFixtures =
   process.platform !== 'win32';
 
 function runCommand(command, args, cwd) {
-  const result = spawnSync(command, args, {
+  const result = runReleaseFixtureSync(command, args, {
     cwd,
     encoding: 'utf8',
   });
@@ -65,10 +68,10 @@ function writeExecutable(filePath, contents) {
 }
 
 function runPushHelper(root, args = [], env = {}) {
-  return spawnSync(process.execPath, [scriptPath, ...args], {
+  return runReleaseFixtureCommand(process.execPath, [scriptPath, ...args], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env,
   });
 }
 
@@ -162,7 +165,7 @@ function installFakeGh({ binDir, remote, marker, stateDir }) {
 
 describe('push-main-with-rebase-retry.mjs', () => {
   if (canRunGitFixtures) {
-    it('rebases and retries when a generated-artifact push races another main writer', () => {
+    it('rebases and retries when a generated-artifact push races another main writer', async () => {
       const root = mkdtempSync(path.join(tmpdir(), 'push-main-retry-'));
       const remote = path.join(root, 'remote.git');
       const previewWriter = path.join(root, 'preview-writer');
@@ -191,7 +194,7 @@ describe('push-main-with-rebase-retry.mjs', () => {
         commitAll(releaseWriter, 'Version bump');
         runGit(releaseWriter, ['push', 'origin', 'HEAD:main']);
 
-        const result = runPushHelper(previewWriter);
+        const result = await runPushHelper(previewWriter);
         const output = `${result.stdout}\n${result.stderr}`;
 
         expect(result.status).toBe(0);
@@ -217,7 +220,7 @@ describe('push-main-with-rebase-retry.mjs', () => {
       }
     });
 
-    it('lands the commit through a pull request when a ruleset declines the direct push', () => {
+    it('lands the commit through a pull request when a ruleset declines the direct push', async () => {
       const root = mkdtempSync(path.join(tmpdir(), 'push-main-ruleset-'));
       const remote = path.join(root, 'remote.git');
       const releaseWriter = path.join(root, 'release-writer');
@@ -242,7 +245,7 @@ describe('push-main-with-rebase-retry.mjs', () => {
         createFile(releaseWriter, 'VERSION.txt', '1.0.1\n');
         commitAll(releaseWriter, '1.0.1');
 
-        const result = runPushHelper(
+        const result = await runPushHelper(
           releaseWriter,
           [
             'origin',
@@ -300,7 +303,7 @@ describe('push-main-with-rebase-retry.mjs', () => {
       }
     });
 
-    it('fails fast on a rejection that neither a rebase nor a pull request can fix', () => {
+    it('fails fast on a rejection that neither a rebase nor a pull request can fix', async () => {
       const root = mkdtempSync(path.join(tmpdir(), 'push-main-auth-'));
       const worker = path.join(root, 'worker');
 
@@ -317,7 +320,7 @@ describe('push-main-with-rebase-retry.mjs', () => {
           path.join(root, 'does-not-exist.git'),
         ]);
 
-        const result = runPushHelper(worker);
+        const result = await runPushHelper(worker);
         const output = `${result.stdout}\n${result.stderr}`;
 
         expect(result.status).toBe(1);

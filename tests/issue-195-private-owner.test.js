@@ -11,6 +11,79 @@ import {
 } from '../src/index.js';
 
 describe('private operator owner configuration', () => {
+  it('requires an explicit original configuration path', async () => {
+    await assert.rejects(configurePrivateOwner(), /--env-file/u);
+  });
+
+  it('rejects mismatches, invalid allowlists, failed sessions and concurrent edits without overwriting them', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'vac-owner-validation-'));
+    const envFile = join(directory, '.env');
+    try {
+      for (const [original, identityProvider, expected] of [
+        [
+          'TELEGRAM_EXPECTED_USER_ID=98\n',
+          async () => ({ id: 99 }),
+          /does not match/u,
+        ],
+        [
+          'TELEGRAM_ALLOWED_USER_IDS=unapproved\n',
+          async () => ({ id: 99 }),
+          /numeric/u,
+        ],
+        ['', undefined, /validation failed/u],
+        [
+          '',
+          async () => {
+            throw new Error('private credential content');
+          },
+          /validation failed/u,
+        ],
+      ]) {
+        await writeFile(envFile, original);
+        await assert.rejects(
+          configurePrivateOwner({ envFile, identityProvider }),
+          expected
+        );
+        assert.equal(await readFile(envFile, 'utf8'), original);
+      }
+      await writeFile(
+        envFile,
+        'TELEGRAM_BOT_TOKEN_FILE=token.txt\nTELEGRAM_ALLOWED_USER_IDS=11, 11,22\n'
+      );
+      await writeFile(join(directory, 'token.txt'), 'self-authored-token');
+      await configurePrivateOwner({
+        envFile,
+        identityProvider: async ({ credentials }) => {
+          assert.equal(credentials.botToken, 'self-authored-token');
+          return { id: 99 };
+        },
+      });
+      assert.equal(
+        parseEnv(await readFile(envFile, 'utf8')).TELEGRAM_ALLOWED_USER_IDS,
+        '11,22,99'
+      );
+      await assert.rejects(
+        configurePrivateOwner({
+          envFile,
+          identityProvider: async () => {
+            await writeFile(envFile, '# Concurrent private edit\n');
+            return { id: 99 };
+          },
+        }),
+        /not overwritten/u
+      );
+      assert.equal(
+        await readFile(envFile, 'utf8'),
+        '# Concurrent private edit\n'
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('derives the supplied session owner, writes privately and authorizes a real registered command', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;

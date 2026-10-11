@@ -419,7 +419,16 @@ export async function runDomainQueues(sites, concurrency, handler) {
     }
   };
   const count = Math.max(1, Math.min(Number(concurrency) || 1, groups.length));
-  await Promise.all(Array.from({ length: count }, worker));
+  const settled = await Promise.allSettled(
+    Array.from({ length: count }, worker)
+  );
+  const failures = settled.filter(({ status }) => status === 'rejected');
+  if (failures.length) {
+    throw new AggregateError(
+      failures.map(({ reason }) => reason),
+      'Browser audit workers failed after all workers stopped.'
+    );
+  }
   return results;
 }
 

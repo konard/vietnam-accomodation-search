@@ -100,6 +100,14 @@ status|validate|rotate|logout` manage its lifecycle. `telegram preflight`
 validates configured numeric identities with `getMe` without starting
 `getUpdates`.
 
+To authorize the owner of an already supplied user session, run
+`telegram authorize-owner --env-file /private/original.env`. The command derives
+the authenticated identity, preserves existing approved recipients, keeps access
+private and writes only the selected environment file. Verify a privileged
+command after restarting with that configuration. The
+[acceptance workflow](docs/case-studies/issue-195/README.md) documents independent
+source review and the read-only helper for an existing legacy session.
+
 The default cache directory is `.vietnam-accomodation-search/` in the current
 working directory. It contains `offers.lino`, `sources.lino`, and downloaded
 media. Do not commit it.

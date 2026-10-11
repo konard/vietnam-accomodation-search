@@ -1,0 +1,108 @@
+{
+  "bind": {
+    "provenance": "self-authored-control",
+    "before": {
+      "bindErrorRejected": false,
+      "bindErrorUncaught": true,
+      "ownedFixturesRemoved": false,
+      "childExit": 42,
+      "pass": false
+    },
+    "after": {
+      "bindErrorRejected": true,
+      "bindErrorUncaught": false,
+      "ownedFixturesRemoved": true,
+      "childExit": 0,
+      "pass": true
+    }
+  },
+  "backfill": {
+    "provenance": "self-authored-control",
+    "before": {
+      "firstPageReceived": true,
+      "latestVisibleDuringHistory": false,
+      "positiveControl": true,
+      "pass": false
+    },
+    "after": {
+      "firstPageReceived": true,
+      "latestVisibleDuringHistory": true,
+      "positiveControl": true,
+      "pass": true
+    }
+  },
+  "subscription": {
+    "provenance": "self-authored-control",
+    "before": {
+      "subscriptionPersisted": true,
+      "acknowledgementDuringSearch": false,
+      "positiveControl": true,
+      "pass": false
+    },
+    "after": {
+      "subscriptionPersisted": true,
+      "acknowledgementDuringSearch": true,
+      "positiveControl": true,
+      "pass": true
+    }
+  },
+  "actualBrowser": [
+    {
+      "scenario": "success",
+      "profileAbsent": true,
+      "ownedProcessesAbsent": true,
+      "unrelatedPreserved": true
+    },
+    {
+      "scenario": "launch-failure",
+      "profileAbsent": true,
+      "ownedProcessesAbsent": true,
+      "unrelatedPreserved": true
+    },
+    {
+      "scenario": "navigation-failure",
+      "profileAbsent": true,
+      "ownedProcessesAbsent": true,
+      "unrelatedPreserved": true
+    },
+    {
+      "scenario": "SIGINT",
+      "profileAbsent": true,
+      "ownedProcessesAbsent": true,
+      "unrelatedPreserved": true
+    },
+    {
+      "scenario": "SIGTERM",
+      "profileAbsent": true,
+      "ownedProcessesAbsent": true,
+      "unrelatedPreserved": true
+    }
+  ],
+  "actualSdkOffline": {
+    "realSdk": true,
+    "shutdownComplete": true,
+    "exportedIdentity": false
+  },
+  "liveWeb": {
+    "provenance": "live-read-only-public-web",
+    "collectedSources": 1,
+    "materials": 40,
+    "paginationComplete": true,
+    "independentReviewComplete": false
+  },
+  "inventory": {
+    "inventory": 70,
+    "accepted": 0,
+    "incomplete": 70,
+    "excluded": 22,
+    "globalOptimality": "unverified"
+  },
+  "limits": {
+    "connectedSdkShutdownVerified": false,
+    "nativeMediaDeliveryVerified": false,
+    "originalPrivateOwnerConfigured": false,
+    "liveCutoverVerified": false,
+    "independentLiveLabelsVerified": false,
+    "historicalBunCauseIsolated": false
+  }
+}

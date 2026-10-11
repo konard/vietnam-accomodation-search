@@ -89,6 +89,34 @@ function setup(search) {
 }
 
 describe('durable subscription acknowledgement and owned background search', () => {
+  it('joins cancellation while subscription loading is still pending', async () => {
+    const loaded = deferred();
+    const scope = setup(async () => {
+      throw new Error('search must not run');
+    });
+    scope.presets.listSubscriptions = () => loaded.promise;
+    const running = scope.scheduler.tick();
+    const stopped = scope.scheduler.stop();
+    loaded.resolve([{ userId: '42', options: {} }]);
+    await bounded(Promise.all([running, stopped]));
+    assert.equal(scope.deliveries.length, 0);
+  });
+
+  it('stops between recipients of the same search group', async () => {
+    const scope = setup(async () => []);
+    await scope.presets.subscribe('42');
+    await scope.presets.subscribe('43');
+    const owners = [];
+    let stopped;
+    scope.presets.markSuccessfulRun = async (owner) => {
+      owners.push(owner);
+      stopped = scope.scheduler.stop();
+    };
+    await bounded(scope.scheduler.tick());
+    await bounded(stopped);
+    assert.deepEqual(owners, ['42']);
+  });
+
   it('acknowledges before a slow search finishes and joins a single cancelled search', async () => {
     const started = deferred();
     const finish = deferred();

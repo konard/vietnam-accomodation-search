@@ -4,6 +4,46 @@ import { createMtcuteClient } from '../src/telegram-user.js';
 import { installTelegramSdkLogging } from '../src/telegram-sdk-logging.js';
 
 describe('SDK log privacy and shutdown', () => {
+  it('reports error events and runtime categories without exporting their content', async () => {
+    const calls = [];
+    const listeners = new Set();
+    const client = {
+      log: {},
+      onError: {
+        add: (handler) => listeners.add(handler),
+        remove: (handler) => listeners.delete(handler),
+      },
+      destroy: async () => {
+        throw new Error('close failure');
+      },
+    };
+    installTelegramSdkLogging(
+      client,
+      Object.fromEntries(
+        ['warn', 'error', 'debug'].map((level) => [
+          level,
+          (_message, data) => calls.push({ level, ...data }),
+        ])
+      )
+    );
+    for (const [tag, format, args] of [
+      ['network', 'network timeout', []],
+      ['client', 'FLOOD_WAIT', []],
+      ['client', 'unclassified %e', [{ text: 'private payload' }, null]],
+    ]) {
+      client.log.handler(0, 3, tag, format, args);
+    }
+    [...listeners][0](new Error('private runtime fault'));
+    assert.deepEqual(
+      calls.map(({ category }) => category),
+      ['transport', 'rate-limit', 'runtime', 'runtime']
+    );
+    assert.equal(calls.at(-1).level, 'error');
+    assert.equal(JSON.stringify(calls).includes('private'), false);
+    await assert.rejects(client.destroy(), /close failure/u);
+    assert.equal(listeners.size, 0);
+  });
+
   it('captures real installed SDK logs and destroys without connecting', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;

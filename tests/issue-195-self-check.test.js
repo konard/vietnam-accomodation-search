@@ -30,6 +30,46 @@ async function failureOf(action) {
 }
 
 describe('owned self-check server failure paths', () => {
+  it('cancels a pending bind and surfaces owned close failures', async () => {
+    const controller = new AbortController();
+    const server = fixtureServer();
+    server.listen = () => controller.abort(new Error('cancelled bind'));
+    expect(
+      (
+        await failureOf(() =>
+          withFixtureServer(() => {}, undefined, {
+            serverFactory: () => server,
+            signal: controller.signal,
+          })
+        )
+      ).message
+    ).toBe('cancelled bind');
+    expect(server.closed).toBe(true);
+    const failedClose = fixtureServer();
+    failedClose.close = (done) => done(new Error('close failed'));
+    expect(
+      (
+        await failureOf(() =>
+          withFixtureServer(() => 'ok', undefined, {
+            serverFactory: () => failedClose,
+          })
+        )
+      ).message
+    ).toBe('close failed');
+    const notRunning = fixtureServer();
+    notRunning.close = (done) =>
+      done(
+        Object.assign(new Error('not running'), {
+          code: 'ERR_SERVER_NOT_RUNNING',
+        })
+      );
+    expect(
+      await withFixtureServer(() => 'ok', undefined, {
+        serverFactory: () => notRunning,
+      })
+    ).toBe('ok');
+  });
+
   it('rejects asynchronous bind errors and closes its server', async () => {
     const error = new Error('self-authored bind failure');
     const server = fixtureServer({ failure: error });

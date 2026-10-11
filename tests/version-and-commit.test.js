@@ -13,6 +13,11 @@ import { join } from 'node:path';
 import { formattableStagedFiles } from '../scripts/release-formatting.mjs';
 import { synchronizeReleaseCheckout } from '../scripts/synchronize-release-checkout.mjs';
 import { loadCommandStream } from '../scripts/use-module.mjs';
+import {
+  runReleaseFixtureCommand,
+  runReleaseFixtureSync,
+  isolatedReleaseEnvironment,
+} from '../experiments/release-fixture.mjs';
 
 const script = readFileSync('scripts/version-and-commit.mjs', 'utf8');
 const releaseFormatting = readFileSync(
@@ -56,7 +61,12 @@ describe('version-and-commit.mjs formats the release commit', () => {
     }
     const root = mkdtempSync(join(tmpdir(), 'release-formatting-'));
     const run = (args) =>
-      execFileSync('git', args, { cwd: root, encoding: 'buffer' });
+      execFileSync('git', args, {
+        cwd: root,
+        encoding: 'buffer',
+        timeout: 5000,
+        env: isolatedReleaseEnvironment(),
+      });
     // Windows forbids control characters in pathnames. POSIX runners retain
     // the newline regression while Windows still covers spacing and quoting.
     const unusual =
@@ -101,11 +111,21 @@ describe('version-and-commit.mjs formats the release commit', () => {
     }
     const root = mkdtempSync(join(tmpdir(), 'release-staged-command-'));
     try {
-      execFileSync('git', ['init', '-b', 'main'], { cwd: root });
+      execFileSync('git', ['init', '-b', 'main'], {
+        cwd: root,
+        timeout: 5000,
+        env: isolatedReleaseEnvironment(),
+      });
       writeFileSync(join(root, 'release notes\ncontinued.md'), '# Release\n');
-      execFileSync('git', ['add', '-A'], { cwd: root });
+      execFileSync('git', ['add', '-A'], {
+        cwd: root,
+        timeout: 5000,
+        env: isolatedReleaseEnvironment(),
+      });
 
-      const { $ } = await loadCommandStream();
+      // Test the real locked shell boundary; CDN bootstrap has dedicated
+      // deadline/integrity tests and must not consume this fixture's budget.
+      const { $ } = await loadCommandStream(() => import('command-stream'));
       const result =
         await $`git -C ${root} diff --cached --name-only -z --diff-filter=ACMR`.run(
           {
@@ -158,7 +178,7 @@ describe('version-and-commit.mjs partial-release recovery', () => {
     const staleInstantRun = join(root, 'stale-instant-run');
     const mergeScript = join(process.cwd(), 'scripts/merge-changesets.mjs');
     const run = (cwd, args) =>
-      spawnSync('git', args, { cwd, encoding: 'utf8' });
+      runReleaseFixtureSync('git', args, { cwd, encoding: 'utf8' });
     const runChecked = (cwd, args) => {
       const result = run(cwd, args);
       expect(result.status).toBe(0);
@@ -202,10 +222,14 @@ describe('version-and-commit.mjs partial-release recovery', () => {
       runChecked(firstRun, ['commit', '-m', '1.0.1']);
       runChecked(firstRun, ['push', 'origin', 'HEAD:main']);
 
-      const merge = spawnSync(process.execPath, [mergeScript], {
-        cwd: staleLegacyRun,
-        encoding: 'utf8',
-      });
+      const merge = await runReleaseFixtureCommand(
+        process.execPath,
+        [mergeScript],
+        {
+          cwd: staleLegacyRun,
+          encoding: 'utf8',
+        }
+      );
       expect(merge.status).toBe(0);
       runChecked(staleLegacyRun, ['fetch', 'origin', 'main']);
       const legacyRebase = run(staleLegacyRun, ['rebase', 'origin/main']);
@@ -214,6 +238,7 @@ describe('version-and-commit.mjs partial-release recovery', () => {
 
       const result = await synchronizeReleaseCheckout({
         cwd: staleFixedRun,
+        runner: runReleaseFixtureCommand,
         logger: { log() {} },
       });
       expect(result.status).toBe('already-released');
@@ -225,6 +250,7 @@ describe('version-and-commit.mjs partial-release recovery', () => {
 
       const instant = await synchronizeReleaseCheckout({
         cwd: staleInstantRun,
+        runner: runReleaseFixtureCommand,
         logger: { log() {} },
         mode: 'instant',
       });
@@ -260,7 +286,12 @@ describe('version-and-commit.mjs passes the commit message as one argument', () 
       const result = spawnSync(
         process.execPath,
         ['experiments/command-stream-literal-argv.mjs', message],
-        { encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL' }
+        {
+          encoding: 'utf8',
+          timeout: 5000,
+          killSignal: 'SIGKILL',
+          env: isolatedReleaseEnvironment(),
+        }
       );
       if (result.error || result.status !== 0) {
         throw new Error(
