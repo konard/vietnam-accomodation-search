@@ -9,7 +9,7 @@ import { launchBrowser } from 'browser-commander';
 import { createMtcuteClient } from './src/telegram-user.js';
 import { recognizeRentalPhoto } from './src/telegram-ocr.js';
 import { LinksStore } from './src/links-store.js';
-import { launchSettings } from './src/utils.js';
+import { settleCleanup, launchSettings } from './src/utils.js';
 
 assert.notEqual(process.getuid(), 0);
 assert.equal(process.env.BROWSER_NO_SANDBOX, '1');
@@ -60,6 +60,11 @@ try {
     })
   );
 } finally {
-  await browser?.close();
-  await rm(directory, { recursive: true, force: true });
+  await settleCleanup(
+    [
+      () => browser?.close(),
+      () => rm(directory, { recursive: true, force: true }),
+    ],
+    'Docker smoke cleanup failed.'
+  );
 }

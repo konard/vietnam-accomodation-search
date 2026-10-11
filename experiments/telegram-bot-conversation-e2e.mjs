@@ -27,6 +27,8 @@ import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 
 import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
+import { withQaCleanup } from './qa-cleanup.mjs';
+import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
 
 import {
   DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
@@ -43,7 +45,6 @@ import {
   CONVERSATION_MODES,
   assertDegradedToBotOnly,
   assertPinnedIdentity,
-  countLeftovers,
   degradedRuntimeEnvironment,
   requireIdentityPins,
 } from './telegram-e2e-identities.mjs';
@@ -116,6 +117,7 @@ export function parseConversationArguments(values) {
   const valued = new Map([
     ['--bot-env', 'botEnv'],
     ['--data-directory', 'dataDirectory'],
+    ['--journal', 'journal'],
     ['--mode', 'mode'],
     ['--runtime-user-env', 'runtimeUserEnv'],
     ['--timeout-ms', 'timeoutMs'],
@@ -374,11 +376,20 @@ async function stopBot(instance, timeoutMs) {
 
 async function startBot({ environment, logPath, port, timeoutMs }) {
   await writeFile(logPath, '', { mode: 0o600 });
-  const child = spawn(process.execPath, [BOT_ENTRY, 'bot'], {
-    cwd: ROOT,
-    env: environment,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const child = spawn(
+    process.execPath,
+    [
+      '--import',
+      join(ROOT, 'experiments', 'qa-bot-preload.mjs'),
+      BOT_ENTRY,
+      'bot',
+    ],
+    {
+      cwd: ROOT,
+      env: environment,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+  );
   child.stdout.on('data', (chunk) => {
     void appendRedacted(logPath, 'stdout', chunk).catch(() => {});
   });
@@ -517,21 +528,28 @@ async function waitForMessage(
 }
 
 async function sendAndExpect(state, command, predicate) {
+  state.signal?.throwIfAborted();
+  await state.ledger?.save();
   const sent = await withDeadline(
     () =>
       state.client.sendMessage(state.target, {
-        message: command,
+        message: state.ledger ? `${command}\n${state.ledger.marker}` : command,
       }),
     driverDeadline(state.timeoutMs),
     'test command send'
   );
   state.messageIds.add(messageId(sent));
+  await state.ledger?.record(sent);
   const reply = await waitForMessage(state.client, state.target, {
     afterId: messageId(sent),
-    predicate,
+    predicate: (text) =>
+      predicate(
+        state.ledger ? text.replace(`${state.ledger.marker}\n`, '') : text
+      ),
     timeoutMs: state.timeoutMs,
   });
   state.messageIds.add(messageId(reply));
+  await state.ledger?.record(reply);
   return { reply, sent };
 }
 
@@ -696,46 +714,16 @@ async function runScenario(state, marker, offerTitle, start) {
   return { duplicateAfterRestart: false, preset };
 }
 
-async function deleteMessages(state, messages = []) {
-  const identifiers = [
-    ...new Set([...state.messageIds, ...messages.map(messageId)]),
-  ].filter((value) => value > 0);
-  if (!identifiers.length) {
-    return true;
-  }
-  try {
-    await withDeadline(
-      () =>
-        state.client.deleteMessages(state.target, identifiers, {
-          revoke: true,
-        }),
-      driverDeadline(state.timeoutMs),
-      'test-message cleanup'
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function messagesAfterBoundary(state) {
-  return (await recentMessages(state.client, state.target, state.timeoutMs))
+  return (
+    await withDeadline(
+      () => readQaHistory(state.client, state.target, state.baselineMessageId),
+      state.timeoutMs,
+      'paged QA history'
+    )
+  )
     .filter((message) => messageId(message) > state.baselineMessageId)
     .sort((left, right) => messageId(left) - messageId(right));
-}
-
-async function removeKnownLeftovers(state) {
-  const leftovers = (
-    await recentMessages(state.client, state.target, state.timeoutMs)
-  ).filter((message) => isE2ELeftoverMessage(messageText(message)));
-  if (!leftovers.length) {
-    return 0;
-  }
-  await persistFailureTranscript(leftovers, 'stale unmatched E2E messages');
-  if (!(await deleteMessages(state, leftovers))) {
-    throw new Error('Failed to delete stale E2E conversation messages.');
-  }
-  return leftovers.length;
 }
 
 function safeDataDirectory(path) {
@@ -771,8 +759,14 @@ async function prepareDataDirectory(path) {
   return selected;
 }
 
-// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- One boundary owns live setup, transcript capture, Telegram cleanup, and resource teardown.
-export async function runConversationE2E(options, environment = process.env) {
+export function runConversationE2E(options, environment = process.env) {
+  return withQaCleanup((_scope, signal) =>
+    runOwnedConversation(options, environment, signal)
+  );
+}
+
+// eslint-disable-next-line max-lines-per-function, max-statements, complexity -- The conversation transaction retains its assertion ordering and attempts every owned teardown phase.
+async function runOwnedConversation(options, environment, signal) {
   assertConversationBoundary(environment);
   const botEnvironment = await environmentFile(options.botEnv);
   const driverEnvironment = await environmentFile(options.userEnv);
@@ -824,14 +818,25 @@ export async function runConversationE2E(options, environment = process.env) {
         target,
         timeoutMs: options.timeoutMs,
       };
-      staleMessagesDeleted = await removeKnownLeftovers(state);
+      if (!options.journal) {
+        throw new Error(
+          'Cleanup recovery requires the original --journal ownership file.'
+        );
+      }
+      state.ledger = await QaOwnedMessages.restore(resolve(options.journal));
+      const recovered = await state.ledger.cleanup({
+        read: () => readQaHistory(state.client, target, state.ledger.baseline),
+        remove: (ids) =>
+          state.client.deleteMessages(target, ids, { revoke: true }),
+      });
+      if (!recovered.pass) {
+        throw new Error('Recovery left QA-owned messages behind.');
+      }
+      staleMessagesDeleted = recovered.deleted;
       messagesDeleted = true;
       return {
         cleanupOnly: true,
-        leftoverMessages: (
-          await recentMessages(driver.client, target, options.timeoutMs)
-        ).filter((message) => isE2ELeftoverMessage(messageText(message)))
-          .length,
+        leftoverMessages: recovered.leftovers,
         messagesDeleted,
         staleMessagesDeleted,
       };
@@ -849,7 +854,7 @@ export async function runConversationE2E(options, environment = process.env) {
       process.stderr.write(`telegram-e2e data-directory=${dataDirectory}\n`);
     }
     await chmod(dataDirectory, 0o700);
-    const marker = randomBytes(5).toString('hex');
+    const marker = `qa-conversation-${randomBytes(8).toString('hex')}`;
     const offerTitle = await seedSyntheticCache(dataDirectory, marker);
     progress('synthetic-cache-ready');
     const target = await withDeadline(
@@ -865,13 +870,20 @@ export async function runConversationE2E(options, environment = process.env) {
       messageIds: new Set(),
       target,
       timeoutMs: options.timeoutMs,
+      signal,
     };
     state.baselineMessageId = await latestMessageId(
       state.client,
       state.target,
       state.timeoutMs
     );
-    staleMessagesDeleted = await removeKnownLeftovers(state);
+    await mkdir(FAILURE_LOG_DIRECTORY, { recursive: true, mode: 0o700 });
+    state.ledger = new QaOwnedMessages({
+      marker,
+      baseline: state.baselineMessageId,
+      journal: join(FAILURE_LOG_DIRECTORY, `${marker}-driver.json`),
+    });
+    await state.ledger.save();
     const port = await availablePort();
     const childEnvironment = runtimeEnvironment({
       bot: { identity: botIdentity, token: botSecret.token },
@@ -880,6 +892,12 @@ export async function runConversationE2E(options, environment = process.env) {
       port,
       runtimeUser,
       userId: driver.id,
+    });
+    Object.assign(childEnvironment, {
+      TELEGRAM_CONVERSATION_E2E: '1',
+      VAC_QA_MARKER: marker,
+      VAC_QA_OWNER: driver.id,
+      VAC_QA_JOURNAL: join(FAILURE_LOG_DIRECTORY, `${marker}-bot.json`),
     });
     const start = async (phase) => {
       const logPath = join(dataDirectory, `bot-${phase}.redacted.log`);
@@ -907,7 +925,9 @@ export async function runConversationE2E(options, environment = process.env) {
   } catch (error) {
     runError = error;
   } finally {
-    await stopBot(state?.bot, options.timeoutMs).catch(() => {});
+    await stopBot(state?.bot, options.timeoutMs).catch((error) => {
+      runError ||= error;
+    });
     if (state) {
       let createdMessages = [];
       try {
@@ -926,7 +946,18 @@ export async function runConversationE2E(options, environment = process.env) {
           runError ||= error;
         });
       }
-      messagesDeleted = await deleteMessages(state, createdMessages);
+      try {
+        const cleanup = await state.ledger?.cleanup({
+          read: () =>
+            readQaHistory(state.client, state.target, state.ledger.baseline),
+          remove: (ids) =>
+            state.client.deleteMessages(state.target, ids, { revoke: true }),
+        });
+        messagesDeleted = cleanup?.pass ?? false;
+        leftoverMessages = cleanup?.leftovers;
+      } catch (error) {
+        runError ||= error;
+      }
       if (!messagesDeleted) {
         runError ||= new Error(
           'Failed to delete every message created by the Telegram E2E.'
@@ -935,11 +966,15 @@ export async function runConversationE2E(options, environment = process.env) {
       try {
         // Re-read after deletion: success means nothing newer than the
         // boundary is still visible to the driver.
-        leftoverMessages = countLeftovers(
-          await recentMessages(state.client, state.target, state.timeoutMs),
-          state.baselineMessageId,
-          messageId
-        );
+        leftoverMessages = state.ledger
+          ? (
+              await readQaHistory(
+                state.client,
+                state.target,
+                state.ledger.baseline
+              )
+            ).filter((message) => state.ledger.owns(message)).length
+          : 0;
       } catch (error) {
         runError ||= error;
       }
@@ -953,12 +988,16 @@ export async function runConversationE2E(options, environment = process.env) {
       () => driver.client.disconnect(),
       DRIVER_OPERATION_TIMEOUT_MS,
       'test-user disconnect'
-    ).catch(() => {});
+    ).catch((error) => {
+      runError ||= error;
+    });
     await withDeadline(
       () => driver.client.destroy?.(),
       DRIVER_OPERATION_TIMEOUT_MS,
       'test-user destroy'
-    ).catch(() => {});
+    ).catch((error) => {
+      runError ||= error;
+    });
     if (temporary && dataDirectory && !options.keepData) {
       await rm(dataDirectory, { force: true, recursive: true });
     }

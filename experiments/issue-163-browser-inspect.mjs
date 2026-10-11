@@ -3,12 +3,13 @@ import { writeFile } from 'node:fs/promises';
 import { extractPageListings } from '../src/browser-collector.js';
 import { browserAdapterFor } from '../src/browser-adapters.js';
 import { makeBrowserCommander } from 'browser-commander';
-import { gotoPage } from '../src/utils.js';
+import { settleCleanup, gotoPage } from '../src/utils.js';
 
 const browser = await chromium.launch({ headless: true });
+let commander;
 try {
   const page = await browser.newPage();
-  const commander = makeBrowserCommander({ page });
+  commander = makeBrowserCommander({ page });
   await page.goto('https://vietnam-real.estate/ru/rent/', {
     waitUntil: 'domcontentloaded',
     timeout: 60000,
@@ -70,7 +71,9 @@ try {
   });
   await trace.checkpoint('loaded');
   await trace.stop();
-  await commander.destroy();
 } finally {
-  await browser.close();
+  await settleCleanup(
+    [() => commander?.destroy(), () => browser.close()],
+    'Browser diagnostic cleanup failed.'
+  );
 }

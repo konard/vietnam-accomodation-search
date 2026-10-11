@@ -5,16 +5,24 @@
 // Private bodies/identities stay in the explicitly supplied local directory.
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, statfs, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { parseEnv } from 'node:util';
 import { writeStringSession } from '@mtcute/core/utils.js';
-import { createApplication, LinkCliMirror, LinksStore } from '../src/index.js';
+import {
+  createApplication,
+  LinkCliMirror,
+  LinksStore,
+  MtcuteTelegramProvider,
+} from '../src/index.js';
 import { runClink } from '../src/link-cli-mirror.js';
 import { createMtcuteClient } from '../src/telegram-user.js';
 import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
+
+import { withQaCleanup } from './qa-cleanup.mjs';
+import { QaOwnedMessages } from './qa-owned-messages.mjs';
 
 function options(values) {
   const names = new Map([
@@ -26,8 +34,9 @@ function options(values) {
     ['--converter-module', 'converterModule'],
     ['--output', 'output'],
     ['--require-ocr', 'requireOcr'],
+    ['--keep-data', 'keepData'],
   ]);
-  const result = { requireOcr: '1' };
+  const result = { requireOcr: '1', keepData: '0' };
   for (let index = 0; index < values.length; index += 2) {
     const name = names.get(values[index]);
     if (!name || !values[index + 1]) {
@@ -38,6 +47,8 @@ function options(values) {
   assert([...names.values()].every((name) => result[name]));
   assert(['0', '1'].includes(result.requireOcr));
   result.requireOcr = result.requireOcr === '1';
+  assert(['0', '1'].includes(result.keepData));
+  result.keepData = result.keepData === '1';
   result.sourceOrdinal = Number(result.sourceOrdinal);
   assert(Number.isInteger(result.sourceOrdinal) && result.sourceOrdinal > 0);
   result.dataDirectory = resolve(result.dataDirectory);
@@ -52,6 +63,14 @@ async function credentials(paths) {
   const converter = await import(
     pathToFileURL(resolve(paths.converterModule)).href
   );
+  assert(
+    user.TELEGRAM_EXPECTED_USER_ID && bot.TELEGRAM_EXPECTED_BOT_ID,
+    'Explicit runtime and bot identity pins required.'
+  );
+  assert.equal(
+    bot.TELEGRAM_BOT_TOKEN.split(':')[0],
+    bot.TELEGRAM_EXPECTED_BOT_ID
+  );
   return {
     token: bot.TELEGRAM_BOT_TOKEN,
     user: {
@@ -61,6 +80,7 @@ async function credentials(paths) {
         converter.convertFromGramjsSession(user.TELEGRAM_USER_SESSION)
       ),
       sessionFormat: 'mtcute/session-string-v1',
+      expectedUserId: user.TELEGRAM_EXPECTED_USER_ID,
     },
   };
 }
@@ -200,54 +220,25 @@ async function verifyReadback(store, source, observed, result) {
   return fresh;
 }
 
-function markOwnedMessages(api, owner, marker, created, result) {
-  api.config.use(async (previous, method, payload, signal) => {
-    let outgoing = payload;
-    if (method.startsWith('send')) {
-      assert.equal(
-        String(payload.chat_id),
-        owner,
-        'Only the owner may receive QA output.'
-      );
-      outgoing = {
-        ...payload,
-        ...(payload.text ? { text: `${marker}\n${payload.text}` } : {}),
-        ...(Array.isArray(payload.media)
-          ? {
-              media: payload.media.map((item) => ({
-                ...item,
-                caption: `${marker}\n${item.caption || ''}`,
-              })),
-            }
-          : !payload.text
-            ? { caption: `${marker}\n${payload.caption || ''}` }
-            : {}),
-      };
-    }
-    const response = await previous(method, outgoing, signal);
-    if (method.startsWith('send') && response.ok) {
-      const messages = Array.isArray(response.result)
-        ? response.result
-        : [response.result];
-      for (const message of messages) {
-        if (message.message_id) {
-          created.add(message.message_id);
-        }
-        if (message.photo?.length) {
-          result.notificationPhotoDelivered = true;
-        }
-      }
-    }
-    return response;
-  });
-}
-
-async function notify(application, token, owner, marker, created, result) {
+async function notify(application, token, owner, ledger, result, bots) {
   const bot = await application.createBot(token);
+  bots.push(bot);
   const identity = await bot.api.getMe();
   assert.equal(String(identity.id), token.split(':', 1)[0]);
   assert.notEqual(owner, String(identity.id));
-  markOwnedMessages(bot.api, owner, marker, created, result);
+  ledger.install(bot.api, owner);
+  bot.api.config.use(async (previous, method, payload, signal) => {
+    const response = await previous(method, payload, signal);
+    if (response.ok && method.startsWith('send')) {
+      const messages = Array.isArray(response.result)
+        ? response.result
+        : [response.result];
+      result.notificationPhotoDelivered ||= messages.some(
+        (message) => message.photo?.length
+      );
+    }
+    return response;
+  });
   const candidate = (await application.store.listOffers()).find(
     (offer) =>
       offer.photos?.length &&
@@ -266,7 +257,7 @@ async function notify(application, token, owner, marker, created, result) {
   });
   await application.presetService.subscribe(owner, 'qa-real-source');
   await bot.subscriptionScheduler.tick();
-  assert(created.size > 0, 'No actual notification was sent.');
+  assert(ledger.botIds.size > 0, 'No actual notification was sent.');
   assert(
     result.notificationPhotoDelivered,
     'Real notification must include an accepted photo, not only text.'
@@ -277,68 +268,108 @@ async function notify(application, token, owner, marker, created, result) {
   const shown = await application.store.loadRecords('shown-offers');
   assert(shown.some((item) => item.userId === owner && item.deliveredAt));
   result.notificationDelivered = true;
-  const beforeRestart = created.size;
+  const beforeRestart = ledger.botIds.size;
   const restarted = createApplication({
     directory: application.store.directory,
     binaryMirror: true,
   });
   const second = await restarted.createBot(token);
-  markOwnedMessages(second.api, owner, marker, created, result);
+  bots.push(second);
+  ledger.install(second.api, owner);
   await second.subscriptionScheduler.tick();
-  assert.equal(created.size, beforeRestart);
+  assert.equal(ledger.botIds.size, beforeRestart);
   result.noDuplicateAfterRestart = true;
   return bot;
 }
 
-async function cleanup({
-  application,
-  ingestion,
-  token,
-  bot,
-  owner,
-  created,
-  result,
-}) {
-  // Stop ingestion before removing deliveries, so cleanup cannot race a
-  // still-running source producer. Message cleanup still runs if stop fails.
-  try {
+async function cleanup({ ingestion, observer, peer, ledger, bots, result }) {
+  const failures = [];
+  const attempt = async (name, action) => {
+    try {
+      await action();
+    } catch {
+      failures.push(name);
+    }
+  };
+  for (const bot of bots) {
+    await attempt('notification producer', () =>
+      bot.subscriptionScheduler.stop()
+    );
+  }
+  await attempt('ingestion producer', async () => {
     await ingestion.destroy();
     result.providerDestroyed = true;
-  } catch {
-    result.providerDestroyed = false;
+  });
+  if (ledger && observer?.client && peer) {
+    await attempt('owned messages', async () => {
+      const verified = await ledger.cleanup({
+        read: async () => {
+          const messages = [];
+          for await (const message of observer.client.iterHistory(peer, {
+            minId: ledger.baseline,
+          })) {
+            if (Number(message.id) <= ledger.baseline) {
+              break;
+            }
+            messages.push(message);
+          }
+          return messages;
+        },
+        remove: (ids) =>
+          observer.client.deleteMessagesById(peer, ids, { revoke: true }),
+      });
+      result.cleanup = verified;
+      assert(verified.pass, 'Owned messages survived independent cleanup.');
+    });
+  }
+  if (observer) {
+    await attempt('independent observer', () => observer.destroy());
+  }
+  result.cleanup ||= { pass: failures.length === 0, leftovers: 0 };
+  if (failures.length) {
     result.pass = false;
+    throw new Error(`QA cleanup failed: ${failures.join(', ')}`);
   }
-  if (!bot && created.size) {
-    try {
-      bot = await application.createBot(token);
-    } catch {
-      result.pass = false;
-    }
-  }
-  let deleted = 0;
-  for (const id of created) {
-    try {
-      await bot.api.deleteMessage(owner, id);
-      deleted += 1;
-    } catch {
-      result.pass = false;
-    }
-  }
-  result.cleanup = {
-    created: created.size,
-    deleted,
-    pass: deleted === created.size,
-    provider: result.providerDestroyed,
-  };
 }
 
 async function run(paths) {
+  let result;
+  try {
+    await withQaCleanup(async (scope, signal) => {
+      result = await runOwned(paths, scope, signal);
+    });
+  } catch (error) {
+    if (!result) {
+      throw error;
+    }
+    result.pass = false;
+    result.cleanup = { ...result.cleanup, pass: false };
+  }
+  if (result) {
+    await writeFile(paths.output, `${JSON.stringify(result, null, 2)}\n`, {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    console.log(JSON.stringify(result));
+  }
+  return result;
+}
+
+// eslint-disable-next-line max-statements -- Native replay and owner acceptance share one failure-safe resource transaction.
+async function runOwned(paths, scope, signal) {
   assertManualLocalRun(process.env);
   assert.equal(process.env.TELEGRAM_REAL_WORKFLOW_E2E, '1');
   const started = performance.now();
   const initial = await statfs(resolve(paths.dataDirectory, '..'));
   assert(initial.bavail * initial.bsize >= 8 * 1024 ** 3, 'QA_DISK_PREFLIGHT');
   await mkdir(paths.dataDirectory, { mode: 0o700 });
+  if (!paths.keepData) {
+    scope.defer('private QA data', () =>
+      result.cleanup?.pass === false
+        ? undefined
+        : rm(paths.dataDirectory, { recursive: true, force: true })
+    );
+  }
   const result = {
     mode: 'real-source-native-workflow',
     startedAt: new Date().toISOString(),
@@ -378,16 +409,33 @@ async function run(paths) {
   const ingestion = application.createTelegramIngestionService(secret.user);
   const observed = new Map();
   observeIngestion(ingestion, result, observed);
-  const created = new Set();
-  const marker = `real-source-e2e-${randomBytes(8).toString('hex')}`;
-  let bot;
+  const marker = `qa-real-source-${randomBytes(8).toString('hex')}`;
+  const bots = [];
+  let observer;
+  let peer;
+  let ledger;
+  scope.defer('real-source resources and conversation', () =>
+    cleanup({ ingestion, observer, peer, ledger, bots, result })
+  );
   let owner;
   try {
+    signal.throwIfAborted();
     result.phase = 'preflight';
     await store.mirror.preflight();
     owner = String((await ingestion.provider.identity()).id);
+    assert.equal(owner, String(secret.user.expectedUserId));
+    observer = new MtcuteTelegramProvider({ ...secret.user, logger: silent });
+    assert.equal(String((await observer.identity()).id), owner);
+    peer = await observer.resolveEntity(Number(secret.token.split(':')[0]));
+    const latest = await observer.client.getHistory(peer, { limit: 1 });
+    ledger = new QaOwnedMessages({
+      marker,
+      baseline: latest[0]?.id || 0,
+      journal: resolve(paths.dataDirectory, 'message-ownership.json'),
+    });
+    await ledger.save();
     result.phase = 'native-ingestion';
-    result.ingestion = await ingestion.start([source]);
+    result.ingestion = await ingestion.start([source], { signal });
     ingestion.subscription.stop();
     await ingestion.pending;
     assert(result.messages > 0);
@@ -408,7 +456,8 @@ async function run(paths) {
       logger: silent,
     });
     result.phase = 'notification';
-    bot = await notify(restored, secret.token, owner, marker, created, result);
+    signal.throwIfAborted();
+    await notify(restored, secret.token, owner, ledger, result, bots);
     result.phase = 'complete';
     result.pass = true;
   } catch (error) {
@@ -419,22 +468,8 @@ async function run(paths) {
         error instanceof assert.AssertionError ? error.message : undefined,
     };
   } finally {
-    await cleanup({
-      application,
-      ingestion,
-      token: secret.token,
-      bot,
-      owner,
-      created,
-      result,
-    });
     result.elapsedMs = Math.round(performance.now() - started);
-    await writeFile(paths.output, `${JSON.stringify(result, null, 2)}\n`, {
-      mode: 0o600,
-      flag: 'wx',
-    });
   }
-  console.log(JSON.stringify(result));
   return result;
 }
 

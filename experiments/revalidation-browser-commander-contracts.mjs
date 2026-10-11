@@ -7,6 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
+import { settleCleanup } from '../src/utils.js';
 
 const modulePath = resolve(
   process.argv[2] || 'node_modules/browser-commander/src/index.js'
@@ -48,8 +49,10 @@ try {
         pass: result.navigated === true && elapsedMs <= 4500,
       });
     } finally {
-      await commander.destroy();
-      await page.close();
+      await settleCleanup(
+        [() => commander.destroy(), () => page.close()],
+        'Browser contract fixture cleanup failed.'
+      );
     }
   }
 } finally {

@@ -1,4 +1,6 @@
 // Exact, run-owned Docker cleanup. Never prunes shared Docker resources.
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -33,11 +35,14 @@ export async function dockerInventory(run = dockerCommand) {
 }
 
 export class QaDockerCleanup {
-  constructor({ runId, baseline, run = dockerCommand }) {
+  constructor({ runId, baseline, journal, projectName, run = dockerCommand }) {
     if (!/^vac-qa-[a-z0-9-]{8,100}$/u.test(runId)) {
       throw new Error('Unique Docker QA run ID required.');
     }
     this.runId = runId;
+    this.journal = journal;
+    this.projectName = projectName;
+    this.writes = Promise.resolve();
     this.label = `foundation.qa.run=${runId}`;
     this.baseline = baseline;
     this.run = run;
@@ -59,6 +64,35 @@ export class QaDockerCleanup {
     this.builders.add(name);
   }
 
+  save() {
+    if (!this.journal) {
+      return Promise.resolve();
+    }
+    const content = JSON.stringify({
+      runId: this.runId,
+      projectName: this.projectName,
+      baseline: this.baseline,
+      imageRefs: [...this.imageRefs],
+      builders: [...this.builders],
+    });
+    this.writes = this.writes
+      .catch(() => {})
+      .then(async () => {
+        await mkdir(dirname(this.journal), { recursive: true, mode: 0o700 });
+        await writeFile(`${this.journal}.tmp`, content, { mode: 0o600 });
+        await rename(`${this.journal}.tmp`, this.journal);
+      });
+    return this.writes;
+  }
+
+  static async restore(journal, { run = dockerCommand } = {}) {
+    const state = JSON.parse(await readFile(journal, 'utf8'));
+    const cleaner = new QaDockerCleanup({ ...state, journal, run });
+    state.imageRefs.forEach((ref) => cleaner.ownImage(ref));
+    state.builders.forEach((name) => cleaner.ownBuilder(name));
+    return cleaner;
+  }
+
   async cleanup() {
     const failures = [];
     const attempt = async (name, action) => {
@@ -68,37 +102,60 @@ export class QaDockerCleanup {
         failures.push(name);
       }
     };
-    for (const [kind, list, remove] of [
-      [
-        'containers',
-        ['ps', '-aq', '--filter', `label=${this.label}`],
-        ['rm', '-f'],
-      ],
-      [
-        'networks',
-        ['network', 'ls', '-q', '--filter', `label=${this.label}`],
-        ['network', 'rm'],
-      ],
-      [
-        'volumes',
-        ['volume', 'ls', '-q', '--filter', `label=${this.label}`],
-        ['volume', 'rm'],
-      ],
-    ]) {
-      await attempt(kind, async () => {
-        for (const id of lines(await this.run(list))) {
-          // A unique label alone is not permission to destroy the baseline.
-          if (this.baseline[kind].includes(id)) {
-            throw new Error(
-              'QA label unexpectedly belongs to baseline resource.'
-            );
+    // A reserved unique project namespace covers tags minted by deploy after
+    // the journal was written, including interrupted candidate/rollback tags.
+    await attempt('project image discovery', async () => {
+      if (this.projectName) {
+        const current = await dockerInventory(this.run);
+        for (const row of current.images) {
+          const ref = row.split(' ').at(-1);
+          if (
+            ref.startsWith(`${this.projectName}:`) &&
+            !this.baseline.images.includes(row)
+          ) {
+            this.ownImage(ref);
           }
-          await attempt(`${kind} deletion`, () => this.run([...remove, id]));
         }
-        if (lines(await this.run(list)).length) {
-          throw new Error('Owned Docker resource survived.');
-        }
-      });
+      }
+    });
+    for (const label of [
+      this.label,
+      ...(this.projectName
+        ? [`com.docker.compose.project=${this.projectName}`]
+        : []),
+    ]) {
+      for (const [kind, list, remove] of [
+        [
+          'containers',
+          ['ps', '-aq', '--filter', `label=${label}`],
+          ['rm', '-f'],
+        ],
+        [
+          'networks',
+          ['network', 'ls', '-q', '--filter', `label=${label}`],
+          ['network', 'rm'],
+        ],
+        [
+          'volumes',
+          ['volume', 'ls', '-q', '--filter', `label=${label}`],
+          ['volume', 'rm'],
+        ],
+      ]) {
+        await attempt(kind, async () => {
+          for (const id of lines(await this.run(list))) {
+            // A unique label alone is not permission to destroy the baseline.
+            if (this.baseline[kind].includes(id)) {
+              throw new Error(
+                'QA label unexpectedly belongs to baseline resource.'
+              );
+            }
+            await attempt(`${kind} deletion`, () => this.run([...remove, id]));
+          }
+          if (lines(await this.run(list)).length) {
+            throw new Error('Owned Docker resource survived.');
+          }
+        });
+      }
     }
     for (const builder of this.builders) {
       await attempt('builder deletion', async () => {

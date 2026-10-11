@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { chromium } from 'playwright';
 import { makeBrowserCommander } from 'browser-commander';
-import { gotoPage } from '../src/utils.js';
+import { gotoPage, settleCleanup } from '../src/utils.js';
 
 // Finite local stalled-response controls, no public-site load or credentials.
 const server = createServer(() => {});
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const browser = await chromium.launch();
+let browser;
 const results = [];
 try {
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  browser = await chromium.launch();
   for (const callerAbort of [false, true]) {
     const page = await browser.newPage();
     const commander = makeBrowserCommander({ page });
@@ -42,15 +43,26 @@ try {
       });
     } finally {
       clearTimeout(timer);
-      await commander.destroy();
-      await page.close();
+      await settleCleanup(
+        [() => commander.destroy(), () => page.close()],
+        'Navigation fixture cleanup failed.'
+      );
     }
   }
   console.log(
     JSON.stringify({ mode: 'self-authored-local-navigation', results })
   );
 } finally {
-  await browser.close();
-  server.closeAllConnections();
-  await new Promise((resolve) => server.close(resolve));
+  await settleCleanup(
+    [
+      () => browser?.close(),
+      async () => {
+        server.closeAllConnections();
+        if (server.listening) {
+          await new Promise((resolve) => server.close(resolve));
+        }
+      },
+    ],
+    'Navigation diagnostic cleanup failed.'
+  );
 }

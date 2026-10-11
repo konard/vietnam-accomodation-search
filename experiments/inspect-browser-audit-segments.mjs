@@ -12,6 +12,7 @@ import { launchBrowser, makeBrowserCommander } from 'browser-commander';
 
 import { browserAdapterFor } from '../src/browser-adapters.js';
 import { extractPageListings } from '../src/browser-collector.js';
+import { withQaCleanup } from './qa-cleanup.mjs';
 
 const [checkpointArgument, sourceUrl] = process.argv.slice(2);
 if (!checkpointArgument || !sourceUrl) {
@@ -24,13 +25,15 @@ if (!checkpoint.startsWith('/tmp/')) {
   throw new Error('Private checkpoint inspection is restricted to /tmp/.');
 }
 
-const launched = await launchBrowser({
-  channel: 'chrome',
-  engine: 'playwright',
-  headless: true,
-});
-const commander = makeBrowserCommander({ page: launched.page });
-try {
+await withQaCleanup(async (scope) => {
+  const launched = await launchBrowser({
+    channel: 'chrome',
+    engine: 'playwright',
+    headless: true,
+  });
+  scope.defer('browser', () => launched.browser.close());
+  const commander = makeBrowserCommander({ page: launched.page });
+  scope.defer('commander', () => commander.destroy());
   await commander.goto({
     url: pathToFileURL(checkpoint).toString(),
     waitUntil: 'domcontentloaded',
@@ -61,7 +64,4 @@ try {
         unknown.length || Object.values(missing).some(Boolean)
     );
   console.log(JSON.stringify(diagnostics, null, 2));
-} finally {
-  await commander.destroy().catch(() => {});
-  await launched.browser.close().catch(() => {});
-}
+});

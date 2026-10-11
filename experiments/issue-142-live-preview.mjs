@@ -2,6 +2,7 @@
 // Read-only public preview probe. Print aggregate evidence only.
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { settleCleanup } from '../src/utils.js';
 import { tmpdir } from 'node:os';
 import { chromium } from 'playwright';
 import {
@@ -33,10 +34,11 @@ const source = {
   searchUrl: preview.href,
 };
 const directory = await mkdtemp(join(tmpdir(), 'live-preview-resume-'));
-const browser = await chromium.launch({ headless: true });
+let browser;
 let complete = false;
 let cutoffObserved = false;
 try {
+  browser = await chromium.launch({ headless: true });
   for (let pass = 0; pass < passes && !complete; pass += 1) {
     const startedAt = Date.now();
     const visits = [];
@@ -107,6 +109,11 @@ try {
     JSON.stringify({ mode: 'live-public-preview', complete, cutoffObserved })
   );
 } finally {
-  await browser.close();
-  await rm(directory, { recursive: true, force: true });
+  await settleCleanup(
+    [
+      () => browser?.close(),
+      () => rm(directory, { recursive: true, force: true }),
+    ],
+    'Browser probe cleanup failed.'
+  );
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { settleCleanup } from '../src/utils.js';
 
 // Inspect a private Browser Commander checkpoint without printing raw card text.
 import { realpath } from 'node:fs/promises';
@@ -57,5 +58,8 @@ try {
   );
   console.log(JSON.stringify(cards, null, 2));
 } finally {
-  await browser.close();
+  await settleCleanup(
+    [() => browser.close()],
+    'Browser diagnostic cleanup failed.'
+  );
 }

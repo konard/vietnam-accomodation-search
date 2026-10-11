@@ -1,7 +1,7 @@
 // Private-chat QA send tracking and paged independent cleanup verification.
 // No credential, original message body or numeric identity is logged.
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rename } from 'node:fs/promises';
 
 const idOf = (message) => Number(message?.message_id ?? message?.id ?? 0);
 const textOf = (message) =>
@@ -30,9 +30,12 @@ export class QaOwnedMessages {
         ids: [...this.ids],
         botIds: [...this.botIds],
       });
-      this.writes = this.writes.then(() =>
-        writeFile(this.journal, content, { mode: 0o600 })
-      );
+      this.writes = this.writes
+        .catch(() => {})
+        .then(async () => {
+          await writeFile(`${this.journal}.tmp`, content, { mode: 0o600 });
+          await rename(`${this.journal}.tmp`, this.journal);
+        });
       await this.writes;
     }
   }

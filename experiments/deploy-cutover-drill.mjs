@@ -47,6 +47,14 @@ import {
 } from './telegram-bot-conversation-e2e.mjs';
 import { requireIdentityPins } from './telegram-e2e-identities.mjs';
 
+import { withQaCleanup } from './qa-cleanup.mjs';
+import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
+import {
+  QaDockerCleanup,
+  dockerInventory,
+  dockerCommand,
+} from './qa-docker-cleanup.mjs';
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DEPLOY = join(ROOT, 'scripts', 'deploy.mjs');
 const BASE_COMPOSE = join(ROOT, 'compose.yaml');
@@ -103,6 +111,7 @@ function composeEnvironment(options) {
   // `down` interpolates the whole file, including the build arguments.
   return {
     ...process.env,
+    BUILDX_BUILDER: options.builder,
     BUILD_DATE: 'drill',
     DATA_DIRECTORY_HOST: options.dataDirectory,
     ENV_FILE: options.botEnv,
@@ -163,9 +172,10 @@ function deployArguments(options, transition) {
   return [
     'deploy',
     ...common,
-    ...(transition === 'unhealthy-candidate'
-      ? ['--compose-file', options.unhealthyCompose]
-      : []),
+    '--compose-file',
+    transition === 'unhealthy-candidate'
+      ? options.unhealthyCompose
+      : options.composeFile,
     ...(image ? ['--image', image] : []),
   ];
 }
@@ -197,7 +207,7 @@ async function mutate(options, transition) {
   if (transition === 'recreate') {
     const down = await run(
       'docker',
-      ['compose', '-f', BASE_COMPOSE, '-p', options.projectName, 'down'],
+      ['compose', '-f', options.composeFile, '-p', options.projectName, 'down'],
       { env, log: options.log }
     );
     if (down.code !== 0) {
@@ -231,7 +241,8 @@ async function sample(options, samples, stop) {
 }
 
 async function sendMarkers(state, sent, stop) {
-  while (!stop.done) {
+  while (!stop.done && !state.signal.aborted) {
+    await state.ledger.save();
     const sequence = state.nextSequence;
     state.nextSequence += 1;
     const message = await withDeadline(
@@ -242,24 +253,18 @@ async function sendMarkers(state, sent, stop) {
       driverDeadline(TIMEOUT_MS),
       'marker send'
     );
-    state.messageIds.add(messageId(message));
+    await state.ledger.record(message);
     sent.push({ date: message.date, sequence });
     await delay(state.markerIntervalMs);
   }
 }
 
-async function messagesSince(state, minId) {
-  const messages = [
-    ...(await withDeadline(
-      () => state.client.getMessages(state.target, { limit: 500, minId }),
-      driverDeadline(TIMEOUT_MS),
-      'conversation history read'
-    )),
-  ];
-  for (const message of messages) {
-    state.messageIds.add(messageId(message));
-  }
-  return messages;
+function messagesSince(state, minId) {
+  return withDeadline(
+    () => readQaHistory(state.client, state.target, minId),
+    driverDeadline(TIMEOUT_MS),
+    'paged conversation history'
+  );
 }
 
 async function latestId(state) {
@@ -273,15 +278,22 @@ async function latestId(state) {
 
 async function command(state, text, expected) {
   const minId = await latestId(state);
+  await state.ledger.save();
   const message = await state.client.sendMessage(state.target, {
-    message: text,
+    message: `${text}\n${state.ledger.marker}`,
   });
-  state.messageIds.add(messageId(message));
+  await state.ledger.record(message);
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const replies = (await messagesSince(state, minId)).filter(
       (reply) => !reply.out
     );
-    if (replies.some((reply) => messageText(reply).startsWith(expected))) {
+    if (
+      replies.some((reply) =>
+        messageText(reply)
+          .replace(`${state.ledger.marker}\n`, '')
+          .startsWith(expected)
+      )
+    ) {
       return;
     }
     await delay(1_000);
@@ -297,13 +309,14 @@ async function runTransition(state, options, transition, baseline) {
   const stop = { done: false };
   const samples = [];
   const sent = [];
-  const background = Promise.all([
+  const background = Promise.allSettled([
     sample(options, samples, stop),
     sendMarkers(state, sent, stop),
   ]);
   const started = Date.now();
   let exitCode;
   let mutationMs;
+  let producerFailures;
   try {
     exitCode = await mutate(options, transition);
   } finally {
@@ -311,7 +324,14 @@ async function runTransition(state, options, transition, baseline) {
     // Keep sending markers while the new poller settles.
     await delay(options.settleMs);
     stop.done = true;
-    await background;
+    const settled = await background;
+    producerFailures = settled.filter(({ status }) => status === 'rejected');
+  }
+  if (producerFailures.length) {
+    throw new AggregateError(
+      producerFailures.map(({ reason }) => reason),
+      'QA producers failed.'
+    );
   }
   // Let the bot answer the final markers before reading the replies.
   await delay(options.settleMs);
@@ -387,7 +407,7 @@ async function cleanup(state, options) {
       [
         'compose',
         '-f',
-        BASE_COMPOSE,
+        options.composeFile,
         '-p',
         options.projectName,
         'down',
@@ -399,23 +419,18 @@ async function cleanup(state, options) {
   } catch {
     result.project = false;
   }
-  try {
-    await messagesSince(state, state.baselineMessageId);
-  } catch {
-    result.conversation = false;
+  if (!result.project) {
+    const rescued = await options.owned.cleanup();
+    result.project = rescued.pass;
   }
-  const identifiers = [...state.messageIds].filter((value) => value > 0);
   try {
-    if (identifiers.length) {
-      await state.client.deleteMessages(state.target, identifiers, {
-        revoke: true,
-      });
-    }
-    const remaining = await messagesSince(state, state.baselineMessageId);
-    result.leftoverMessages = remaining.filter(
-      (message) => messageId(message) > state.baselineMessageId
-    ).length;
-    result.conversation = result.leftoverMessages === 0;
+    const verified = await state.ledger.cleanup({
+      read: () => messagesSince(state, state.ledger.baseline),
+      remove: (ids) =>
+        state.client.deleteMessages(state.target, ids, { revoke: true }),
+    });
+    result.leftoverMessages = verified.leftovers;
+    result.conversation = verified.pass;
   } catch {
     result.conversation = false;
   }
@@ -429,7 +444,15 @@ async function cleanup(state, options) {
   return result;
 }
 
-export async function runDeployDrill(options, environment = process.env) {
+export function runDeployDrill(options, environment = process.env) {
+  return withQaCleanup(
+    (scope, signal) => runOwnedDrill(options, environment, scope, signal),
+    { cleanupTimeoutMs: 90_000 }
+  );
+}
+
+// eslint-disable-next-line max-lines-per-function, max-statements -- The drill owns one deployment and teardown transaction across setup and every transition.
+async function runOwnedDrill(options, environment, scope, signal) {
   assertDrillBoundary(environment);
   const botEnvironment = await environmentFile(options.botEnv);
   const driverEnvironment = await environmentFile(options.userEnv);
@@ -447,22 +470,81 @@ export async function runDeployDrill(options, environment = process.env) {
     await userCredentials(driverEnvironment, pins.driver),
     TIMEOUT_MS
   );
+  scope.defer('driver disconnect', () =>
+    withDeadline(
+      () => driver.client.disconnect(),
+      driverDeadline(TIMEOUT_MS),
+      'driver disconnect'
+    )
+  );
   progress('identities-pinned');
   const run = randomBytes(4).toString('hex');
+  options = { ...options, projectName: `${options.projectName}-${run}` };
   const projectDirectory = join(ROOT, '.deploy', options.projectName);
-  await mkdir(projectDirectory, { mode: 0o700, recursive: true });
+  await mkdir(dirname(projectDirectory), { mode: 0o700, recursive: true });
+  await mkdir(projectDirectory, { mode: 0o700 });
+  let dockerClean = true;
+  let conversationClean = true;
+  scope.defer('private drill project directory', async () => {
+    if (dockerClean && conversationClean) {
+      await rm(projectDirectory, { recursive: true, force: true });
+    }
+  });
+  const runId = `vac-qa-drill-${run}`;
+  const owned = new QaDockerCleanup({
+    runId,
+    projectName: options.projectName,
+    baseline: await dockerInventory(),
+    journal: join(projectDirectory, 'docker-ownership.json'),
+  });
+  const builder = `${runId}-builder`;
+  owned.ownBuilder(builder);
+  if (
+    !owned.baseline.images.some((row) =>
+      row.endsWith(' moby/buildkit:buildx-stable-1')
+    )
+  ) {
+    owned.ownImage('moby/buildkit:buildx-stable-1');
+  }
+  scope.defer('Docker ownership', async () => {
+    const report = await owned.cleanup();
+    dockerClean = report.pass;
+    if (!report.pass) {
+      throw new Error('Owned Docker cleanup failed.');
+    }
+  });
+  dockerClean = false;
+  await owned.save();
+  const composeFile = join(projectDirectory, 'compose.qa.yaml');
+  const marker = `qa-drill-${run}`;
+  await writeFile(
+    composeFile,
+    `services:\n  app:\n    extends:\n      file: ${JSON.stringify(BASE_COMPOSE)}\n      service: app\n    environment:\n      TELEGRAM_CONVERSATION_E2E: '1'\n      VAC_QA_MARKER: ${marker}\n      VAC_QA_OWNER: '${driver.id}'\n      VAC_QA_JOURNAL: /app/qa-journals/bot.json\n      NODE_OPTIONS: '--import /app/experiments/qa-bot-preload.mjs'\n    volumes:\n      - ${JSON.stringify(`${join(ROOT, 'experiments')}:/app/experiments:ro`)}\n      - ${JSON.stringify(`${projectDirectory}:/app/qa-journals`)}\n`,
+    { mode: 0o600 }
+  );
+  await dockerCommand([
+    'buildx',
+    'create',
+    '--name',
+    builder,
+    '--driver',
+    'docker-container',
+  ]);
   const unhealthyCompose = join(projectDirectory, 'compose.unhealthy.yaml');
   await writeFile(
     unhealthyCompose,
-    unhealthyComposeFile(relative(dirname(unhealthyCompose), BASE_COMPOSE)),
+    unhealthyComposeFile(relative(dirname(unhealthyCompose), composeFile)),
     { mode: 0o600 }
   );
   const drill = {
     ...options,
+    builder,
+    composeFile,
     botEnv: resolve(options.botEnv),
     log: join(projectDirectory, `drill-${run}.log`),
     readyUrl: `http://127.0.0.1:${options.healthPort}/ready`,
     run,
+    owned,
     unhealthyCompose,
   };
   // A new drill directory; an existing one must already be a drill's.
@@ -475,18 +557,33 @@ export async function runDeployDrill(options, environment = process.env) {
   const state = {
     client: driver.client,
     markerIntervalMs: options.markerIntervalMs,
-    messageIds: new Set(),
+    signal,
     nextSequence: 1,
     run,
     target,
   };
   state.baselineMessageId = await latestId(state);
+  state.ledger = new QaOwnedMessages({
+    marker,
+    baseline: state.baselineMessageId,
+    journal: join(projectDirectory, 'driver-ownership.json'),
+  });
+  await state.ledger.save();
+  scope.defer('drill conversation and producer', async () => {
+    const result = await cleanup(state, drill);
+    conversationClean = result.conversation && result.project;
+    if (!result.conversation || !result.project) {
+      throw new Error('Drill cleanup failed.');
+    }
+  });
+  conversationClean = false;
   const baseline = {};
   const transitions = [];
   let cleanupResult;
   let runError;
   try {
     for (const transition of options.transitions) {
+      signal.throwIfAborted();
       const result = await runTransition(state, drill, transition, baseline);
       transitions.push(result);
       if (transition === 'first-deploy') {
@@ -508,11 +605,6 @@ export async function runDeployDrill(options, environment = process.env) {
     runError = error;
   } finally {
     cleanupResult = await cleanup(state, drill);
-    await withDeadline(
-      () => driver.client.disconnect(),
-      driverDeadline(TIMEOUT_MS),
-      'test-user disconnect'
-    ).catch(() => {});
   }
   if (runError) {
     throw runError;

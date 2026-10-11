@@ -13,7 +13,8 @@ const count = Number(process.argv[3] || 5_000);
 if (
   !['sync', 'async', 'bare'].includes(mode) ||
   !Number.isInteger(count) ||
-  count < 1
+  count < 1 ||
+  count > 100_000
 ) {
   throw new Error(
     'Usage: profile-clink-import.mjs sync|async|bare [link-count]'

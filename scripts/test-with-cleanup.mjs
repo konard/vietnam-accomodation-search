@@ -16,7 +16,6 @@ export function runCleanTests(args = process.argv.slice(2)) {
     }
     const directory = await qaTemporaryDirectory(scope, 'vac-suite-');
     const coverage = args.includes('--coverage');
-    const strict = args.includes('--strict');
     const external = args.filter(
       (arg) => !['--strict', '--coverage'].includes(arg)
     );
@@ -64,7 +63,14 @@ export function runCleanTests(args = process.argv.slice(2)) {
     const leftovers = await readdir(directory);
     // Runtime/compiler caches belong to this runner's TMPDIR, not to a test
     // fixture. Remove them explicitly; unexpected test residue still fails.
-    const caches = new Set(['node-compile-cache', 'xcrun_db']);
+    const caches = new Set(
+      leftovers.filter(
+        (name) =>
+          ['node-compile-cache', 'xcrun_db'].includes(name) ||
+          /^\.[a-f\d]{16}-\d+\.node-gyp$/u.test(name) ||
+          /^bunx-\d+-node-gyp@latest$/u.test(name)
+      )
+    );
     for (const name of leftovers.filter((name) => caches.has(name))) {
       await rm(`${directory}/${name}`, { force: true, recursive: true });
     }
@@ -86,10 +92,7 @@ export function runCleanTests(args = process.argv.slice(2)) {
       JSON.stringify({ teardownVerified: cleanup.pass && directoryGone })
     );
     return (
-      code ||
-      ((strict && testResidue.length) || !cleanup.pass || !directoryGone
-        ? 1
-        : 0)
+      code || (testResidue.length || !cleanup.pass || !directoryGone ? 1 : 0)
     );
   });
 }
