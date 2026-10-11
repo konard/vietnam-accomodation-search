@@ -4,7 +4,7 @@
     "npm:@changesets/cli@^3.0.3": "3.0.3",
     "npm:@eslint/js@^10.0.1": "10.0.1_eslint@10.12.0",
     "npm:@mtcute/node@~0.32.4": "0.32.4",
-    "npm:browser-commander@0.31.0": "0.31.0_playwright@1.64.0",
+    "npm:browser-commander@0.31.1": "0.31.1_playwright@1.64.0",
     "npm:command-stream@2.1.0": "2.1.0",
     "npm:eslint-config-prettier@^10.1.8": "10.1.8_eslint@10.12.0",
     "npm:eslint-plugin-prettier@^5.5.6": "5.5.6_eslint@10.12.0_eslint-config-prettier@10.1.8_prettier@3.9.10",
@@ -579,14 +579,14 @@
         "balanced-match"
       ]
     },
-    "browser-commander@0.31.0_playwright@1.64.0": {
-      "integrity": "sha512-tL+gFX5VO6UeZc3kGgNN7w2cYMOve298MLPYtbWXFN1UoC54Bz94qdTie8x8cJYOGPltoMLkN4rqMsMR9lsUQw==",
+    "browser-commander@0.31.1_playwright@1.64.0": {
+      "integrity": "sha512-zcgdslwv1S+lD8K28zfoMTCmqE8mNKMVmPqERhZ8n1d4JlJ3inhJOnU9P2jhI5ilvFvHg/zoLq8blmS9augxqg==",
       "dependencies": [
         "bplist-parser",
         "command-stream",
         "csv-parse",
         "gifenc",
-        "links-notation@0.23.0",
+        "links-notation@0.25.2",
         "log-lazy",
         "playwright",
         "plist",
@@ -1093,9 +1093,6 @@
     "links-notation@0.11.2": {
       "integrity": "sha512-VPyELWBXpaCCiNPVeZhMbG7RuvOQR51nhqELK+s/rbSzKYhSs+tyiSOdQ7z8I7Kh3PLABF3bZETtWSFwx3vFfg=="
     },
-    "links-notation@0.23.0": {
-      "integrity": "sha512-g9S4nnJc9xjxbaHL8W1tG5KV+B2wioUzd7rXrJ1IOpY/G7F0fQxy3cVVakqKPp6D9h3vALl2LPFSekp7kbcONg=="
-    },
     "links-notation@0.25.2": {
       "integrity": "sha512-f8h1QZieLXAA6yIx3CiAAgWksGgPQ0y6NQ1vRdKQUGSjIVYpHoVSwd13xVLSFDhUPVJn+pcZMOoQVZViV4ohpg=="
     },
@@ -1486,7 +1483,7 @@
         "npm:@changesets/cli@^3.0.3",
         "npm:@eslint/js@^10.0.1",
         "npm:@mtcute/node@~0.32.4",
-        "npm:browser-commander@0.31.0",
+        "npm:browser-commander@0.31.1",
         "npm:command-stream@2.1.0",
         "npm:eslint-config-prettier@^10.1.8",
         "npm:eslint-plugin-prettier@^5.5.6",

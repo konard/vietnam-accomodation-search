@@ -71,7 +71,7 @@
   },
   "dependencies": {
     "@mtcute/node": "^0.32.4",
-    "browser-commander": "0.31.0",
+    "browser-commander": "0.31.1",
     "command-stream": "2.1.0",
     "grammy": "^1.46.0",
     "links-notation": "0.25.2",
