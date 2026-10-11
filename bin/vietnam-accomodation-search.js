@@ -31,6 +31,7 @@ function usage() {
     '  bot                         Start the Telegram bot',
     '  search [--cheapest [N]] Q  Search and cache accommodation offers',
     '  update-sources              Refresh all ranked source cohorts',
+    '    --all-sources             Update the uncapped supported inventory',
     '  check-availability ID [@U] Send an availability inquiry as a user',
     '  self-check browser|search   Launch the browser, or search a local fixture page',
     '  telegram preflight          Validate storage and Telegram identities',
@@ -38,6 +39,10 @@ function usage() {
     '  telegram auth login|status|validate|rotate|logout',
     '',
     'Options:',
+    '  --all-sources               Search the uncapped supported inventory',
+    '  --sort-by totalVnd|pricePerBedroomVnd|pricePerRoomVnd|pricePerBedVnd',
+    '  --max-per-bedroom-vnd N     Set a ceiling per positive bedroom count',
+    '  --comparison-period night|week|month|year | --stay-nights N',
     '  -h, --help                  Show this help',
     '  -v, --version               Show the package version',
   ].join('\n');
@@ -68,7 +73,7 @@ async function runSearchCommand(application, options, io) {
         })
       : { offers: await service.search(options) };
     const failures = formatSearchFailures(report);
-    const nothingCollected = report?.summary.allFailed && !offers.length;
+    const nothingCollected = report?.summary?.allFailed && !offers.length;
     if (!nothingCollected) {
       stdout(formatSearchResults(offers));
     }
@@ -375,7 +380,9 @@ export async function runCli(
         environment: env,
         telegramCredentials: credentials,
       });
-      const updated = await application.registry.update();
+      const updated = rest.includes('--all-sources')
+        ? await application.registry.update({ mode: 'exhaustive' })
+        : await application.registry.update();
       stdout(
         `Updated ${updated.web.length} web and ${updated.telegram.length} Telegram sources.`
       );

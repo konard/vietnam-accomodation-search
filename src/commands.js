@@ -1,4 +1,10 @@
+import { validateComparison } from './value-pricing.js';
+
 const RANGE_OPTIONS = new Map([
+  ['--max-per-bedroom-vnd', 'maxPerBedroomVnd'],
+  ['--min-per-bedroom-vnd', 'minPerBedroomVnd'],
+  ['--max-price-per-bedroom', 'maxPricePerBedroomVnd'],
+  ['--min-price-per-bedroom', 'minPricePerBedroomVnd'],
   ['--max-per-bed-vnd', 'maxPerBedVnd'],
   ['--max-per-room-vnd', 'maxPerRoomVnd'],
   ['--max-price-per-bed', 'maxPricePerBedVnd'],
@@ -129,6 +135,8 @@ function validateRange(options, minimum, maximum, label) {
 
 function validateRanges(options) {
   for (const [minimum, maximum, label] of [
+    ['minPerBedroomVnd', 'maxPerBedroomVnd', 'Price per bedroom'],
+    ['minPricePerBedroomVnd', 'maxPricePerBedroomVnd', 'Price per bedroom'],
     ['minRooms', 'maxRooms', 'Room count'],
     ['minPricePerRoomVnd', 'maxPricePerRoomVnd', 'Price per room'],
     ['minPricePerBedVnd', 'maxPricePerBedVnd', 'Price per bed'],
@@ -188,6 +196,23 @@ function parseSearchTokens(input, { partial = false } = {}) {
     result.includeUnavailable = true;
     tokens.splice(unavailableIndex, 1);
   }
+  for (const [flag, field] of [
+    ['--sort-by', 'sortBy'],
+    ['--comparison-period', 'comparisonPeriod'],
+    ['--stay-nights', 'stayNights'],
+  ]) {
+    const index = tokens.indexOf(flag);
+    if (index >= 0) {
+      const value = takeOption(tokens, index, `${flag} requires a value.`);
+      result[field] = field === 'stayNights' ? Number(value) : value;
+    }
+  }
+  const exhaustive = tokens.indexOf('--all-sources');
+  if (exhaustive >= 0) {
+    result.sourceMode = 'exhaustive';
+    tokens.splice(exhaustive, 1);
+  }
+  validateComparison(result);
   const filters = extractFilters(tokens);
   const types = extractTypes(tokens);
   Object.assign(result, extractRanges(tokens));

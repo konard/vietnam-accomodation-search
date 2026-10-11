@@ -1,3 +1,4 @@
+import { retryNativePhoto } from './telegram-photo-retry.js';
 import { diagnosticLogger } from './diagnostic-log.js';
 import { resilientTelegramHistory } from './telegram-iterate.js';
 import { telegramHistoryWindow } from './telegram-window.js';
@@ -18,6 +19,7 @@ import { normalizeTextEntities } from './telegram-text-entities.js';
 import { downloadBoundedPhoto } from './telegram-photo-download.js';
 import { untilAborted } from './browser-adapters.js';
 import { pruneGraphReferences } from './telegram-retention.js';
+import { TelegramPhotoScheduler } from './telegram-photo-scheduler.js';
 
 const CAPABILITIES = new Set([
   'discovery',
@@ -56,6 +58,10 @@ function sourcePeer(source) {
   const username = source.username || source.telegram?.username;
   if (peerId || username) {
     return peerId || username;
+  }
+  const numeric = source.id.match(/^telegram:(?:peer:)?(-?\d+)$/u);
+  if (numeric) {
+    return Number(numeric[1]);
   }
   const match = String(source.url || source.searchUrl || '').match(
     /t\.me\/(?:s\/)?([^/?#]+)/iu
@@ -185,6 +191,8 @@ export class MtcuteTelegramProvider {
     session,
     sessionFormat = SESSION_FORMAT,
     discoveryFolders = ['Нячанг жильё'],
+    photoScheduler = new TelegramPhotoScheduler(),
+    mediaRetries,
   } = {}) {
     this.apiHash = apiHash;
     this.apiId = apiId;
@@ -196,12 +204,21 @@ export class MtcuteTelegramProvider {
     this.session = session;
     this.sessionFormat = sessionFormat;
     this.transport = 'mtproto';
+    this.photoScheduler = photoScheduler;
+    this.mediaRetries = mediaRetries;
   }
 
-  async #connect() {
-    if (this.client) {
-      return this.client;
+  #connect() {
+    if (!this.connecting) {
+      this.connecting = this.#open();
+      this.connecting.catch(() => {
+        this.connecting = undefined;
+      });
     }
+    return this.connecting;
+  }
+
+  async #open() {
     const apiId = Number(this.apiId);
     if (
       !Number.isInteger(apiId) ||
@@ -427,8 +444,14 @@ export class MtcuteTelegramProvider {
     return (await this.#connect()).downloadAsBuffer(location, options);
   }
 
-  // eslint-disable-next-line complexity -- Photo identity, byte limits and cancellation share one download boundary.
-  async photo(
+  photo(mediaId, options = {}) {
+    return retryNativePhoto(this.mediaRetries, mediaId, options, () =>
+      this.#downloadPhoto(mediaId, options)
+    );
+  }
+
+  // eslint-disable-next-line complexity -- Native identity, size and deadline validation precede the shared download queue.
+  async #downloadPhoto(
     mediaId,
     { material, signal, maxBytes = 16 * 1024 * 1024, timeoutMs = 15000 } = {}
   ) {
@@ -448,14 +471,17 @@ export class MtcuteTelegramProvider {
       });
     }
     const client = await untilAborted(this.#connect(), operationSignal);
-    const [message] = await untilAborted(
-      client.getMessages(
-        sourcePeer({ id: member.sourceId }),
-        Number(member.id)
-      ),
-      operationSignal
+    const media = await this.photoScheduler.resolve(
+      `${member.sourceId}:${member.id}:${mediaId}`,
+      async () => {
+        const [message] = await client.getMessages(
+          sourcePeer({ id: member.sourceId }),
+          Number(member.id)
+        );
+        return message?.media;
+      },
+      { signal: operationSignal }
     );
-    const media = message?.media;
     if (!media || media.type !== 'photo') {
       throw Object.assign(new Error('OCR media is not a photo.'), {
         code: 'OCR_MEDIA_UNSUPPORTED',
@@ -473,10 +499,14 @@ export class MtcuteTelegramProvider {
         { code: 'OCR_MEDIA_CHANGED' }
       );
     }
-    return downloadBoundedPhoto(client, media, {
-      signal: operationSignal,
-      maxBytes,
-    });
+    return this.photoScheduler.run(
+      () =>
+        downloadBoundedPhoto(client, media, {
+          signal: operationSignal,
+          maxBytes,
+        }),
+      { signal: operationSignal }
+    );
   }
 
   async membership(chatId, userId = 'me') {
@@ -581,6 +611,9 @@ export class MtcuteTelegramProvider {
   }
 
   async destroy() {
+    await this.connecting?.catch(() => {});
+    this.connecting = undefined;
+    this.photoScheduler.resolved.clear();
     const client = this.client;
     this.client = undefined;
     this.me = undefined;
@@ -814,7 +847,12 @@ export class TelegramIngestionService {
       transport: 'mtproto',
     };
     if (material.mediaIds?.length && this.mediaCache) {
-      await this.mediaCache.cacheTelegramPhotos(offer, material, this.provider);
+      await this.mediaCache.cacheTelegramPhotos(
+        offer,
+        material,
+        this.provider,
+        { signal: this.startSignal }
+      );
     }
     return offer;
   }
@@ -1113,6 +1151,7 @@ export class TelegramIngestionService {
     }
     const result = await reconcileTelegramMaterials(materialMessages, {
       ocr: this.ocr,
+      signal: this.startSignal,
       extract: (material) => this.#materialOffer(material, rates),
       targetLocation: null,
     });
@@ -1145,7 +1184,9 @@ export class TelegramIngestionService {
   }
 
   // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- Startup is the atomic backfill/checkpoint/live-subscription transaction and owns rollback.
-  async start(sources) {
+  async start(sources, { signal } = {}) {
+    this.startSignal = signal;
+    signal?.throwIfAborted();
     if (this.subscription) {
       throw new Error('Telegram ingestion is already running.');
     }
@@ -1240,7 +1281,9 @@ export class TelegramIngestionService {
         for await (const message of await this.provider.history(source, {
           ...(resume ? { resume } : {}),
           since: cutoff,
+          signal,
         })) {
+          signal?.throwIfAborted();
           const event = this.#eventRecord({
             message,
             sourceId: source.id,
@@ -1296,6 +1339,7 @@ export class TelegramIngestionService {
           sourceMessages,
           {
             ocr: this.ocr,
+            signal: this.startSignal,
             extract: (material) =>
               this.#materialOffer(material, rates, this.window),
             targetLocation: source.focus === 'nha-trang' ? 'nha-trang' : null,

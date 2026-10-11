@@ -1,4 +1,5 @@
 export interface Price {
+  basis?: QuoteBasis;
   amount: number;
   currency: string;
   period: 'night' | 'week' | 'month' | 'year';
@@ -14,6 +15,9 @@ export interface PopularityEvidence {
 }
 
 export interface AccommodationSource {
+  retired?: boolean;
+  capability?: 'supported' | 'unsupported' | 'disabled' | 'retired';
+  catalogueState?: 'enabled' | 'disabled' | 'retired';
   access?:
     | 'public-web'
     | 'public-preview'
@@ -111,6 +115,9 @@ export interface PriceChange {
 }
 
 export interface AccommodationOfferVariant {
+  priceBasis?: QuoteBasis;
+  priceBasisProvenance?: string;
+  currencyProvenance?: Record<string, unknown>;
   attributes?: AccommodationAttributes;
   contacts?: AccommodationContacts;
   id: string;
@@ -138,6 +145,17 @@ export interface AccommodationOfferVariant {
 }
 
 export interface AccommodationOffer {
+  priceBasis?: QuoteBasis;
+  priceBasisProvenance?: string;
+  currencyProvenance?: Record<string, unknown>;
+  value?: OfferValue;
+  mediaRetries?: Array<{
+    id: string;
+    category: string;
+    retryable: boolean;
+    attempts: number;
+    retryAt: string;
+  }>;
   id: string;
   sourceId: string;
   sourceIds?: string[];
@@ -187,6 +205,16 @@ export interface AccommodationOffer {
 }
 
 export interface SearchOptions {
+  sortBy?:
+    'totalVnd' | 'pricePerBedroomVnd' | 'pricePerRoomVnd' | 'pricePerBedVnd';
+  comparisonPeriod?: 'quoted' | 'night' | 'week' | 'month' | 'year';
+  /** Linear estimate using 30-night months and 365-night years. */
+  stayNights?: number;
+  sourceMode?: 'ranked' | 'exhaustive';
+  minPerBedroomVnd?: number;
+  maxPerBedroomVnd?: number;
+  minPricePerBedroomVnd?: number;
+  maxPricePerBedroomVnd?: number;
   /** Return cached results while stale sources refresh in the background. */
   cacheFirst?: boolean;
   cheapest?: boolean;
@@ -226,7 +254,12 @@ export declare function convertToVnd(
 ): number | null;
 export declare function normalizeOffer(
   input: Partial<AccommodationOffer> & { text?: string },
-  options?: { now?: Date; rates?: Record<string, number> }
+  options?: {
+    now?: Date;
+    rates?: Record<string, number>;
+    rateObservedAt?: string;
+    rateSource?: string;
+  }
 ): AccommodationOffer;
 export declare function canonicalizeOfferUrl(
   value?: string
@@ -542,6 +575,7 @@ export declare function reconcileTelegramMaterials<T = Record<string, unknown>>(
       material: Record<string, unknown>
     ) => T | null | Promise<T | null>;
     maxOcrPhotos?: number;
+    signal?: AbortSignal;
     ocr?: (
       mediaId: unknown,
       options?: { material?: Record<string, unknown>; signal?: AbortSignal }
@@ -792,6 +826,7 @@ export declare class MediaCache {
     fetchImpl?: typeof fetch;
     maxBytes?: number;
     photoTimeoutMs?: number;
+    now?: () => number;
   });
   cacheOffers(
     offers: AccommodationOffer[],
@@ -810,9 +845,15 @@ export declare class MediaCache {
 }
 
 export declare class SourceRegistry {
+  inventory(): Promise<AccommodationSource[]>;
   constructor(options?: Record<string, unknown>);
-  list(type?: 'web' | 'telegram'): Promise<AccommodationSource[]>;
+  list(
+    type?: 'web' | 'telegram',
+    options?: { mode?: 'ranked' | 'exhaustive' }
+  ): Promise<AccommodationSource[]>;
   update(options?: {
+    mode?: 'ranked' | 'exhaustive';
+    signal?: AbortSignal;
     count?: number;
     focusCount?: number;
     telegramCount?: number;
@@ -850,6 +891,13 @@ export declare class SearchService {
   searchWithReport(options?: SearchOptions): Promise<{
     offers: AccommodationOffer[];
     report?: {
+      completeness?: SourceCompleteness;
+      valueExclusions?: Array<{ offerId: string; reasons: string[] }>;
+      comparison?: {
+        sortBy: SearchOptions['sortBy'];
+        comparisonPeriod: SearchOptions['comparisonPeriod'];
+        stayNights?: number;
+      };
       refreshingSources?: string[];
       budgetElapsed?: boolean;
       outcomes?: SourceOutcome[];
@@ -860,6 +908,11 @@ export declare class SearchService {
 }
 
 export interface SourceOutcome {
+  fetchComplete?: boolean;
+  parseComplete?: boolean;
+  paginationComplete?: boolean;
+  reviewComplete?: boolean;
+  historyCheckpoint?: Record<string, unknown>;
   historyComplete?: boolean;
   sourceId: string;
   status: string;
@@ -1128,7 +1181,8 @@ export declare function normalizeMtcuteMessage(
 export declare class TelegramIngestionService {
   constructor(options: Record<string, unknown>);
   start(
-    sources: AccommodationSource[]
+    sources: AccommodationSource[],
+    options?: { signal?: AbortSignal }
   ): Promise<{ backfilled: number; sources: number }>;
   destroy(): Promise<void>;
 }
@@ -1197,3 +1251,87 @@ export declare function createApplication(options?: Record<string, unknown>): {
   traceRecorder: TraceRecorder;
   updateDeduplicator: UpdateDeduplicator;
 };
+
+export type QuoteBasis = 'property' | 'bedroom' | 'room' | 'bed' | 'person';
+export interface OfferValue {
+  basis: QuoteBasis;
+  basisProvenance: string;
+  totalVnd?: number;
+  pricePerBedroomVnd?: number;
+  pricePerRoomVnd?: number;
+  pricePerBedVnd?: number;
+  bedrooms: {
+    count?: number;
+    provenance: string;
+    status: 'known' | 'excluded';
+  };
+  rooms: OfferValue['bedrooms'];
+  beds: OfferValue['bedrooms'];
+  quotedPeriod: string;
+  comparisonPeriod: string;
+  stayNights?: number;
+  billingPolicy?: string;
+  currencyProvenance: Record<string, unknown>;
+  exclusions: string[];
+}
+export interface SourceCompleteness {
+  mode: 'exhaustive';
+  observedAt: string;
+  inventory: Array<{
+    sourceId: string;
+    type: AccommodationSource['type'];
+    capability: AccommodationSource['capability'];
+    catalogueState: AccommodationSource['catalogueState'];
+    access: string;
+    observedAt: string | null;
+    fresh: boolean;
+    fetchComplete: boolean;
+    parseComplete: boolean;
+    paginationComplete: boolean;
+    window: Record<string, unknown> | null;
+    offers: number;
+    complete: boolean;
+    collectionComplete: boolean;
+    reviewComplete: boolean;
+    fieldCoverage: Record<
+      string,
+      {
+        known: number;
+        positive: number;
+        total: number;
+        accuracy: 'not-evaluated';
+      }
+    >;
+  }>;
+  outstandingSources: string[];
+  excludedSources: Array<{ sourceId: string; reason: string }>;
+  complete: boolean;
+  verdict: 'complete' | 'incomplete';
+  rankingScope: string;
+}
+export declare function compareOfferValue(
+  offer: AccommodationOffer,
+  options?: SearchOptions
+): OfferValue;
+export declare function offerDenominator(
+  offer: AccommodationOffer,
+  field: string
+): { count?: number; provenance: string };
+export declare function quoteBasis(text?: string): QuoteBasis;
+export declare function formatOfferValue(
+  value?: OfferValue
+): string | undefined;
+
+export declare function sourceInventory(
+  seeds: AccommodationSource[],
+  stored?: AccommodationSource[]
+): AccommodationSource[];
+export declare function sourceCompleteness(options: {
+  inventory: AccommodationSource[];
+  states: Array<Record<string, unknown>>;
+  outcomes?: SourceOutcome[];
+  offers: AccommodationOffer[];
+  query: string;
+  now: Date;
+  maxAgeMs: number;
+}): SourceCompleteness;

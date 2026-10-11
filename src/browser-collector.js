@@ -309,11 +309,12 @@ function extractPageState() {
 }
 
 export class BrowserPageError extends Error {
-  constructor(classification, url) {
+  constructor(classification, url, status) {
     super(`Browser page rejected as ${classification}: ${url}`);
     this.code = `BROWSER_PAGE_${classification.toLocaleUpperCase('en').replaceAll('-', '_')}`;
     this.classification = classification;
     this.url = url;
+    this.status = status;
   }
 }
 
@@ -450,7 +451,12 @@ export class BrowserCollector {
     return this.scheduler.run(
       url,
       async () => {
-        await gotoPage(commander, url, this.navigationTimeoutMs, signal);
+        const navigation = await gotoPage(
+          commander,
+          url,
+          this.navigationTimeoutMs,
+          signal
+        );
         const rows =
           (await commander.evaluate(
             extractPageListings,
@@ -459,6 +465,7 @@ export class BrowserCollector {
           )) || [];
         await this.assertListingPage(commander, url, rows.length, {
           expectedLocation,
+          status: navigation?.httpStatus,
         });
         return rows;
       },
@@ -466,12 +473,18 @@ export class BrowserCollector {
     );
   }
 
-  async assertListingPage(commander, url, cards, { expectedLocation } = {}) {
+  async assertListingPage(
+    commander,
+    url,
+    cards,
+    { expectedLocation, status } = {}
+  ) {
     const extracted = await commander.evaluate(extractPageState);
     const state = Array.isArray(extracted) ? {} : extracted || {};
     const classification = classifyListingPage({
       cards,
       ...state,
+      ...(status === undefined ? {} : { status }),
       expectedLocation,
       url: state.url || url,
     });
@@ -485,9 +498,14 @@ export class BrowserCollector {
         PAGE_CLASSIFICATIONS.SALE,
         PAGE_CLASSIFICATIONS.SELECTOR_DRIFT,
         PAGE_CLASSIFICATIONS.WRONG_LOCATION,
-      ].includes(classification)
+      ].includes(classification) ||
+      classification.startsWith('http-')
     ) {
-      throw new BrowserPageError(classification, state.url || url);
+      throw new BrowserPageError(
+        classification,
+        state.url || url,
+        status ?? state.status
+      );
     }
     return classification;
   }
@@ -710,6 +728,7 @@ export class BrowserCollector {
         offers.push(offer);
       }
     }
+    Object.defineProperty(offers, 'parseComplete', { value: true });
     if (source.type === 'telegram') {
       Object.defineProperty(offers, 'historyComplete', {
         value: rows.historyComplete,
@@ -745,10 +764,16 @@ export class BrowserCollector {
         const row = await this.scheduler.run(
           url,
           async () => {
-            await gotoPage(commander, url, this.navigationTimeoutMs, signal);
+            const navigation = await gotoPage(
+              commander,
+              url,
+              this.navigationTimeoutMs,
+              signal
+            );
             const extracted =
               (await commander.evaluate(extractOfficialListing)) || {};
             await this.assertListingPage(commander, url, 1, {
+              status: navigation?.httpStatus,
               expectedLocation: /nha\s*trang|nhatrang|нячанг/iu.test(query)
                 ? 'nha-trang'
                 : undefined,

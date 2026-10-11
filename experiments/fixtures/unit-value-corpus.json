@@ -1,0 +1,269 @@
+{
+  "schemaVersion": 2,
+  "provenance": "Self-authored independent denominator controls. These are not reviewed live listings.",
+  "rates": {
+    "VND": 1
+  },
+  "cases": [
+    {
+      "id": "web-distinct",
+      "language": "en",
+      "input": {
+        "sourceType": "web",
+        "sourceId": "unit-web",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. 2 bedrooms, 3 rooms, 4 beds. Price 12 million VND/month."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": 2,
+        "rooms": 3,
+        "beds": 4,
+        "pricePerBedroomVnd": 6000000,
+        "pricePerRoomVnd": 4000000,
+        "pricePerBedVnd": 3000000
+      }
+    },
+    {
+      "id": "web-studio",
+      "language": "en",
+      "input": {
+        "sourceType": "web",
+        "sourceId": "unit-web",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. studio, 1 room, 1 bed. Price 12 million VND/month."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": 0,
+        "rooms": 1,
+        "beds": 1,
+        "pricePerBedroomVnd": null,
+        "pricePerRoomVnd": 12000000,
+        "pricePerBedVnd": 12000000
+      }
+    },
+    {
+      "id": "web-unknown",
+      "language": "en",
+      "input": {
+        "sourceType": "web",
+        "sourceId": "unit-web",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. furnished apartment. Price 12 million VND/month."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": null,
+        "rooms": null,
+        "beds": null,
+        "pricePerBedroomVnd": null,
+        "pricePerRoomVnd": null,
+        "pricePerBedVnd": null
+      }
+    },
+    {
+      "id": "web-zero",
+      "language": "en",
+      "input": {
+        "sourceType": "web",
+        "sourceId": "unit-web",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. 0 bedrooms, 0 rooms, 0 beds. Price 12 million VND/month."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": 0,
+        "rooms": 0,
+        "beds": 0,
+        "pricePerBedroomVnd": null,
+        "pricePerRoomVnd": null,
+        "pricePerBedVnd": null
+      }
+    },
+    {
+      "id": "web-per-person",
+      "language": "en",
+      "input": {
+        "sourceType": "web",
+        "sourceId": "unit-web",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. 2 bedrooms, 3 rooms, 4 beds. Price 12 million VND/month per person."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": 2,
+        "rooms": 3,
+        "beds": 4,
+        "pricePerBedroomVnd": null,
+        "pricePerRoomVnd": null,
+        "pricePerBedVnd": null
+      }
+    },
+    {
+      "id": "telegram-distinct",
+      "language": "en",
+      "input": {
+        "sourceType": "telegram",
+        "sourceId": "unit-telegram",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. 2 bedrooms, 3 rooms, 4 beds. Price 12 million VND/month."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": 2,
+        "rooms": 3,
+        "beds": 4,
+        "pricePerBedroomVnd": 6000000,
+        "pricePerRoomVnd": 4000000,
+        "pricePerBedVnd": 3000000
+      }
+    },
+    {
+      "id": "telegram-studio",
+      "language": "en",
+      "input": {
+        "sourceType": "telegram",
+        "sourceId": "unit-telegram",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. studio, 1 room, 1 bed. Price 12 million VND/month."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": 0,
+        "rooms": 1,
+        "beds": 1,
+        "pricePerBedroomVnd": null,
+        "pricePerRoomVnd": 12000000,
+        "pricePerBedVnd": 12000000
+      }
+    },
+    {
+      "id": "telegram-unknown",
+      "language": "en",
+      "input": {
+        "sourceType": "telegram",
+        "sourceId": "unit-telegram",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. furnished apartment. Price 12 million VND/month."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": null,
+        "rooms": null,
+        "beds": null,
+        "pricePerBedroomVnd": null,
+        "pricePerRoomVnd": null,
+        "pricePerBedVnd": null
+      }
+    },
+    {
+      "id": "telegram-zero",
+      "language": "en",
+      "input": {
+        "sourceType": "telegram",
+        "sourceId": "unit-telegram",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. 0 bedrooms, 0 rooms, 0 beds. Price 12 million VND/month."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": 0,
+        "rooms": 0,
+        "beds": 0,
+        "pricePerBedroomVnd": null,
+        "pricePerRoomVnd": null,
+        "pricePerBedVnd": null
+      }
+    },
+    {
+      "id": "telegram-per-person",
+      "language": "en",
+      "input": {
+        "sourceType": "telegram",
+        "sourceId": "unit-telegram",
+        "postedAt": "2026-10-11T00:00:00Z",
+        "text": "Apartment for rent in Nha Trang. 2 bedrooms, 3 rooms, 4 beds. Price 12 million VND/month per person."
+      },
+      "expected": {
+        "offer": true,
+        "price": {
+          "amount": 12000000,
+          "currency": "VND",
+          "period": "month"
+        },
+        "period": "month",
+        "location": ["Nha Trang"],
+        "bedrooms": 2,
+        "rooms": 3,
+        "beds": 4,
+        "pricePerBedroomVnd": null,
+        "pricePerRoomVnd": null,
+        "pricePerBedVnd": null
+      }
+    }
+  ]
+}

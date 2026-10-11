@@ -1,3 +1,9 @@
+import { sourceInventory, sourceCompleteness } from './source-inventory.js';
+import {
+  compareOfferValue,
+  offerDenominator,
+  validateComparison,
+} from './value-pricing.js';
 import { telegramHistoryWindow } from './telegram-window.js';
 import { deduplicateOffers } from './offers.js';
 import { TraceRecorder } from './trace.js';
@@ -98,17 +104,6 @@ function normalizedType(offer) {
   );
 }
 
-function finiteCount(offer, name) {
-  const direct = offer.attributes?.[name];
-  if (Number.isFinite(direct)) {
-    return direct;
-  }
-  const labeled = offer.attributes?.labeledFields?.[name];
-  const first = Array.isArray(labeled) ? labeled[0] : labeled;
-  const match = String(first || '').match(/\d+(?:\.\d+)?/u);
-  return match ? Number(match[0]) : undefined;
-}
-
 function inRange(value, minimum, maximum) {
   if (minimum === undefined && maximum === undefined) {
     return true;
@@ -128,9 +123,9 @@ function effectiveRange(options, minimum, maximum, minimumAlias, maximumAlias) {
 }
 
 function matchesNamedFilters(offer, options) {
-  const rooms = finiteCount(offer, 'rooms');
-  const beds = finiteCount(offer, 'beds');
-  const total = offer.priceVnd;
+  const rooms = offerDenominator(offer, 'rooms').count;
+  const value = compareOfferValue(offer, options);
+  const total = value.totalVnd;
   const totalRange = effectiveRange(
     options,
     'minTotalVnd',
@@ -158,13 +153,12 @@ function matchesNamedFilters(offer, options) {
     inRange(rooms, options.minRooms, options.maxRooms) &&
     inRange(total, ...totalRange) &&
     inRange(
-      Number.isFinite(rooms) && rooms > 0 ? total / rooms : undefined,
-      ...roomRange
+      value.pricePerBedroomVnd,
+      options.minPerBedroomVnd ?? options.minPricePerBedroomVnd,
+      options.maxPerBedroomVnd ?? options.maxPricePerBedroomVnd
     ) &&
-    inRange(
-      Number.isFinite(beds) && beds > 0 ? total / beds : undefined,
-      ...bedRange
-    )
+    inRange(value.pricePerRoomVnd, ...roomRange) &&
+    inRange(value.pricePerBedVnd, ...bedRange)
   );
 }
 
@@ -180,6 +174,65 @@ function isAvailable(offer, options, since) {
       offer.attributes?.availability !== 'unavailable' &&
       offer.attributes?.availableNow !== false)
   );
+}
+
+function rankValues(unique, options) {
+  const { cheapest = false, limit = 10 } = options;
+  const valueExclusions = [];
+  const periods = new Set(
+    unique.map((offer) => offer.price?.period || 'unknown')
+  );
+  const comparable =
+    options.sortBy ||
+    cheapest ||
+    options.stayNights ||
+    options.comparisonPeriod ||
+    Object.keys(options).some((key) =>
+      /^(?:min|max)(?:Total|Per|PricePer).*Vnd$/u.test(key)
+    );
+  const ranked = comparable
+    ? unique.filter((offer) => {
+        offer.value = compareOfferValue(offer, options);
+        const key = options.sortBy || 'totalVnd';
+        const mixed =
+          !options.stayNights &&
+          (!options.comparisonPeriod ||
+            options.comparisonPeriod === 'quoted') &&
+          periods.size > 1;
+        const accepted = Number.isFinite(offer.value[key]) && !mixed;
+        if (!accepted) {
+          valueExclusions.push({
+            offerId: offer.id,
+            reasons: mixed
+              ? ['mixed-billing-periods-require-comparison-policy']
+              : [...offer.value.exclusions, `missing-${key}`],
+          });
+        }
+        if (accepted && !matchesNamedFilters(offer, options)) {
+          const missing = ['bedrooms', 'rooms', 'beds']
+            .filter((field) => offer.value[field].status === 'excluded')
+            .map((field) => `unusable-${field}-denominator`);
+          if (missing.length) {
+            valueExclusions.push({ offerId: offer.id, reasons: missing });
+          }
+          return false;
+        }
+        return accepted;
+      })
+    : unique.filter((offer) => matchesNamedFilters(offer, options));
+  ranked.sort((left, right) =>
+    comparable
+      ? left.value[options.sortBy || 'totalVnd'] -
+        right.value[options.sortBy || 'totalVnd']
+      : cheapest
+        ? left.priceVnd - right.priceVnd
+        : new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
+  );
+  const result = ranked.slice(0, limit);
+  for (const offer of result) {
+    offer.value = compareOfferValue(offer, options);
+  }
+  return { result, valueExclusions, comparable };
 }
 
 export class SearchService {
@@ -246,6 +299,7 @@ export class SearchService {
         sourceId: outcome.sourceId,
         query,
         attemptedAt: timestamp,
+        ...outcome,
         status: outcome.status,
         ...(outcome.historyComplete === undefined
           ? {}
@@ -356,28 +410,34 @@ export class SearchService {
     return { collected: report.offers, report };
   }
 
-  // eslint-disable-next-line complexity -- Search owns one correlated lifecycle across refresh, cache, ranking, and trace outcomes.
+  // eslint-disable-next-line max-lines-per-function, complexity -- Search owns one refresh, checkpoint, ranking and trace transaction.
   async searchWithReport(options = {}) {
-    const {
-      cheapest = false,
-      filters = {},
-      limit = 10,
-      query = '',
-      refresh,
-      signal,
-      traceRunId,
-    } = options;
+    const { filters = {}, query = '', refresh, signal, traceRunId } = options;
+    validateComparison(options);
     const runId =
       traceRunId ||
       `search:${this.now().toISOString()}:${(this.traceSequence += 1)}`;
     this.trace.record({ runId, stage: 'search', status: 'start' });
     try {
       let offers = await this.store.listOffers();
-      const sources = matchingSources(await this.registry.list(), query);
+      const exhaustive = options.sourceMode === 'exhaustive';
+      const inventory = exhaustive
+        ? (await this.registry.inventory?.()) ||
+          sourceInventory(
+            await this.registry.list(undefined, { mode: 'exhaustive' })
+          )
+        : undefined;
+      const sources = exhaustive
+        ? inventory.filter((source) => source.capability === 'supported')
+        : matchingSources(await this.registry.list(), query);
       this.collectionStates =
         (await this.store.loadRecords?.('search-collections')) ||
         this.collectionStates;
-      const shouldRefresh = this.shouldRefresh(offers, sources, refresh, query);
+      const shouldRefresh = exhaustive
+        ? refresh !== false &&
+          this.#staleSources(offers, sources, query, refresh === true).length >
+            0
+        : this.shouldRefresh(offers, sources, refresh, query);
       let report = shouldRefresh
         ? undefined
         : this.#historyReport(sources, query);
@@ -389,8 +449,9 @@ export class SearchService {
           query,
           refresh === true
         );
-        const key = normalizedQuery(query);
+        const key = `${options.sourceMode || 'ranked'}:${normalizedQuery(query)}`;
         const cached =
+          !exhaustive &&
           options.cacheFirst &&
           refresh !== true &&
           offers.some((offer) => isForQuery(offer, query));
@@ -466,15 +527,12 @@ export class SearchService {
           isAvailable(offer, options, since) &&
           isForQuery(offer, query) &&
           telegramOfferMatches(offer, query) &&
-          matchesFilters(offer, filters) &&
-          matchesNamedFilters(offer, options)
+          matchesFilters(offer, filters)
       );
-      unique.sort((left, right) =>
-        cheapest
-          ? left.priceVnd - right.priceVnd
-          : new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
+      const { result, valueExclusions, comparable } = rankValues(
+        unique,
+        options
       );
-      const result = unique.slice(0, limit);
       this.trace.record({
         runId,
         stage: 'search',
@@ -487,13 +545,33 @@ export class SearchService {
           sources: sources.length,
         },
       });
+      const completeness = exhaustive
+        ? sourceCompleteness({
+            inventory,
+            states: this.collectionStates,
+            outcomes: report?.outcomes,
+            offers,
+            query,
+            now: this.now(),
+            maxAgeMs: this.maxAgeMs,
+          })
+        : undefined;
       return {
         offers: result,
-        report: report && {
-          refreshingSources: report.refreshingSources,
-          budgetElapsed: report.budgetElapsed,
-          outcomes: report.outcomes,
-          summary: report.summary,
+        report: (report || comparable || exhaustive) && {
+          completeness,
+          valueExclusions,
+          comparison: comparable
+            ? {
+                sortBy: options.sortBy || 'totalVnd',
+                comparisonPeriod: options.comparisonPeriod || 'quoted',
+                stayNights: options.stayNights,
+              }
+            : undefined,
+          refreshingSources: report?.refreshingSources,
+          budgetElapsed: report?.budgetElapsed,
+          outcomes: report?.outcomes,
+          summary: report?.summary,
         },
       };
     } catch (error) {

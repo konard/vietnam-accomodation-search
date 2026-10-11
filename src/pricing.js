@@ -419,6 +419,12 @@ export class ExchangeRateProvider {
         }
       }
       this.updatedAt = Date.now();
+      Object.defineProperty(this.cached, 'provenance', {
+        value: {
+          observedAt: new Date(this.updatedAt).toISOString(),
+          source: 'https://open.er-api.com/v6/latest/VND',
+        },
+      });
     } catch {
       return this.cached;
     }

@@ -44,7 +44,11 @@ describe('field accuracy on the reviewed live corpus', () => {
   it('meets the precision and recall threshold of every field', async () => {
     const report = await fieldMetrics(corpus);
     for (const field of FIELDS) {
-      const { precision, recall } = report.fields[field];
+      const { precision, recall, status } = report.fields[field];
+      if (status === 'not-evaluated') {
+        expect(report.fields[field].pass).toBe(null);
+        continue;
+      }
       expect({
         field,
         precision: precision >= FIELD_THRESHOLDS[field].precision,
@@ -62,7 +66,7 @@ describe('field accuracy on the reviewed live corpus', () => {
             offer: true,
             period: 'month',
             price: { amount: 9_000_000, currency: 'VND', period: 'month' },
-            rooms: 2,
+            bedrooms: 2,
           },
           id: 'wrong-price',
           input: {

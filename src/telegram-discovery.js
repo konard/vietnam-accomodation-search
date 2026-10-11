@@ -271,8 +271,9 @@ export class ConfiguredTelegramDiscoveryProvider {
     this.sources = sources;
   }
 
-  discover({ focus } = {}) {
-    const sources = focus === 'nha-trang' ? this.focusSources : this.sources;
+  discover({ focus, candidates } = {}) {
+    const sources =
+      candidates || (focus === 'nha-trang' ? this.focusSources : this.sources);
     return sources.map((source) => ({
       entity: {
         _: source.telegram?.kind === 'chat' ? 'chat' : 'channel',
@@ -299,9 +300,10 @@ export class PublicPreviewTelegramDiscoveryProvider {
     this.name = 'public-preview';
   }
 
-  async discover({ focus, signal } = {}) {
+  async discover({ focus, signal, candidates: supplied } = {}) {
     const candidates =
-      focus === 'nha-trang' ? this.focusCandidates : this.candidates;
+      supplied ||
+      (focus === 'nha-trang' ? this.focusCandidates : this.candidates);
     const sources =
       (await this.discoverPublic?.('telegram', {
         candidates,
@@ -366,9 +368,10 @@ export class BotApiTelegramDiscoveryProvider {
     this.name = 'bot-api';
   }
 
-  async discover({ focus, signal } = {}) {
+  async discover({ focus, signal, candidates: supplied } = {}) {
     const candidates =
-      focus === 'nha-trang' ? this.focusCandidates : this.candidates;
+      supplied ||
+      (focus === 'nha-trang' ? this.focusCandidates : this.candidates);
     const queue = [...candidates];
     const results = [];
     results.failures = [];
@@ -453,7 +456,13 @@ export class TelegramSourceDiscovery {
   // eslint-disable-next-line complexity, max-lines-per-function -- Discovery keeps provider checkpoints, identity merging, and trace terminal states atomic.
   async discover({
     focus,
-    maxResults = focus === 'nha-trang' ? 40 : 20,
+    mode = 'ranked',
+    candidates: supplied,
+    maxResults = mode === 'exhaustive'
+      ? Number.MAX_SAFE_INTEGER
+      : focus === 'nha-trang'
+        ? 40
+        : 20,
     queries = TELEGRAM_DISCOVERY_QUERIES.queries,
     signal,
   } = {}) {
@@ -461,7 +470,8 @@ export class TelegramSourceDiscovery {
     const identityIndex = new Map();
     const rejected = [];
     const failures = [];
-    const checkpointKey = focus || 'nationwide';
+    const checkpointKey =
+      mode === 'exhaustive' ? 'exhaustive' : focus || 'nationwide';
     const savedCheckpoints =
       (await this.store?.loadRecords?.('telegram-discovery-checkpoints')) || [];
     const saved = savedCheckpoints.find(
@@ -518,7 +528,12 @@ export class TelegramSourceDiscovery {
       let candidates;
       try {
         candidates =
-          (await provider.discover({ focus, queries, signal })) || [];
+          (await provider.discover({
+            candidates: supplied,
+            focus,
+            queries,
+            signal,
+          })) || [];
       } catch (error) {
         failures.push({
           provider: provider.name,

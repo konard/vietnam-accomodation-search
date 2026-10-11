@@ -140,7 +140,9 @@ describe('Nha Trang source coverage', () => {
     expect(updated.web.length).toBe(ENABLED_WEB_SEEDS);
     expect(updated.telegram.length).toBe(40);
     expect(updated.telegram.filter((source) => source.focus).length).toBe(20);
-    expect(saved[0].length).toBe(ENABLED_WEB_SEEDS + 40);
+    expect(saved[0].length > ENABLED_WEB_SEEDS + 40).toBe(true);
+    expect(saved[0].some((source) => source.enabled === false)).toBe(true);
+    expect(new Set(saved[0].map(({ id }) => id)).size).toBe(saved[0].length);
   });
 
   it('keeps the existing seed cohorts independent', () => {

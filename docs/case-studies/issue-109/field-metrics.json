@@ -67,7 +67,7 @@
       },
       "truePositive": 246
     },
-    "rooms": {
+    "bedrooms": {
       "falseNegative": 0,
       "falsePositive": 1,
       "status": "evaluated",

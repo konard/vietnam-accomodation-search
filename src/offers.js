@@ -1,3 +1,4 @@
+import { quoteBasis } from './value-pricing.js';
 import { cardLocation, parseListingText } from './listing-parser.js';
 import {
   PRICE_HISTORY_LIMIT,
@@ -224,6 +225,16 @@ function mergeParsedContacts(parsed, explicit) {
   return merged;
 }
 
+function rateProvenance(price, rates, options) {
+  return {
+    currency: price?.currency,
+    rate: price?.currency === 'VND' ? 1 : rates[price?.currency],
+    observedAt: options.rateObservedAt || rates.provenance?.observedAt || null,
+    source:
+      options.rateSource || rates.provenance?.source || 'injected-rate-table',
+  };
+}
+
 export function normalizeOffer(input, options = {}) {
   const text = firstPresent(compact(input.text), compact(input.title), '');
   const price = firstPresent(input.price, parsePrice(text));
@@ -269,6 +280,12 @@ export function normalizeOffer(input, options = {}) {
     ...optional('identifiers', input.identifiers),
     price,
     priceVnd: convertToVnd(price, rates),
+    priceBasis: input.priceBasis || price?.basis || quoteBasis(text),
+    priceBasisProvenance:
+      input.priceBasisProvenance ||
+      (input.priceBasis || price?.basis ? 'declared' : 'inferred-from-quote'),
+    currencyProvenance:
+      input.currencyProvenance || rateProvenance(price, rates, options),
     ...optional('url', url),
     ...optional('officialUrl', officialUrl),
     ...optional('searchQuery', compact(input.searchQuery)),
@@ -300,6 +317,9 @@ function sourceVariant(offer) {
     ...optional('url', offer.url),
     ...optional('officialUrl', offer.officialUrl),
     price: offer.price,
+    priceBasis: offer.priceBasis,
+    priceBasisProvenance: offer.priceBasisProvenance,
+    currencyProvenance: offer.currencyProvenance,
     priceVnd: offer.priceVnd,
     photos: boundedPhotos(offer.photos),
     ...optional('searchQuery', offer.searchQuery),

@@ -88,6 +88,25 @@ export function siteDomain(site) {
   return new URL(site.url).hostname.replace(/^www\./u, '').toLowerCase();
 }
 
+function classifyHttpStatus(status) {
+  if (status === 202) {
+    return 'http_pending';
+  }
+  if (status === 404 || status === 410) {
+    return 'http_not_found';
+  }
+  if (status >= 500) {
+    return 'http_server_error';
+  }
+  if (status >= 400) {
+    return 'http_client_error';
+  }
+  if (status < 200 || status >= 300) {
+    return 'http_unresolved';
+  }
+}
+
+// eslint-disable-next-line complexity -- Access and intent categories are a single status-first decision table.
 export function classifyPage({
   cardCount = 0,
   status = 200,
@@ -101,6 +120,10 @@ export function classifyPage({
   }
   if (status === 429 || RATE_LIMIT_PATTERN.test(content)) {
     return 'rate_limited';
+  }
+  const httpFailure = classifyHttpStatus(status);
+  if (httpFailure) {
+    return httpFailure;
   }
   if (ACCESS_DENIED_PATTERN.test(content)) {
     return 'access_denied';

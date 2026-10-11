@@ -1,3 +1,4 @@
+import { formatOfferValue } from './value-pricing.js';
 import { diagnosticLogger } from './diagnostic-log.js';
 import { parseSearchCommand } from './commands.js';
 import { SubscriptionScheduler } from './presets.js';
@@ -11,7 +12,7 @@ import { stableHash } from './utils.js';
 import { offerPhotoMedia, sendPhotoMedia } from './telegram-offer-media.js';
 
 const SEARCH_USAGE =
-  'Usage: /search [--cheapest [1-50]] [--filter field=value] [location]';
+  'Usage: /search [--cheapest [1-50]] [--filter field=value] [--sort-by totalVnd|pricePerBedroomVnd|pricePerRoomVnd|pricePerBedVnd] [--stay-nights N] [--comparison-period night|week|month|year] [--all-sources] [location]';
 const SEARCH_FAILURE = 'Search could not be completed. Please try again later.';
 const NO_FRESH_OFFERS = 'No fresh offers could be collected.';
 
@@ -24,7 +25,16 @@ async function searchWithOptionalReport(service, options) {
   return { offers: await service.search(options) };
 }
 
+function formatCoverage(report) {
+  const coverage = report.completeness;
+  return `Source coverage ${coverage.verdict} at ${coverage.observedAt}. Outstanding: ${coverage.outstandingSources.join(', ') || 'none'}. Excluded catalogue entries: ${coverage.excludedSources.map(({ sourceId, reason }) => `${sourceId} (${reason})`).join(', ') || 'none'}. ${coverage.rankingScope}. Value exclusions: ${report.valueExclusions?.map(({ offerId, reasons }) => `${offerId} (${reasons.join(', ')})`).join('; ') || 'none'}.`;
+}
+
+// eslint-disable-next-line complexity -- Cache, history and source-failure messages are mutually exclusive report states.
 export function formatSearchFailures(report) {
+  if (report?.completeness) {
+    return formatCoverage(report);
+  }
   const partial =
     report?.outcomes?.filter(
       (outcome) =>
@@ -50,7 +60,9 @@ export function formatSearchFailures(report) {
     ? summarizeOutcomes(report.outcomes)
     : report?.summary;
   if (!summary?.failed) {
-    return undefined;
+    return report?.valueExclusions?.length
+      ? `${report.valueExclusions.length} offers excluded from value comparison: ${[...new Set(report.valueExclusions.flatMap(({ reasons }) => reasons))].join(', ')}.`
+      : undefined;
   }
   const uncollected = describeUncollected(report.outcomes);
   if (summary.allFailed) {
@@ -88,6 +100,7 @@ export function formatSearchResults(offers) {
       [
         `${index + 1}. ${offer.title}`,
         formatPrice(offer),
+        formatOfferValue(offer.value),
         formatPriceChange(offer),
         offer.location,
         offer.url,
@@ -478,6 +491,9 @@ export function registerTelegramHandlers(bot, dependencies) {
     try {
       accessPolicy?.authorize(context, { privileged: true });
       const updated = await registry.update({
+        ...(context.match?.trim() === '--all-sources'
+          ? { mode: 'exhaustive' }
+          : {}),
         focusCount: 40,
         telegramCount: 20,
         webCount: 20,
