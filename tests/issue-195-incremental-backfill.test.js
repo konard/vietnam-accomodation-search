@@ -151,6 +151,54 @@ describe('incremental native material publication', () => {
     );
   });
 
+  it('reconciles albums using only members surviving stored deletions', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    await fixture(
+      async ({ store, ingestion, update }) => {
+        await ingestion.start([source]);
+        assert.equal((await store.listOffers()).length, 0);
+        await update({
+          type: 'delete',
+          sourceId: source.id,
+          messageIds: [2],
+        });
+        await update({
+          type: 'new',
+          sourceId: source.id,
+          message: message(3, { text: '', groupedId: 'album' }),
+        });
+        const offers = await store.listOffers();
+        assert.equal(offers.length, 1);
+        assert.deepEqual(offers[0].provenance.messageIds.map(String).sort(), [
+          '1',
+          '3',
+        ]);
+        await update({
+          type: 'delete',
+          sourceId: source.id,
+          messageIds: [1],
+        });
+        await update({
+          type: 'new',
+          sourceId: source.id,
+          message: message(4, { text: '', groupedId: 'album' }),
+        });
+        assert.equal((await store.listOffers()).length, 0);
+      },
+      {
+        async *history() {
+          yield message(1, { groupedId: 'album' });
+          yield message(2, {
+            groupedId: 'album',
+            text: 'Looking for an apartment in Nha Trang, 12 million VND/month.',
+          });
+        },
+      }
+    );
+  });
+
   it('replaces edited messages replayed from an incomplete checkpoint', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;

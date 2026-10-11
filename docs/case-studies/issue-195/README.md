@@ -178,6 +178,16 @@ coverage confirms both guard lines are exercised. The 100% coverage requirement
 and production shutdown behavior remain unchanged; final full-suite results are
 recorded in the PR.
 
+The next full run passes 1,449 tests and covers the subscription guard, but misses
+stored album deletions during live reconciliation. CI run `38125460076` at
+`1cff1f0` reproduces that gap: downloaded `checks-38125460076-failure.log` line
+38187 identifies uncovered ingestion lines 554–555; lines 38211–38217 show the
+99.99% coverage rejection. A deterministic control now
+deletes a conflicting caption, verifies that the next album update publishes
+the surviving rental with only live member IDs, then deletes that rental caption
+and verifies that later updates cannot resurrect it. This covers the stored
+deletion replay independently of other live-update test timing.
+
 ```bash
 node --test tests/links-workflow.test.js tests/recheck-broken-links.test.js
 node experiments/issue-195-links.mjs /path/to/lychee
