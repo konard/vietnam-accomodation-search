@@ -168,15 +168,21 @@ skipped without discarding results from the other sources.
 The built-in `default` preset is empty and cannot be deleted. A named preset is
 global for that numeric Telegram user. Search arguments temporarily override
 the active preset. Rooms are not bedrooms: room filters require an explicit
-room count, and per-room/per-bed filters exclude records missing the respective
-count. Studios are selected by type and do not imply one room. Prices retain
+room count. Property-total per-room/per-bed filters exclude records missing the
+respective count. Studios are selected by type and do not imply one room. Prices retain
 their quoted billing period; range filters compare the normalized quoted VND
 amount without changing that period. Value ordering rejects mixed billing periods
 until `--comparison-period night|week|month|year` or `--stay-nights N` is supplied.
 Stay estimates use explicit linear conventions (7 nights/week, 30/month,
 365/year); availability and minimum stay remain unverified. Per-bedroom,
-per-room and per-bed values require positive, exact counts and a property-total
-quote. Replies include denominator, billing and exchange-rate provenance.
+per-room and per-bed values derived from a property-total quote require positive,
+exact counts. An explicit per-bed, per-room or per-bedroom quote supplies its
+matching unit metric even without counts; its property total and cross-unit
+metrics remain unknown. Use `--comparison-basis property|bedroom|room|bed` to
+select a billing basis when value ordering would otherwise mix property and
+unit quotes. For example, `--sort-by pricePerBedVnd --comparison-basis bed`
+compares explicit bed quotes. Per-person quotes remain distinct. Replies include
+denominator or explicit-unit evidence, billing and exchange-rate provenance.
 
 `--all-sources` removes ranking and geography selection caps for collection.
 Its timestamped report lists every supported source and every disabled, retired
