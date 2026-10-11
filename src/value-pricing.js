@@ -8,15 +8,26 @@ export const VALUE_SORTS = Object.freeze([
   'pricePerBedVnd',
 ]);
 
+function currencyQuote(line) {
+  const digit = line.search(/\d/u);
+  // The first digit bounds one suffix scan, including long numeric lines
+  // without a currency token.
+  return (
+    (digit >= 0 &&
+      /(?:million|triệu|trieu|tr\b|k\b|млн|тыс|VND|VNĐ|USD|EUR|GBP|RUB|₫|đồng|доллар|руб|\$|€|£|₽|M\b)/iu.test(
+        line.slice(digit + 1)
+      )) ||
+    /(?:USD|EUR|GBP|RUB|VND|VNĐ|\$|€|£|₽|₫)\s*\d/iu.test(line)
+  );
+}
+
 export function quoteBasis(text = '') {
   // Currency-bearing rent lines exclude standalone utility quotes.
   const quote = String(text)
     .split(/\n|;/u)
     .filter(
       (line) =>
-        /(?:\d.*(?:million|triệu|trieu|tr\b|k\b|млн|тыс|VND|VNĐ|USD|EUR|GBP|RUB|₫|đồng|доллар|руб|\$|€|£|₽|M\b)|(?:USD|EUR|GBP|RUB|VND|VNĐ|\$|€|£|₽|₫)\s*\d)/iu.test(
-          line
-        ) &&
+        currencyQuote(line) &&
         !/^\s*(?:electric\p{L}*|water|utility|utilities|điện|nước)\b/iu.test(
           line
         )

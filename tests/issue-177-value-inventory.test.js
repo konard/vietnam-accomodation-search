@@ -1,5 +1,6 @@
 /* eslint local/no-changelog-comments: ["warn", {"allowDatesInStrings": true}] -- Dates are fixed fixture inputs. */
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { it } from 'test-anywhere';
 import {
   compareOfferValue,
@@ -27,6 +28,22 @@ const base = {
   attributes: { bedrooms: 2, rooms: 3, beds: 4 },
   collectedAt: now.toISOString(),
 };
+
+it('bounds quote scanning for a long digit-only listing', () => {
+  if (typeof Deno !== 'undefined') {
+    return;
+  }
+  const result = JSON.parse(
+    execFileSync(
+      'node',
+      ['--max-old-space-size=64', 'experiments/issue-177-quote-scan.mjs'],
+      {
+        encoding: 'utf8',
+      }
+    )
+  );
+  assert.equal(result.pass, true);
+});
 
 it('compares distinct denominators and an explicit stay while preserving the quote', () => {
   const value = compareOfferValue(base, { stayNights: 15 });
