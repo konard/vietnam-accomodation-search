@@ -123,7 +123,11 @@ describe('ranked accommodation sources', () => {
     expect(updated.web[0].popularity.value).toBe(24);
     expect(updated.telegram[0].popularity.value).toBe(24);
     expect(updated.telegram.filter((source) => source.focus).length).toBe(20);
-    expect(saved[0].length).toBe(60);
+    expect(saved[0].length > 60).toBe(true);
+    expect(new Set(saved[0].map(({ id }) => id)).size).toBe(saved[0].length);
+    for (const source of [...updated.web, ...updated.telegram]) {
+      expect(saved[0].some(({ id }) => id === source.id)).toBe(true);
+    }
     expect(saved.length).toBe(1);
   });
 });

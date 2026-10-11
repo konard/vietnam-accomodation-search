@@ -1,0 +1,88 @@
+# Issue 177 requirement and solution ledger
+
+All ten child issues and every comment were read on 2026-10-11. This single
+PR addresses the parent and its child issues. Unavailable live acceptance remains
+an explicit limitation. Fresh registry research found command-stream 2.0.2 and
+browser-commander 0.29.0; upstream security issue 221 is closed and an isolated
+consumer install reports zero production vulnerabilities. These supersede the
+original unsafe-latest exception after conformance verification. Existing main commits e189ecc and d5a38ac
+are part of the baseline, not new evidence for unresolved acceptance.
+
+## Requirements and implementation plans
+
+| Issue | Every requested capability                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Alternatives considered and selected plan                                                                                                                                                                                                                                                                                                                                                         |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 165   | Latest offers from every supported source; total, bedroom, room and bed ceilings and ordering; typed API, CLI and bot options; persisted presets; positive distinct denominators; no invented unknown/zero/studio counts; explicit quote-period/stay policy; exchange provenance; extraction and metric coverage; output breakdown, denominators, exclusions; per-person/bed/room quotes never property totals; no global optimum claims with pending/partial/challenged/stale/unreviewed sources. | Keep quoted amounts as the default. Add a shared comparison calculator and opt-in stay conversion with an explicit 30-night month / 365-night year convention. Require a quote basis and matching period for unit comparisons; exclude ambiguous quotes. Reuse existing filters, parser, preset storage and formatters. Currency math libraries do not establish denominator or quote provenance. |
+| 166   | Supported/enabled/disabled/retired inventory; no silent ranking exclusions in exhaustive mode; timestamp, access class, fetch/parse completeness, pagination/window, offer and field coverage; exact outstanding sources; canonical Telegram identities and types; bounded resumable enabled-source updates; genuine labelled samples; honest blocked/unsupported entries; no CAPTCHA/consent/login bypass or landlord contact.                                                                    | Preserve fast ranked defaults. Add a canonical uncapped inventory/list mode and exhaustive search/report mode using existing per-source persisted checkpoints and bounded collectors. Distinguish fetched pages from fully parsed/paginated inventory; unknown coverage stays outstanding. Keep disabled entries visible without enabling them.                                                   |
+| 167   | Rename legacy bedroom-labelled truth/metric without changing human truth; independent rooms and beds truth; unknown/zero/studio cases; computed unit-price acceptance; absent labels visibly not evaluated; rerun parser and persisted-card corpus; correct reports that confuse bedroom accuracy with room/bed accuracy.                                                                                                                                                                          | Migrate legacy expected.rooms to expected.bedrooms; add self-authored independent denominator labels and a separate self-authored unit corpus. Score only labelled new fields and publish label counts. Historical reports get explicit correction notes.                                                                                                                                         |
+| 168   | Verify exact current npm/tool pins, both lockfiles and transitives; Rust clink 1.0.0, Rust 1.99.0 and Node 24.21.0 LTS digest pins; example versions; local Node/Bun/coverage/Deno frozen locks/Docker/example acceptance; native SDK identities/OCR/clink readback/owner bot/restart cleanup; temporary command-stream 1.5.0 security exception in root, browser override and release bootstrap; upstream #221; one-time Deno age opt-in only when regenerating; no private evidence.             | Most updates are already on main. Verify committed pins and registry tags, audits and runtime acceptance again; Reject vulnerable 2.0.0; adopt repaired 2.0.2 consistently with browser-commander 0.29.0 after clean consumer audit and conformance checks. Do not infer a Node Current migration. Credential-dependent checks must be reported unavailable when credentials are absent.          |
+| 170   | Shared bounded rate-aware native lookup scheduling across albums/sources; coalescing/bulk resolution; OCR/cache resolution reuse; persist transient download/flood failures; bounded backoff and resumable completion; degraded until photos and extraction complete; cancel all queued retries at deadline; multisource/flood/timeout/retry/restart/final-verdict tests.                                                                                                                          | p-queue and Bottleneck offer general scheduling, but neither persists application extraction checkpoints. Reuse Telegram retry/error helpers and add a provider-wide bounded scheduler/resolution cache plus durable per-offer retry state. Respect server flood delays and total operation deadlines.                                                                                            |
+| 171   | HTTP 404/5xx explicit failure classes before card success; HTTP 202 pending; retain raw status; tests for 200/no cards/cards, 404/502, 503 with cards, 202; never call error-body cards complete inventory.                                                                                                                                                                                                                                                                                        | A small status-first classifier fits existing QA categories. Share the policy with production collection where equivalent errors occur. No extra HTTP library required.                                                                                                                                                                                                                           |
+| 172   | Own every command/subscription/photo/album send; private durable IDs/markers before success including ambiguous sends; stop producers before deletion; page independent history; preserve unrelated messages; attempt every phase on setup/assertion/delete failure and SIGINT/SIGTERM; fail cleanup failures; hard-kill journal recovery; deterministic injection and owner-only live checks.                                                                                                     | Integrate existing QaOwnedMessages/QaCleanup into all legacy harnesses. Use marker recovery, separate Bot API/MTProto ID namespaces, and exact ownership rather than time-only deletion. Durable journals are retained privately on failed cleanup.                                                                                                                                               |
+| 173   | Cleanup registered before Docker acquisition; unique labels/names/private journal; restore owned containers/networks/volumes/tags/rollback refs/builders/cache on success/failure/signals; independently verify absence; preserve baseline images/caches/data/other projects; no global prune; attempt later phases after failure; mocked and disposable real controls; setup/hard-kill recovery.                                                                                                  | Extend existing exact-resource cleaner with durable recovery and integrate full cutover drill and bind smoke. Use isolated buildx builders so deleting the builder removes only its cache. Never use compose down --rmi all on shared references.                                                                                                                                                 |
+| 174   | Failure-safe teardown for every temporary test fixture and legacy diagnostic; isolated suite TMPDIR; leftovers fail acceptance; only remove suite-owned directory; injected setup/assertion/close failures; retained evidence opt-in/private; profile directories deleted by default; bounds on stress probes.                                                                                                                                                                                     | Audit all acquisition sites, use scoped finally/cleanup ownership, make strict cleanup the test default, and migrate browser diagnostics to the shared scope. Do not call intentional retention cleanup.                                                                                                                                                                                          |
+| 175   | Own clink capability probe in independent parent; remove renamed failed paths on incompatible import/export; preserve unrelated diagnostic/state paths; failure-path empty-parent regression.                                                                                                                                                                                                                                                                                                      | Create the build candidate below a disposable parent and remove the parent in finally. Do not change retirement policy for real storage failures.                                                                                                                                                                                                                                                 |
+
+## Primary-source research and reusable components
+
+- [Telegram error handling](https://core.telegram.org/api/errors) defines FLOOD_WAIT_X
+  as a required server wait. A concurrency cap alone cannot replace that wait.
+- [Telegram files](https://core.telegram.org/api/files) documents native media
+  downloads and server flood responses. Native identity checks must precede reuse.
+- [p-queue](https://github.com/sindresorhus/p-queue) supports concurrency, rolling
+  interval limits and queued cancellation; running work must also handle signals.
+- [Bottleneck](https://github.com/SGrondin/bottleneck) supports shared scheduling,
+  minimum intervals and reservoirs. Either library could replace the local small
+  queue if distributed rate coordination becomes necessary.
+- [Docker Compose down](https://docs.docker.com/reference/cli/docker/compose/down/)
+  removes containers/networks by default; volumes and image tags need explicit
+  ownership-aware disposal. External resources are not removed.
+- [Docker Buildx rm](https://docs.docker.com/reference/cli/docker/buildx/rm/)
+  is the scoped disposal path for isolated build instances and their cache.
+- [Buildx removal implementation](https://github.com/docker/buildx/blob/v0.37.0/commands/rm.go)
+  shares the status deadline with daemon shutdown and removal. Stop the exact
+  owned builder separately before removing its populated cache, and still
+  attempt removal if stopping fails.
+- [Node child-process signals](https://nodejs.org/api/child_process.html#subprocesskillsignal)
+  explains unconditional termination on Windows. Verify signal handlers through
+  IPC on Windows and actual OS signal delivery on POSIX; neither proves cleanup
+  after an uncatchable kill, which needs a durable recovery journal.
+- [Lychee rate limits](https://lychee.cli.rs/troubleshooting/rate-limits/)
+  recommends limiting concurrent requests. Repeated remote GitHub 503s for
+  locally healthy links motivated lower concurrency and spaced retries, which
+  were insufficient alone.
+- [Lychee method selection](https://lychee.cli.rs/guides/cli/) supports HEAD
+  availability checks. [HTTP HEAD semantics](https://www.rfc-editor.org/rfc/rfc9110.html#name-head)
+  omit the response body; this checker does not claim fragment validation.
+  Remote HEAD succeeded after repeated GET failures, and real 404/503 controls
+  retain strict rejected-status handling. The hosting-side cause remains unknown.
+- [command-stream upstream exception](https://github.com/link-foundation/command-stream/issues/221)
+  records the original 2.0.0 dependency security problem, now closed. The safe
+  2.0.2 runtime dependencies omit ShellJS and its vulnerable compatibility tree.
+  Registry tags and audits are checked separately from feature acceptance.
+- [mtcute network middleware](https://mtcute.dev/guide/advanced/net-middlewares)
+  defaults to short flood waits and internal-error retries. These transport
+  retries complement durable application backoff and the shared native queue.
+- [Crawlee request storage](https://crawlee.dev/js/docs/3.16/guides/request-storage)
+  offers persistent request queues and Playwright crawling. Adopting it would
+  require a checkpoint migration; the existing LinksStore source checkpoints
+  preserve this application's restart contracts.
+- [decimal.js](https://github.com/MikeMcl/decimal.js) offers arbitrary precision
+  arithmetic. It could serve future exact multi-currency accounting; it cannot
+  establish quote periods, property totals or room/bed evidence.
+- Existing parser, source pool, Telegram retry helper, LinksStore checkpoints,
+  QaCleanup and QaOwnedMessages fit this repository better than introducing a
+  crawler framework, currency service or test fixture framework.
+
+## Verification sequence
+
+1. Run public issue reproductions and new minimal regressions before fixes.
+2. Implement and validate each atomic group; commit only on issue-177-fcc4ea81dc38.
+3. Audit all equivalent paths, update types/docs/CLI/bot consistently.
+4. Run full strict Node suite, supported Bun/Deno, coverage, lint/format/duplication,
+   npm audits, example build and available real runtime checks; save large logs.
+5. Review complete PR diff, sync main, update PR title/body with evidence and
+   individual closing references for #177, #165, #166, #167, #168, #170, #171,
+   #172, #173, #174 and #175, plus remaining acceptance limits; push and inspect
+   newest CI SHAs/logs.
+6. Wait for background work and CI, resolve failures, verify clean tree, mark ready.

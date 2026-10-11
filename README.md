@@ -134,6 +134,9 @@ browser and exits with status 130.
 /search --filter labeledFields.электричество=счётчику Нячанг
 /search --types studio,hotel --min-rooms 1 --max-total-vnd 15000000 Nha Trang
 /search --max-per-room-vnd 8000000 --max-per-bed-vnd 5000000 Nha Trang
+/search --all-sources --sort-by pricePerBedroomVnd --max-per-bedroom-vnd 6000000 Nha Trang
+/search --stay-nights 15 --sort-by totalVnd Nha Trang
+/update_sources --all-sources
 /preset list
 /preset show [NAME]
 /preset save NAME [SEARCH OPTIONS]
@@ -160,7 +163,20 @@ the active preset. Rooms are not bedrooms: room filters require an explicit
 room count, and per-room/per-bed filters exclude records missing the respective
 count. Studios are selected by type and do not imply one room. Prices retain
 their quoted billing period; range filters compare the normalized quoted VND
-amount without changing that period.
+amount without changing that period. Value ordering rejects mixed billing periods
+until `--comparison-period night|week|month|year` or `--stay-nights N` is supplied.
+Stay estimates use explicit linear conventions (7 nights/week, 30/month,
+365/year); availability and minimum stay remain unverified. Per-bedroom,
+per-room and per-bed values require positive, exact counts and a property-total
+quote. Replies include denominator, billing and exchange-rate provenance.
+
+`--all-sources` removes ranking and geography selection caps for collection.
+Its timestamped report lists every supported source and every disabled, retired
+or unsupported catalogue entry, plus freshness, access, pagination/window and
+field coverage. Pending, partial, stale and unreviewed sources remain outstanding;
+the ranking covers observed comparable offers and does not certify a global
+minimum. Refresh resumes persisted source/history progress under the same
+resource budgets. The typed API option `refresh: false` reads the current persisted inventory.
 
 The same search operations are available without Telegram:
 
@@ -183,7 +199,10 @@ communities. Website candidates are reranked by their result position.
 Telegram candidates discovered in the search UI are combined with their seed
 cohort, then each public `t.me` preview is visited to read its current member or
 subscriber count. The highest 20 enabled web and nationwide Telegram records and up to
-40 independently ranked Nha Trang Telegram records are saved.
+40 independently ranked Nha Trang Telegram records are returned by the ranked
+view. The persisted capability inventory retains all entries.
+`/update_sources --all-sources` updates every supported candidate without these
+caps and preserves disabled entries.
 
 Popularity changes constantly, so the bundled list is a bootstrap candidate
 set rather than a permanent claim. The evidence attached to the persisted

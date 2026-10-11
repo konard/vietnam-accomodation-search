@@ -1,0 +1,660 @@
+{
+  "observedAt": "2026-10-11T00:56:50.112Z",
+  "legacyTruthMigration": "Legacy expected.rooms was bedroom truth. Values preserved as expected.bedrooms; live rooms and beds remain not evaluated.",
+  "reviewedLiveParser": {
+    "cases": 299,
+    "corpusSchemaVersion": 2,
+    "fields": {
+      "offer": {
+        "labelled": 299,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.95
+        },
+        "truePositive": 248
+      },
+      "price": {
+        "labelled": 247,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 247
+      },
+      "period": {
+        "labelled": 248,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 247
+      },
+      "availability": {
+        "labelled": 21,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.98
+        },
+        "truePositive": 21
+      },
+      "location": {
+        "labelled": 248,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 246
+      },
+      "bedrooms": {
+        "labelled": 211,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 208
+      },
+      "rooms": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      },
+      "beds": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      },
+      "pricePerBedroomVnd": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      },
+      "pricePerRoomVnd": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      },
+      "pricePerBedVnd": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      }
+    },
+    "languages": ["en", "ru", "vi", "zh"],
+    "misses": [],
+    "pass": true,
+    "sources": 34
+  },
+  "reviewedLiveStored": {
+    "cases": 89,
+    "corpusSchemaVersion": 2,
+    "fields": {
+      "offer": {
+        "labelled": 89,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.95
+        },
+        "truePositive": 84
+      },
+      "price": {
+        "labelled": 84,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 84
+      },
+      "period": {
+        "labelled": 84,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 84
+      },
+      "availability": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.98
+        },
+        "truePositive": 0
+      },
+      "location": {
+        "labelled": 84,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 84
+      },
+      "bedrooms": {
+        "labelled": 82,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 82
+      },
+      "rooms": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      },
+      "beds": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      },
+      "pricePerBedroomVnd": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      },
+      "pricePerRoomVnd": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      },
+      "pricePerBedVnd": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 0
+      }
+    },
+    "languages": ["en", "ru", "vi"],
+    "misses": [],
+    "pass": true,
+    "sources": 8
+  },
+  "selfAuthoredParser": {
+    "cases": 10,
+    "corpusSchemaVersion": 2,
+    "fields": {
+      "offer": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.95
+        },
+        "truePositive": 10
+      },
+      "price": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 10
+      },
+      "period": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 10
+      },
+      "availability": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.98
+        },
+        "truePositive": 0
+      },
+      "location": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 10
+      },
+      "bedrooms": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 8
+      },
+      "rooms": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 8
+      },
+      "beds": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 8
+      },
+      "pricePerBedroomVnd": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 2
+      },
+      "pricePerRoomVnd": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 4
+      },
+      "pricePerBedVnd": {
+        "labelled": 10,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 4
+      }
+    },
+    "languages": ["en"],
+    "misses": [],
+    "pass": true,
+    "sources": 2
+  },
+  "selfAuthoredStored": {
+    "cases": 5,
+    "corpusSchemaVersion": 2,
+    "fields": {
+      "offer": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.95
+        },
+        "truePositive": 5
+      },
+      "price": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 5
+      },
+      "period": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 5
+      },
+      "availability": {
+        "labelled": 0,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "not-evaluated",
+        "pass": null,
+        "precision": null,
+        "recall": null,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.98
+        },
+        "truePositive": 0
+      },
+      "location": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 5
+      },
+      "bedrooms": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 4
+      },
+      "rooms": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 4
+      },
+      "beds": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.95,
+          "recall": 0.9
+        },
+        "truePositive": 4
+      },
+      "pricePerBedroomVnd": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 1
+      },
+      "pricePerRoomVnd": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 2
+      },
+      "pricePerBedVnd": {
+        "labelled": 5,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "status": "evaluated",
+        "pass": true,
+        "precision": 1,
+        "recall": 1,
+        "threshold": {
+          "precision": 0.98,
+          "recall": 0.9
+        },
+        "truePositive": 2
+      }
+    },
+    "languages": ["en"],
+    "misses": [],
+    "pass": true,
+    "sources": 1
+  }
+}

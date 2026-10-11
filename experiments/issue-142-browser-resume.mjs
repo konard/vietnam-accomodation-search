@@ -2,6 +2,7 @@
 // Self-authored pages in a real Chromium browser; no private Telegram data.
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { settleCleanup } from '../src/utils.js';
 import { tmpdir } from 'node:os';
 import { chromium } from 'playwright';
 import {
@@ -11,7 +12,7 @@ import {
 } from '../src/index.js';
 
 const directory = await mkdtemp(join(tmpdir(), 'preview-resume-'));
-const browser = await chromium.launch({ headless: true });
+let browser;
 const now = new Date('2026-10-07T00:00:00Z');
 const source = {
   id: 'telegram:qa144',
@@ -21,6 +22,7 @@ const source = {
 };
 const visits = [];
 try {
+  browser = await chromium.launch({ headless: true });
   const makeRuntime = () => ({
     launchBrowser: async () => {
       const page = await browser.newPage();
@@ -84,6 +86,11 @@ try {
     throw new Error('Real-browser resume acceptance failed.');
   }
 } finally {
-  await browser.close();
-  await rm(directory, { recursive: true, force: true });
+  await settleCleanup(
+    [
+      () => browser?.close(),
+      () => rm(directory, { recursive: true, force: true }),
+    ],
+    'Browser probe cleanup failed.'
+  );
 }

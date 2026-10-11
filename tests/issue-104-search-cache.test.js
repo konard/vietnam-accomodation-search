@@ -85,6 +85,30 @@ describe('collection freshness and fair search scheduling (#104)', () => {
       }).map(({ id }) => id)
     ).toEqual(['new', 'failed']);
   });
+  it('never records incomplete source completions as fresh across restarts', async () => {
+    for (const status of [undefined, 'pending', 'cancelled']) {
+      const store = storeFixture();
+      let calls = 0;
+      const collector = {
+        collectWithReport: async (_sources, _query, { onSourceComplete }) => {
+          calls += 1;
+          const outcome = status && { sourceId: 'a', status, offers: 0 };
+          await onSourceComplete({ offers: [], outcome });
+          const outcomes = outcome ? [outcome] : [];
+          return { offers: [], outcomes, summary: summarizeOutcomes(outcomes) };
+        },
+      };
+      const sources = [{ id: 'a' }];
+      await serviceFor(store, collector, sources).search({
+        query: 'Nha Trang',
+      });
+      expect(await store.loadRecords('search-collections')).toEqual([]);
+      await serviceFor(store, collector, sources).search({
+        query: 'Nha Trang',
+      });
+      expect(calls).toBe(2);
+    }
+  });
   it('caches empty collections across service restarts and refreshes only stale sources', async () => {
     const store = storeFixture();
     const calls = [];

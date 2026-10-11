@@ -273,12 +273,13 @@ export function assembleTelegramAlbums(messages) {
 // eslint-disable-next-line complexity -- Reconciliation accounts explicitly for every media, classification, OCR, and extraction terminal state.
 export async function reconcileTelegramMaterials(
   messages,
-  { extract, maxOcrPhotos = 3, ocr, targetLocation = 'nha-trang' } = {}
+  { extract, maxOcrPhotos = 3, ocr, signal, targetLocation = 'nha-trang' } = {}
 ) {
   const accepted = [];
   let eligibleAttempts = 0;
   const reviewQueue = [];
   for (const material of assembleTelegramAlbums(messages)) {
+    signal?.throwIfAborted();
     if (material.captionConflict) {
       reviewQueue.push({
         id: material.id,
@@ -303,7 +304,8 @@ export async function reconcileTelegramMaterials(
       const extraction = [];
       try {
         for (const mediaId of material.mediaIds.slice(0, maxOcrPhotos)) {
-          const result = await ocr(mediaId, { material });
+          signal?.throwIfAborted();
+          const result = await ocr(mediaId, { material, signal });
           const fragment = typeof result === 'string' ? result : result?.text;
           fragments.push(fragment);
           extraction.push({
@@ -317,6 +319,9 @@ export async function reconcileTelegramMaterials(
         ocrState = 'completed';
         material.mediaExtraction = extraction;
       } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
         reviewQueue.push({
           id: material.id,
           reason: 'photo-only-ocr-failed',

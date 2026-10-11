@@ -67,6 +67,8 @@ function fixture({ refuseContainer = false } = {}) {
       current.builders = current.builders.filter(
         (name) => name !== args.at(-1)
       );
+    } else if (joined.startsWith('buildx stop')) {
+      return '';
     } else {
       throw new Error(`Unexpected fixture command ${args[0]}`);
     }
@@ -118,6 +120,31 @@ describe('scoped Docker QA cleanup', () => {
     cleanup.ownImage(`${runId}:never-created`);
     cleanup.ownBuilder(`${runId}-builder`);
     cleanup.ownBuilder(`${runId}-never-created`);
+    assert.equal((await cleanup.cleanup()).pass, true);
+  });
+
+  it('quiesces the owned builder separately before removing its populated cache', async () => {
+    const state = fixture();
+    let stopped = false;
+    const run = async (args) => {
+      if (args[0] === 'buildx' && args[1] === 'stop') {
+        assert.equal(args[2], `${runId}-builder`);
+        stopped = true;
+        return '';
+      }
+      if (args[0] === 'buildx' && args[1] === 'rm') {
+        assert.equal(stopped, true);
+        assert(args.includes('--timeout=60s'));
+      }
+      return state.run(args);
+    };
+    const cleanup = new QaDockerCleanup({
+      runId,
+      baseline: state.baseline,
+      run,
+    });
+    cleanup.ownImage(`${runId}:fixture`);
+    cleanup.ownBuilder(`${runId}-builder`);
     assert.equal((await cleanup.cleanup()).pass, true);
   });
 });

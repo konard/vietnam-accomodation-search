@@ -10,8 +10,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 
@@ -53,6 +52,9 @@ import {
   requireIdentityPins,
 } from './telegram-e2e-identities.mjs';
 
+import { withQaCleanup, qaTemporaryDirectory } from './qa-cleanup.mjs';
+import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FAILURE_LOG_DIRECTORY = join(ROOT, 'experiments', 'logs');
 const DELIVERED_STEPS = [
@@ -79,42 +81,51 @@ function usage() {
   ].join('\n');
 }
 
-async function readConversation(context, peer) {
-  return [
-    ...(await withDeadline(
-      () => context.driver.client.getMessages(peer, { limit: 100 }),
-      driverDeadline(context.timeoutMs),
-      'driver history read'
-    )),
-  ];
-}
-
-async function runMessages(context, run) {
+async function runMessages(context) {
   const messages = [];
-  for (const peer of [context.botPeer, context.runtimePeer]) {
-    for (const message of await readConversation(context, peer)) {
-      if (messageText(message).includes(`cap-${run}-`)) {
-        messages.push({ message, peer });
-      }
-    }
+  for (const [peer, ledger] of context.ledgers) {
+    const found = await withDeadline(
+      () => readQaHistory(context.driver.client, peer, ledger.baseline),
+      driverDeadline(context.timeoutMs),
+      'driver paged history read'
+    );
+    messages.push(
+      ...found
+        .filter((message) => ledger.owns(message))
+        .map((message) => ({ message, peer }))
+    );
   }
   return messages;
 }
 
-async function deleteRunMessages(context, found) {
-  const byPeer = new Map();
-  for (const { message, peer } of found) {
-    byPeer.set(peer, [...(byPeer.get(peer) || []), messageId(message)]);
+async function cleanupMessages(context) {
+  const failures = [];
+  for (const [peer, ledger] of context.ledgers) {
+    try {
+      const result = await ledger.cleanup({
+        read: () =>
+          withDeadline(
+            () => readQaHistory(context.driver.client, peer, ledger.baseline),
+            driverDeadline(context.timeoutMs),
+            'cleanup history'
+          ),
+        remove: (ids) =>
+          withDeadline(
+            () =>
+              context.driver.client.deleteMessages(peer, ids, { revoke: true }),
+            driverDeadline(context.timeoutMs),
+            'test-message cleanup'
+          ),
+      });
+      if (!result.pass) {
+        failures.push('owned messages survived');
+      }
+    } catch {
+      failures.push('message cleanup failed');
+    }
   }
-  for (const [peer, identifiers] of byPeer) {
-    await withDeadline(
-      () =>
-        context.driver.client.deleteMessages(peer, identifiers, {
-          revoke: true,
-        }),
-      driverDeadline(context.timeoutMs),
-      'test-message cleanup'
-    ).catch(() => {});
+  if (failures.length) {
+    throw new Error(failures.join('; '));
   }
 }
 
@@ -224,10 +235,21 @@ async function readMedia(name, current, context, marker) {
   }
 }
 
-// eslint-disable-next-line max-lines-per-function -- One scenario owns its steps, observation, and cleanup.
-async function runScenario(name, context) {
+function runScenario(name, context) {
+  return withQaCleanup((scope, signal) =>
+    runOwnedScenario(
+      name,
+      { ...context, botApi: new Api(context.token) },
+      scope,
+      signal
+    )
+  );
+}
+
+// eslint-disable-next-line max-lines-per-function -- One capability scenario owns its driver, router, sends and teardown through every failure boundary.
+async function runOwnedScenario(name, context, scope, signal) {
   const run = randomBytes(5).toString('hex');
-  const marker = (step) => `cap-${run}-${step}`;
+  const marker = (step) => `qa-capability-${run}-${step}`;
   const wanted = new Set([
     ...SCENARIO_STEPS[name].pass,
     ...SCENARIO_STEPS[name].fail,
@@ -235,7 +257,33 @@ async function runScenario(name, context) {
   const calls = [];
   const clients = { bot: [], user: [] };
   const steps = [];
-  const storeDirectory = await mkdtemp(join(tmpdir(), 'capability-e2e-'));
+  const storeDirectory = await qaTemporaryDirectory(scope, 'capability-e2e-');
+  context.ledgers = new Map();
+  scope.defer('owned conversation messages', () => cleanupMessages(context));
+  await mkdir(FAILURE_LOG_DIRECTORY, { mode: 0o700, recursive: true });
+  for (const [index, peer] of [
+    context.botPeer,
+    context.runtimePeer,
+  ].entries()) {
+    const latest = await withDeadline(
+      () => context.driver.client.getMessages(peer, { limit: 1 }),
+      driverDeadline(context.timeoutMs),
+      'conversation baseline'
+    );
+    const ledger = new QaOwnedMessages({
+      marker: `qa-capability-${run}`,
+      baseline: messageId(latest[0]),
+      journal: join(
+        FAILURE_LOG_DIRECTORY,
+        `qa-capability-${run}-${index}.json`
+      ),
+    });
+    await ledger.save();
+    context.ledgers.set(peer, ledger);
+  }
+  context.ledgers
+    .get(context.botPeer)
+    .install(context.botApi, context.driverId);
   const routers = [];
   const build = () => {
     const built = createRouter(name, context, {
@@ -244,12 +292,17 @@ async function runScenario(name, context) {
       storeDirectory,
     });
     routers.push(built.router);
+    scope.defer('capability router', () => built.router.destroy());
     return built;
   };
   let current = build();
   const step = async (stepName, action) => {
     if (!wanted.has(stepName)) {
       return;
+    }
+    signal.throwIfAborted();
+    for (const ledger of context.ledgers.values()) {
+      await ledger.save();
     }
     try {
       await withDeadline(action, context.timeoutMs, stepName);
@@ -345,12 +398,11 @@ async function runScenario(name, context) {
     });
   } finally {
     for (const router of routers) {
-      await router.destroy().catch(() => {});
+      await router.destroy();
     }
-    await rm(storeDirectory, { force: true, recursive: true });
   }
 
-  const found = await runMessages(context, run);
+  const found = await runMessages(context);
   const deliveries = {};
   for (const { name: stepName, ok } of steps) {
     if (
@@ -385,8 +437,8 @@ async function runScenario(name, context) {
   const transcript = preliminary.length
     ? await persistTranscript(found, name, preliminary)
     : undefined;
-  await deleteRunMessages(context, found);
-  cleanup.leftovers = (await runMessages(context, run)).length;
+  await cleanupMessages(context);
+  cleanup.leftovers = (await runMessages(context)).length;
   const failures = evaluateCapabilityScenario({
     botCapabilities,
     calls,
@@ -483,7 +535,7 @@ export async function runCapabilityE2E(options, environment = process.env) {
       report.scenarios[name] = await runScenario(name, context);
     }
   } finally {
-    await context.driver.client.disconnect().catch(() => {});
+    await context.driver.client.disconnect();
   }
   report.ok = Object.values(report.scenarios).every(
     (scenario) => !scenario.failures.length

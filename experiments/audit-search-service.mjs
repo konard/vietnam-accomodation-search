@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { compareOfferValue } from '../src/value-pricing.js';
 // Field accuracy of the product search path: createApplication →
 // SearchService → BrowserCollector → LinksStore.
 //
@@ -79,6 +80,18 @@ export function replaySources(cases) {
   }));
 }
 
+function unitFields(offer) {
+  const value = compareOfferValue(offer);
+  return {
+    bedrooms: offer.attributes?.bedrooms,
+    rooms: offer.attributes?.rooms,
+    beds: offer.attributes?.beds,
+    pricePerBedroomVnd: value.pricePerBedroomVnd,
+    pricePerRoomVnd: value.pricePerRoomVnd,
+    pricePerBedVnd: value.pricePerBedVnd,
+  };
+}
+
 // The same fields field-corpus-metrics.mjs reads from the parser, read here
 // from a stored offer. A card the search did not store is not an offer.
 function storedFields(offer) {
@@ -95,7 +108,7 @@ function storedFields(offer) {
         ? 'unavailable'
         : undefined,
     location: (!inherited && offer.location) || undefined,
-    rooms: offer.attributes?.bedrooms ?? undefined,
+    ...unitFields(offer),
   };
 }
 

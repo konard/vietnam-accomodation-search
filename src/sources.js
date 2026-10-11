@@ -1,3 +1,4 @@
+import { canonicalSource, sourceInventory } from './source-inventory.js';
 import { citiesIn } from './search-refresh.js';
 
 const OBSERVED_AT = '2026-09-21T00:00:00.000Z';
@@ -421,20 +422,28 @@ export const DEFAULT_NHA_TRANG_TELEGRAM_SOURCES = [
 // A seed the manifest disables stays disabled when a stored registry from an
 // earlier update still lists it as enabled.
 const DISABLED_SEED_IDS = new Set(
-  DEFAULT_WEB_SOURCES.filter(({ enabled }) => enabled === false).map(
-    ({ id }) => id
-  )
+  [
+    ...DEFAULT_WEB_SOURCES,
+    ...DEFAULT_TELEGRAM_SOURCES,
+    ...DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
+  ]
+    .filter(({ enabled }) => enabled === false)
+    .map(({ id }) => id)
 );
 
 function rankAndLimit(sources, count) {
   const unique = new Map();
   for (const source of sources.filter(
-    ({ enabled, id }) => enabled !== false && !DISABLED_SEED_IDS.has(id)
+    ({ enabled, id, retired }) =>
+      !retired && enabled !== false && !DISABLED_SEED_IDS.has(id)
   )) {
     unique.set(source.id, source);
   }
   return [...unique.values()]
-    .sort((left, right) => right.popularity.value - left.popularity.value)
+    .sort(
+      (left, right) =>
+        (right.popularity?.value || 0) - (left.popularity?.value || 0)
+    )
     .slice(0, count);
 }
 
@@ -454,8 +463,29 @@ export class SourceRegistry {
     this.discover = discover;
   }
 
-  async list(type) {
-    const stored = (await this.store?.loadSources?.()) || [];
+  async inventory() {
+    return sourceInventory(
+      [
+        ...DEFAULT_WEB_SOURCES,
+        ...DEFAULT_TELEGRAM_SOURCES,
+        ...DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
+      ],
+      (await this.store?.loadSources?.()) || []
+    );
+  }
+
+  async list(type, { mode = 'ranked' } = {}) {
+    if (mode === 'exhaustive') {
+      const inventory = await this.inventory();
+      return inventory.filter(
+        (source) =>
+          source.capability === 'supported' && (!type || source.type === type)
+      );
+    }
+    const stored = sourceInventory(
+      [],
+      (await this.store?.loadSources?.()) || []
+    );
     const sources = [
       ...rankAndLimit(
         [
@@ -468,7 +498,9 @@ export class SourceRegistry {
         [
           ...DEFAULT_TELEGRAM_SOURCES,
           ...stored.filter(
-            (source) => source.type === 'telegram' && !source.focus
+            (source) =>
+              source.type === 'telegram' &&
+              (!source.focus || source.focuses?.includes('nationwide'))
           ),
         ],
         20
@@ -476,7 +508,11 @@ export class SourceRegistry {
       ...rankAndLimit(
         [
           ...DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
-          ...stored.filter((source) => source.focus === 'nha-trang'),
+          ...stored.filter(
+            (source) =>
+              source.focus === 'nha-trang' ||
+              source.focuses?.includes('nha-trang')
+          ),
         ],
         40
       ),
@@ -484,13 +520,42 @@ export class SourceRegistry {
     return type ? sources.filter((source) => source.type === type) : sources;
   }
 
+  // eslint-disable-next-line complexity -- Ranked and exhaustive discovery retain explicit distinct selection contracts.
   async update({
+    mode = 'ranked',
     count,
     focusCount = count ?? 40,
     telegramCount = count ?? 20,
     webCount = count ?? 20,
     signal,
   } = {}) {
+    if (mode === 'exhaustive') {
+      const current = await this.inventory();
+      const found = [];
+      for (const type of ['web', 'telegram']) {
+        found.push(
+          ...((await this.discover?.(type, {
+            mode,
+            candidates: current.filter(
+              (source) =>
+                source.type === type && source.capability === 'supported'
+            ),
+            signal,
+          })) || [])
+        );
+      }
+      const merged = sourceInventory(current, found);
+      await this.store?.saveSources?.(merged);
+      return {
+        web: merged.filter(
+          (source) => source.type === 'web' && source.capability === 'supported'
+        ),
+        telegram: merged.filter(
+          (source) =>
+            source.type === 'telegram' && source.capability === 'supported'
+        ),
+      };
+    }
     const current = await this.list();
     const discoverType = async (type, defaults, { focus, limit } = {}) => {
       const found =
@@ -505,7 +570,7 @@ export class SourceRegistry {
       );
       const selected = found.length ? found : fallback;
       return rankAndLimit(
-        selected.map((source) => assignFocus(source, focus)),
+        selected.map((source) => assignFocus(canonicalSource(source), focus)),
         limit
       );
     };
@@ -521,7 +586,9 @@ export class SourceRegistry {
     ]);
     const telegramSources = [...telegram, ...nhaTrang];
 
-    await this.store?.saveSources?.([...web, ...telegramSources]);
+    await this.store?.saveSources?.(
+      sourceInventory(await this.inventory(), [...web, ...telegramSources])
+    );
     return { web, telegram: telegramSources };
   }
 }

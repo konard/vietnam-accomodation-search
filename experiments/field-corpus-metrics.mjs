@@ -1,3 +1,4 @@
+import { compareOfferValue } from '../src/value-pricing.js';
 // Field-level precision and recall of the listing parser against the
 // reviewed live corpus in experiments/fixtures/reviewed-live-corpus.json.
 //
@@ -35,7 +36,12 @@ export const FIELDS = [
   'period',
   'availability',
   'location',
+  'bedrooms',
   'rooms',
+  'beds',
+  'pricePerBedroomVnd',
+  'pricePerRoomVnd',
+  'pricePerBedVnd',
 ];
 
 export const FIELD_THRESHOLDS = Object.freeze({
@@ -44,7 +50,12 @@ export const FIELD_THRESHOLDS = Object.freeze({
   period: { precision: 0.98, recall: 0.9 },
   availability: { precision: 0.98, recall: 0.98 },
   location: { precision: 0.95, recall: 0.9 },
+  bedrooms: { precision: 0.95, recall: 0.9 },
   rooms: { precision: 0.95, recall: 0.9 },
+  beds: { precision: 0.95, recall: 0.9 },
+  pricePerBedroomVnd: { precision: 0.98, recall: 0.9 },
+  pricePerRoomVnd: { precision: 0.98, recall: 0.9 },
+  pricePerBedVnd: { precision: 0.98, recall: 0.9 },
 });
 
 export async function loadCorpus(url = CORPUS_URL) {
@@ -96,6 +107,18 @@ function parseCase(input, postedAt, rates) {
   );
 }
 
+function unitFields(offer) {
+  const value = compareOfferValue(offer);
+  return {
+    bedrooms: offer.attributes?.bedrooms,
+    rooms: offer.attributes?.rooms,
+    beds: offer.attributes?.beds,
+    pricePerBedroomVnd: value.pricePerBedroomVnd,
+    pricePerRoomVnd: value.pricePerRoomVnd,
+    pricePerBedVnd: value.pricePerBedVnd,
+  };
+}
+
 // What the collector would store for one corpus message.
 export async function predictCase(testCase, { rates } = {}) {
   const { input } = testCase;
@@ -111,7 +134,7 @@ export async function predictCase(testCase, { rates } = {}) {
         ? 'unavailable'
         : undefined,
     location: (!inherited && offer.location) || undefined,
-    rooms: offer.attributes?.bedrooms ?? undefined,
+    ...unitFields(offer),
   };
 }
 
@@ -140,12 +163,13 @@ function ratio(numerator, denominator) {
 
 // `predict` maps one corpus case to the stored fields; the default runs the
 // parser directly, and the search-service audit reads them from the store.
+// eslint-disable-next-line complexity -- Label presence and positive/negative scoring are one auditable metric transaction.
 export async function fieldMetrics(
   corpus,
   { predict = predictCase, rates = corpus.rates } = {}
 ) {
   const counts = Object.fromEntries(
-    FIELDS.map((field) => [field, { fn: 0, fp: 0, tp: 0 }])
+    FIELDS.map((field) => [field, { fn: 0, fp: 0, tp: 0, labelled: 0 }])
   );
   const misses = [];
   for (const testCase of corpus.cases) {
@@ -153,9 +177,20 @@ export async function fieldMetrics(
     // Offer fields are reviewed only on offers; other posts score "offer".
     const fields = testCase.expected.offer ? FIELDS : ['offer'];
     for (const field of fields) {
+      const independent = [
+        'rooms',
+        'beds',
+        'pricePerBedroomVnd',
+        'pricePerRoomVnd',
+        'pricePerBedVnd',
+      ].includes(field);
+      if (independent && !Object.hasOwn(testCase.expected, field)) {
+        continue;
+      }
       const expected = testCase.expected[field];
       const got = actual[field];
       const counter = counts[field];
+      counter.labelled += Number(Object.hasOwn(testCase.expected, field));
       if (present(got) && present(expected) && matches(field, got, expected)) {
         counter.tp += 1;
         continue;
@@ -172,13 +207,14 @@ export async function fieldMetrics(
     }
   }
   const fields = Object.fromEntries(
-    Object.entries(counts).map(([field, { fn, fp, tp }]) => {
+    Object.entries(counts).map(([field, { fn, fp, tp, labelled }]) => {
       const precision = ratio(tp, tp + fp);
       const recall = ratio(tp, tp + fn);
       const threshold = FIELD_THRESHOLDS[field];
       return [
         field,
         {
+          labelled,
           falseNegative: fn,
           falsePositive: fp,
           // No expected positives means no evidence for recall, even if

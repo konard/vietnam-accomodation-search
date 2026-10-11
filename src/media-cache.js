@@ -1,6 +1,7 @@
 import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { stableHash } from './utils.js';
+import { TelegramMediaRetries } from './telegram-media-retries.js';
 
 // Concurrent saves rename their temporary files while the budget walks the
 // data directory, so a listed entry may be gone by the time it is read.
@@ -35,12 +36,15 @@ export class MediaCache {
     fetchImpl = globalThis.fetch,
     maxBytes = 10 * 1024 ** 3,
     photoTimeoutMs = 15_000,
+    now = Date.now,
   } = {}) {
     this.directory = directory;
     this.mediaDirectory = join(directory, 'media');
     this.fetchImpl = fetchImpl;
     this.maxBytes = maxBytes;
     this.photoTimeoutMs = photoTimeoutMs;
+    this.now = now;
+    this.retries = new TelegramMediaRetries(directory, { now });
   }
 
   // Every download has its own timeout, so a photo host that accepts the
@@ -69,24 +73,38 @@ export class MediaCache {
   }
 
   async cacheTelegramPhotos(offer, material, provider, { signal } = {}) {
+    const deferred = await this.retries.records();
     const downloads = await Promise.allSettled(
       (material.mediaIds || []).slice(0, 10).map(async (id) => {
-        const bytes = await provider.photo(id, {
-          material,
-          signal,
-          maxBytes: 10 * 1024 ** 2,
-          timeoutMs: this.photoTimeoutMs,
-        });
-        const path = join(
-          this.mediaDirectory,
-          `${stableHash(`${offer.sourceId}:${id}`)}.jpg`
-        );
-        await mkdir(this.mediaDirectory, { recursive: true, mode: 0o700 });
-        await writeFile(path, bytes, { mode: 0o600 });
+        const key = stableHash(`${offer.sourceId}:${id}`);
+        const pending = deferred.find((row) => row.id === key);
+        if (pending && Date.parse(pending.retryAt) > this.now()) {
+          throw new Error('Native photo retry is deferred.');
+        }
+        const path = join(this.mediaDirectory, `${key}.jpg`);
+        let size = (await stat(path).catch(unlessGone))?.size;
+        if (!size) {
+          try {
+            signal?.throwIfAborted();
+            const bytes = await provider.photo(id, {
+              material,
+              signal,
+              maxBytes: 10 * 1024 ** 2,
+              timeoutMs: this.photoTimeoutMs,
+            });
+            await mkdir(this.mediaDirectory, { recursive: true, mode: 0o700 });
+            await writeFile(path, bytes, { mode: 0o600 });
+            size = bytes.byteLength;
+            await this.retries.update(key);
+          } catch (error) {
+            await this.retries.update(key, error);
+            throw error;
+          }
+        }
         return {
-          cachedAt: new Date().toISOString(),
+          cachedAt: new Date(this.now()).toISOString(),
           path,
-          size: bytes.byteLength,
+          size,
           url: id,
         };
       })
@@ -98,6 +116,11 @@ export class MediaCache {
       offer.cachedPhotos.length === Math.min(10, material.mediaIds?.length || 0)
         ? 'cached'
         : 'incomplete';
+    offer.mediaRetries = (await this.retries.records()).filter((row) =>
+      material.mediaIds?.some(
+        (id) => row.id === stableHash(`${offer.sourceId}:${id}`)
+      )
+    );
     await this.enforceBudget([offer]);
     if (
       offer.cachedPhotos.length < Math.min(10, material.mediaIds?.length || 0)

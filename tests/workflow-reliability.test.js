@@ -342,7 +342,7 @@ describe('workflow reliability policy', () => {
     const packageVersion = previewRegenJob.match(/playwright@([0-9.]+)/)?.[1];
 
     expect(previewRegenJob).toContain('container:');
-    expect(imageVersion).toBe('1.63.0');
+    expect(imageVersion).toBe('1.64.0');
     expect(packageVersion).toBe(imageVersion);
     expect(previewRegenJob).toContain("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'");
     expect(previewRegenJob).not.toContain('npx playwright install');

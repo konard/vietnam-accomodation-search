@@ -52,6 +52,9 @@ export function statusForFailure(category, status) {
   if (category === PAGE_CLASSIFICATIONS.EMPTY) {
     return SOURCE_STATUSES.EMPTY;
   }
+  if (category === 'http-pending') {
+    return SOURCE_STATUSES.PENDING;
+  }
   if (category === 'disabled-adapter') {
     return SOURCE_STATUSES.DISABLED;
   }
@@ -111,6 +114,11 @@ function sourceResult(sourceId, value, durationMs) {
   return {
     durationMs,
     offers: value.length,
+    fetchComplete: true,
+    parseComplete: value.parseComplete,
+    paginationComplete: value.paginationComplete,
+    reviewComplete: value.reviewComplete,
+    historyCheckpoint: value.historyCheckpoint,
     ...historyCoverage(value),
     ...(partial ? { category: 'incomplete-history' } : {}),
     sourceId,

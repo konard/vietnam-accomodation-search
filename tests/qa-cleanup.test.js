@@ -20,34 +20,45 @@ describe('QA teardown acceptance', () => {
       if (typeof Deno !== 'undefined' || typeof Bun !== 'undefined') {
         return;
       }
-      const parent = await mkdtemp(join(tmpdir(), 'qa-signal-'));
-      let child;
-      try {
-        const url = new globalThis.URL(
-          '../experiments/qa-cleanup.mjs',
-          import.meta.url
-        ).href;
-        const code = `import {withQaCleanup,qaTemporaryDirectory} from ${JSON.stringify(url)};try{await withQaCleanup(async(scope,signal)=>{await qaTemporaryDirectory(scope);const timer=setInterval(()=>{},1000);scope.defer('timer',()=>clearInterval(timer));console.log('ready');await new Promise((resolve)=>signal.addEventListener('abort',resolve,{once:true}));});}catch{process.exitCode=1;}`;
-        child = spawn(process.execPath, ['--input-type=module', '-e', code], {
-          env: { ...process.env, TMPDIR: parent, TMP: parent, TEMP: parent },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        const ended = new Promise((resolve) => child.once('close', resolve));
-        await new Promise((resolve, reject) => {
-          child.stdout.once('data', resolve);
-          child.once('error', reject);
-          child.once('exit', () =>
-            reject(new Error('signal fixture exited before readiness'))
-          );
-        });
-        child.kill(signal);
-        assert.equal(await ended, 1);
-        assert.deepEqual(await readdir(parent), []);
-      } finally {
-        if (child && child.exitCode === null) {
-          child.kill('SIGKILL');
+      // Windows kill(SIGINT/SIGTERM) is unconditional termination. IPC
+      // exercises the installed handlers there; POSIX also sends real signals.
+      const deliveries = process.platform === 'win32' ? ['ipc'] : ['os', 'ipc'];
+      for (const delivery of deliveries) {
+        const parent = await mkdtemp(join(tmpdir(), 'qa-signal-'));
+        let child;
+        let ended;
+        try {
+          const url = new globalThis.URL(
+            '../experiments/qa-cleanup.mjs',
+            import.meta.url
+          ).href;
+          const code = `import {withQaCleanup,qaTemporaryDirectory} from ${JSON.stringify(url)};process.once('message',(receivedSignal)=>{process.emit(receivedSignal);process.disconnect();});try{await withQaCleanup(async(scope,signal)=>{await qaTemporaryDirectory(scope);const timer=setInterval(()=>{},1000);scope.defer('timer',()=>clearInterval(timer));console.log('ready');await new Promise((resolve)=>signal.addEventListener('abort',resolve,{once:true}));});}catch{process.exitCode=1;}finally{if(process.connected)process.disconnect();}`;
+          child = spawn(process.execPath, ['--input-type=module', '-e', code], {
+            env: { ...process.env, TMPDIR: parent, TMP: parent, TEMP: parent },
+            stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+          });
+          ended = new Promise((resolve) => child.once('close', resolve));
+          await new Promise((resolve, reject) => {
+            child.stdout.once('data', resolve);
+            child.once('error', reject);
+            child.once('exit', () =>
+              reject(new Error('signal fixture exited before readiness'))
+            );
+          });
+          if (delivery === 'ipc') {
+            child.send(signal);
+          } else {
+            child.kill(signal);
+          }
+          assert.equal(await ended, 1);
+          assert.deepEqual(await readdir(parent), []);
+        } finally {
+          if (child && child.exitCode === null && child.signalCode === null) {
+            child.kill('SIGKILL');
+          }
+          await ended;
+          await rm(parent, { force: true, recursive: true });
         }
-        await rm(parent, { force: true, recursive: true });
       }
     });
   }

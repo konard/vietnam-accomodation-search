@@ -211,11 +211,16 @@ export function createApplication(options = {}) {
   const registry =
     options.registry ||
     new SourceRegistry({
-      discover: async (type, { candidates, focus } = {}) => {
+      discover: async (type, { candidates, focus, mode, signal } = {}) => {
         if (type !== 'telegram') {
-          return discoverer.discover(type, { candidates, focus });
+          return discoverer.discover(type, { candidates, focus, signal });
         }
-        const result = await telegramSourceDiscovery.discover({ focus });
+        const result = await telegramSourceDiscovery.discover({
+          candidates,
+          focus,
+          mode,
+          signal,
+        });
         return result.sources;
       },
       store,
@@ -255,7 +260,9 @@ export function createApplication(options = {}) {
             ? new MtcuteTelegramProvider({
                 ...credentials,
                 clientFactory: options.mtcuteClientFactory,
-                expectedUserId: environment.TELEGRAM_EXPECTED_USER_ID,
+                expectedUserId:
+                  environment.TELEGRAM_EXPECTED_USER_ID ||
+                  credentials.expectedUserId,
                 logger: options.logger,
               })
             : undefined;
@@ -290,7 +297,9 @@ export function createApplication(options = {}) {
       const provider = new MtcuteTelegramProvider({
         ...credentials,
         clientFactory: options.mtcuteClientFactory,
-        expectedUserId: environment.TELEGRAM_EXPECTED_USER_ID,
+        mediaRetries: mediaCache.retries,
+        expectedUserId:
+          environment.TELEGRAM_EXPECTED_USER_ID || credentials.expectedUserId,
         logger: options.logger,
       });
       return new TelegramIngestionService({

@@ -2,6 +2,12 @@
 
 ## Verdict and scope
 
+Historical snapshot: the [issue 177 implementation](../issue-177/README.md)
+supersedes this report's application gaps and command-stream security hold.
+The repaired command-stream 2.0.2 and browser-commander 0.29.0 are adopted
+consistently after fresh audits and conformance checks. The results below
+describe the earlier candidate and do not establish current live acceptance.
+
 Cleanup correction: subsequent user-visible rental leftovers disproved the earlier deploy QA cleanup oracle. See [the cleanup revalidation](../qa-cleanup-revalidation-2026-10-11/README.md) and issues #172–176; successful deletion of tracked replies was not proof that every scheduled notification or Docker artifact was removed.
 
 The merged fixes in PR #164 pass fresh local regression tests. The latest-dependency candidate is based on `9cec904e7242c44f2cfea03b986eab444eaf4607`; it updates dependency/tool pins, lockfiles, associated version assertions, QA experiments and documentation. It does not implement new application ranking, exhaustive-source selection or native-media retry logic. These production changes remain assigned through issues under the user's QA-only instruction.

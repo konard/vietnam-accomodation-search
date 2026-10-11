@@ -80,14 +80,32 @@ export async function gotoPage(
   timeout = NAVIGATION_TIMEOUT_MS,
   signal
 ) {
-  const result = await commander.goto({
-    timeout,
-    url,
-    signal,
-    waitForNetworkIdle: false,
-    waitForStableUrlBefore: false,
-    waitForStableUrlAfter: false,
-  });
+  let httpStatus;
+  const response = (value) => {
+    if (
+      value.request?.().isNavigationRequest?.() &&
+      value.frame?.() === commander.page.mainFrame?.()
+    ) {
+      httpStatus = value.status();
+    }
+  };
+  commander.page?.on?.('response', response);
+  let result;
+  try {
+    result = await commander.goto({
+      timeout,
+      url,
+      signal,
+      waitForNetworkIdle: false,
+      waitForStableUrlBefore: false,
+      waitForStableUrlAfter: false,
+    });
+  } finally {
+    commander.page?.off?.('response', response);
+  }
+  if (typeof result?.status === 'function') {
+    httpStatus ??= result.status();
+  }
   if (result?.navigated === false) {
     if (signal?.aborted) {
       throw signal.reason;
@@ -97,7 +115,7 @@ export async function gotoPage(
       { code: 'BROWSER_NAVIGATION_FAILED' }
     );
   }
-  return result;
+  return httpStatus === undefined ? result : { ...result, httpStatus };
 }
 
 // Playwright's own Chromium launcher adds --disable-dev-shm-usage, but

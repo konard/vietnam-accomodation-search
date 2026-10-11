@@ -156,3 +156,11 @@ export {
   TelegramAvailabilityService,
   createAvailabilityMessage,
 } from './telegram-user.js';
+
+export {
+  compareOfferValue,
+  offerDenominator,
+  quoteBasis,
+  formatOfferValue,
+} from './value-pricing.js';
+export { sourceInventory, sourceCompleteness } from './source-inventory.js';

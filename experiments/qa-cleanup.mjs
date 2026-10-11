@@ -52,20 +52,18 @@ export class QaCleanup {
   }
 }
 
-export async function withQaCleanup(action, { signals = true } = {}) {
-  const scope = new QaCleanup();
+export async function withQaCleanup(
+  action,
+  { signals = true, cleanupTimeoutMs = 10_000 } = {}
+) {
+  const scope = new QaCleanup({ timeoutMs: cleanupTimeoutMs });
   const controller = new AbortController();
-  let rejectSignal;
-  const interrupted = new Promise((_resolve, reject) => {
-    rejectSignal = reject;
-  });
   const handlers = new Map();
   if (signals) {
     for (const name of ['SIGINT', 'SIGTERM']) {
       const handler = () => {
         const error = new Error(`QA interrupted by ${name}.`);
         controller.abort(error);
-        rejectSignal(error);
       };
       handlers.set(name, handler);
       process.once(name, handler);
@@ -74,10 +72,11 @@ export async function withQaCleanup(action, { signals = true } = {}) {
   let value;
   let failure;
   try {
-    value = await Promise.race([
-      Promise.resolve().then(() => action(scope, controller.signal)),
-      interrupted,
-    ]);
+    // Let the cancelled action quiesce before disposal. Racing the action
+    // against the signal allowed late acquisitions and sends after cleanup.
+    // Actions must propagate this signal and bound external operations.
+    value = await action(scope, controller.signal);
+    controller.signal.throwIfAborted();
   } catch (error) {
     failure = error;
   } finally {

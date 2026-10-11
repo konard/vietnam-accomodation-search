@@ -28,6 +28,15 @@ export function classifyListingPage({
   ) {
     return PAGE_CLASSIFICATIONS.CHALLENGE;
   }
+  if (status === 202) {
+    return 'http-pending';
+  }
+  if (status >= 400) {
+    return status >= 500 ? 'http-server-error' : 'http-client-error';
+  }
+  if (status < 200 || status >= 300) {
+    return 'http-unresolved';
+  }
   if (/login|log-in|sign-in|đăng-nhập/iu.test(context)) {
     return PAGE_CLASSIFICATIONS.LOGIN;
   }
@@ -127,6 +136,9 @@ export function classifyBrowserFailure(error) {
 export async function untilAborted(operation, signal) {
   const pending = Promise.resolve(operation);
   pending.catch(() => {});
+  if (!signal) {
+    return pending;
+  }
   if (signal.aborted) {
     throw signal.reason;
   }

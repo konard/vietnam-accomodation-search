@@ -503,7 +503,8 @@ export class LinkCliMirror {
 
   async preflight() {
     await this.run(this.command, ['--help'], this.runOptions);
-    const directory = await mkdtemp(join(tmpdir(), 'clink-capability-'));
+    const parent = await mkdtemp(join(tmpdir(), 'clink-capability-'));
+    const directory = join(parent, 'probe');
     try {
       const notation = '(probe: probe value)\n';
       await this.#buildDatabase(
@@ -522,7 +523,7 @@ export class LinkCliMirror {
         { code: 'CLINK_INCOMPATIBLE' }
       );
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await rm(parent, { recursive: true, force: true });
     }
   }
 

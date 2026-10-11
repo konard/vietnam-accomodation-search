@@ -1,5 +1,7 @@
 # Issues #102–#109: requirements, investigation, and acceptance
 
+Correction: the historical field-metrics report measured bedrooms under the old “rooms” name. The key is now `bedrooms`; the reviewed values are unchanged. Actual rooms and beds were not evaluated.
+
 All work belongs to PR [#110](https://github.com/konard/vietnam-accomodation-search/pull/110).
 This ledger distinguishes implemented fixes from acceptance that needs protected
 operator inputs. Issue #109 and all seven child issues and their comments were

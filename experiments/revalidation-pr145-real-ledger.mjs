@@ -29,7 +29,7 @@ const command = process.env.CLINK_COMMAND || 'clink';
 const clinkVersion = execFileSync(command, ['--version'], {
   encoding: 'utf8',
 }).trim();
-assert.equal(clinkVersion, 'clink 0.2.11');
+assert.match(clinkVersion, /^clink (?:0\.2\.11|1\.0\.0)$/u);
 const shardLinks = process.env.QA_LEDGER_SHARD_LINKS
   ? Number(process.env.QA_LEDGER_SHARD_LINKS)
   : undefined;
@@ -54,11 +54,6 @@ if (initialFreeBytes < 8 * 1024 ** 3) {
   throw new Error('QA_DISK_PREFLIGHT: at least 8 GiB free is required.');
 }
 const directory = await mkdtemp(join(tmpdir(), 'pr145-real-ledger-e2e-'));
-// Deduplication, recency ordering and bounds are intentional offer semantics.
-// Establish the expected stored shape before timing actual binary projection.
-const reference = new LinksStore({ directory: join(directory, 'reference') });
-await reference.saveOffers(batch.offers);
-const expectedOffers = await reference.listOffers();
 const started = performance.now();
 const result = {
   mode: 'retained-real-journal',
@@ -72,7 +67,7 @@ const result = {
   records: batch.domainRecords.length,
   recordJsonBytes: Buffer.byteLength(JSON.stringify(batch.domainRecords)),
   offers: batch.offers.length,
-  expectedStoredOffers: expectedOffers.length,
+  expectedStoredOffers: 0,
   traces: batch.traceRecords.length,
   reachedCutoff: true,
   hitCap: false,
@@ -81,6 +76,7 @@ const result = {
   phases: [],
   pass: false,
 };
+let expectedOffers;
 const save = () =>
   writeFile(process.argv[3], `${JSON.stringify(result, null, 2)}\n`, {
     mode: 0o600,
@@ -100,6 +96,12 @@ const headroom = async () => {
   }
 };
 try {
+  // Deduplication, recency ordering and bounds are intentional offer semantics.
+  // Establish the expected stored shape before timing actual binary projection.
+  const reference = new LinksStore({ directory: join(directory, 'reference') });
+  await reference.saveOffers(batch.offers);
+  expectedOffers = await reference.listOffers();
+  result.expectedStoredOffers = expectedOffers.length;
   await headroom();
   const store = new LinksStore({
     directory: join(directory, 'actual'),
