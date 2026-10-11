@@ -20,7 +20,11 @@ import {
   withDeadline,
 } from './telegram-bot-conversation-e2e.mjs';
 import { qaTemporaryDirectory, withQaCleanup } from './qa-cleanup.mjs';
-import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
+import {
+  QaOwnedMessages,
+  readQaHistory,
+  isKnownQaMessage,
+} from './qa-owned-messages.mjs';
 
 assertManualLocalRun(process.env);
 assert.equal(process.env.QA_CLEANUP_LIVE, '1');
@@ -111,9 +115,7 @@ try {
     const before = await read();
     if (outcome === 'audit') {
       result.remainingKnownQaMessages = before.filter((message) =>
-        /qa-cleanup-[0-9a-f]{16}|real-source-e2e-[0-9a-f]{16}|Self-authored QA rental|E2E synthetic offer [0-9a-f]{10}|cutover-[0-9a-f]{12}/u.test(
-          message.message || ''
-        )
+        isKnownQaMessage(message.message || '')
       ).length;
       assert.equal(result.remainingKnownQaMessages, 0);
       return;

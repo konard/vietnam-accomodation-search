@@ -23,6 +23,8 @@ import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
 
 import { withQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages } from './qa-owned-messages.mjs';
+import { getBotIdentity } from './telegram-bot-conversation-e2e.mjs';
+import { verifiedQaBotPeer } from './qa-telegram-peer.mjs';
 
 function options(values) {
   const names = new Map([
@@ -73,6 +75,13 @@ async function credentials(paths) {
   );
   return {
     token: bot.TELEGRAM_BOT_TOKEN,
+    botPeer: verifiedQaBotPeer(
+      await getBotIdentity(
+        bot.TELEGRAM_BOT_TOKEN,
+        bot.TELEGRAM_EXPECTED_BOT_ID
+      ),
+      bot.TELEGRAM_EXPECTED_BOT_ID
+    ),
     user: {
       apiId: user.TELEGRAM_API_ID || user.TELEGRAM_USER_BOT_API_ID,
       apiHash: user.TELEGRAM_API_HASH || user.TELEGRAM_USER_BOT_API_HASH,
@@ -426,7 +435,7 @@ async function runOwned(paths, scope, signal) {
     assert.equal(owner, String(secret.user.expectedUserId));
     observer = new MtcuteTelegramProvider({ ...secret.user, logger: silent });
     assert.equal(String((await observer.identity()).id), owner);
-    peer = await observer.resolveEntity(Number(secret.token.split(':')[0]));
+    peer = await observer.resolveEntity(secret.botPeer);
     const latest = await observer.client.getHistory(peer, { limit: 1 });
     ledger = new QaOwnedMessages({
       marker,

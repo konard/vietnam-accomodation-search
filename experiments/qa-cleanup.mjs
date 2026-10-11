@@ -4,6 +4,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// A grouped teardown can be reached by both an action's finally block and
+// its outer scope. Never repeat side effects after its producer has stopped.
+export function onceQaCleanup(action) {
+  let result;
+  return () => (result ||= Promise.resolve().then(action));
+}
+
 export class QaCleanup {
   #actions = [];
   #closing;

@@ -10,7 +10,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFile, mkdir, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
@@ -19,6 +19,7 @@ import { redactTelegramValue } from '../src/index.js';
 import { validateDataDirectory } from '../scripts/data-directory.mjs';
 import {
   analyzeMarkers,
+  assertQaSharedTokenBoundary,
   compareFingerprints,
   countDuplicateDeliveries,
   countRunningContainers,
@@ -47,8 +48,9 @@ import {
 } from './telegram-bot-conversation-e2e.mjs';
 import { requireIdentityPins } from './telegram-e2e-identities.mjs';
 
-import { withQaCleanup } from './qa-cleanup.mjs';
+import { withQaCleanup, onceQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
+import { assertQaDriverAccess } from './qa-telegram-peer.mjs';
 import {
   QaDockerCleanup,
   dockerInventory,
@@ -67,6 +69,7 @@ function usage() {
     '  --bot-env PATH --user-env PATH --project-name NAME-drill \\',
     '  --data-directory PATH/drill [--image IMAGE] [--candidate-image IMAGE] \\',
     '  [--health-port 18080] [--marker-interval-ms 2000] [--settle-ms 20000] \\',
+    '  [--allow-shared-token] (requires an empty local container inventory) \\',
     `  [--transitions ${DRILL_TRANSITIONS.join(',')}] [--restore-snapshot]`,
     '',
     'The bot and driver pins must be distinct numeric Telegram IDs. The bot',
@@ -156,6 +159,7 @@ function deployArguments(options, transition) {
     options.projectName,
     '--data-directory',
     options.dataDirectory,
+    ...(options.allowSharedToken ? ['--allow-shared-token'] : []),
   ];
   if (transition === 'rollback') {
     return [
@@ -392,12 +396,16 @@ async function runTransition(state, options, transition, baseline) {
 
 async function cleanup(state, options) {
   const result = { conversation: false, project: false, state: false };
-  try {
-    await command(state, '/unsubscribe', 'Subscription disabled.');
-    await command(state, `/preset delete drill-${state.run}`, 'Deleted');
+  if (!state.hasOwnedState) {
     result.state = true;
-  } catch {
-    // Reported below; the message cleanup still runs.
+  } else {
+    try {
+      await command(state, '/unsubscribe', 'Subscription disabled.');
+      await command(state, `/preset delete drill-${state.run}`, 'Deleted');
+      result.state = true;
+    } catch {
+      // Reported below; the message cleanup still runs.
+    }
   }
   // Stop the notification producer before taking the final history snapshot
   // and deleting messages. Compose failure must not skip conversation cleanup.
@@ -477,6 +485,7 @@ async function runOwnedDrill(options, environment, scope, signal) {
       'driver disconnect'
     )
   );
+  assertQaDriverAccess(botEnvironment, driver.id);
   progress('identities-pinned');
   const run = randomBytes(4).toString('hex');
   options = { ...options, projectName: `${options.projectName}-${run}` };
@@ -485,9 +494,13 @@ async function runOwnedDrill(options, environment, scope, signal) {
   await mkdir(projectDirectory, { mode: 0o700 });
   let dockerClean = true;
   let conversationClean = true;
+  let ownedDataDirectory;
   scope.defer('private drill project directory', async () => {
     if (dockerClean && conversationClean) {
       await rm(projectDirectory, { recursive: true, force: true });
+      if (ownedDataDirectory) {
+        await rm(ownedDataDirectory, { recursive: true, force: true });
+      }
     }
   });
   const runId = `vac-qa-drill-${run}`;
@@ -497,6 +510,7 @@ async function runOwnedDrill(options, environment, scope, signal) {
     baseline: await dockerInventory(),
     journal: join(projectDirectory, 'docker-ownership.json'),
   });
+  assertQaSharedTokenBoundary(options, owned.baseline);
   const builder = `${runId}-builder`;
   owned.ownBuilder(builder);
   if (
@@ -548,7 +562,19 @@ async function runOwnedDrill(options, environment, scope, signal) {
     unhealthyCompose,
   };
   // A new drill directory; an existing one must already be a drill's.
+  const preexistingData = await stat(drill.dataDirectory).then(
+    () => true,
+    (error) => {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+      return false;
+    }
+  );
   await validateDataDirectory(drill.dataDirectory);
+  if (!preexistingData) {
+    ownedDataDirectory = drill.dataDirectory;
+  }
   const target = await withDeadline(
     () => driver.client.getEntity(`@${botIdentity.username}`),
     driverDeadline(TIMEOUT_MS),
@@ -569,8 +595,9 @@ async function runOwnedDrill(options, environment, scope, signal) {
     journal: join(projectDirectory, 'driver-ownership.json'),
   });
   await state.ledger.save();
+  state.cleanup = onceQaCleanup(() => cleanup(state, drill));
   scope.defer('drill conversation and producer', async () => {
-    const result = await cleanup(state, drill);
+    const result = await state.cleanup();
     conversationClean = result.conversation && result.project;
     if (!result.conversation || !result.project) {
       throw new Error('Drill cleanup failed.');
@@ -591,6 +618,9 @@ async function runOwnedDrill(options, environment, scope, signal) {
           break;
         }
         baseline.firstDeployImage = result.image.after;
+        // Reserve application-state cleanup before a potentially ambiguous
+        // preset command. A rejected first deploy never initializes this state.
+        state.hasOwnedState = true;
         // State every later transition must preserve: a preset and a
         // subscription to it (a delivery, if any, is checked for duplicates).
         await command(
@@ -604,7 +634,7 @@ async function runOwnedDrill(options, environment, scope, signal) {
   } catch (error) {
     runError = error;
   } finally {
-    cleanupResult = await cleanup(state, drill);
+    cleanupResult = await state.cleanup();
   }
   if (runError) {
     throw runError;

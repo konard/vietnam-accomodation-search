@@ -6,6 +6,7 @@ import { describe, expect, it } from 'test-anywhere';
 
 import {
   analyzeMarkers,
+  assertQaSharedTokenBoundary,
   compareFingerprints,
   countRunningContainers,
   countDuplicateDeliveries,
@@ -51,6 +52,16 @@ describe('deploy cutover drill (#57)', () => {
     expect(options.transitions).toEqual(DEFAULT_TRANSITIONS);
     expect(DEFAULT_TRANSITIONS.includes('docker-restart')).toBe(false);
     expect(options.healthPort).toBe(18_080);
+    expect(options.allowSharedToken).toBe(false);
+    assertQaSharedTokenBoundary(options, { containers: ['unrelated'] });
+    const reuse = parseDrillArguments([...required, '--allow-shared-token']);
+    expect(reuse.allowSharedToken).toBe(true);
+    assertQaSharedTokenBoundary(reuse, { containers: [] });
+    expect(
+      message(() =>
+        assertQaSharedTokenBoundary(reuse, { containers: ['unrelated'] })
+      )
+    ).toContain('empty container inventory');
     const selected = parseDrillArguments([
       ...required,
       '--transitions',

@@ -4,8 +4,115 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it } from 'test-anywhere';
-import { QaOwnedMessages } from '../experiments/qa-owned-messages.mjs';
+import {
+  QaOwnedMessages,
+  isKnownQaMessage,
+} from '../experiments/qa-owned-messages.mjs';
 import { QaDockerCleanup } from '../experiments/qa-docker-cleanup.mjs';
+import {
+  verifiedQaBotPeer,
+  assertQaDriverAccess,
+} from '../experiments/qa-telegram-peer.mjs';
+
+it('read-only audits detect every current owned QA marker without authorizing deletion', () => {
+  for (const name of [
+    'cleanup',
+    'conversation',
+    'real-source',
+    'native',
+    'drill',
+    'capability',
+  ]) {
+    const marker = `qa-${name}-0123456789abcdef`;
+    assert(isKnownQaMessage(`${marker}\nSelf-authored reply`));
+    assert(isKnownQaMessage(`/search Nha Trang\n${marker}`));
+  }
+  assert(isKnownQaMessage('qa-drill-01234567\nSelf-authored reply'));
+  assert(isKnownQaMessage('qa-capability-01234567-restartIdempotency'));
+  assert(isKnownQaMessage('native-e2e-0123456789abcdef-user'));
+  assert(isKnownQaMessage('1. Self-authored QA rental\n13,000,000 VND/month'));
+  assert(!isKnownQaMessage('Original unrelated message'));
+  assert(
+    !isKnownQaMessage('A note mentions qa-native-0123456789abcdef inline')
+  );
+  assert(!isKnownQaMessage('qa-native-not-a-generated-hex-id\nOriginal'));
+});
+
+it('resolves QA bots by a verified username without assuming a warm numeric peer cache', () => {
+  assert.throws(() => assertQaDriverAccess({}, '123'));
+  assert.throws(() =>
+    assertQaDriverAccess({ TELEGRAM_ACCESS_MODE: 'public' }, '123')
+  );
+  assert.throws(() =>
+    assertQaDriverAccess({ TELEGRAM_ALLOWED_USER_IDS: '456' }, '123')
+  );
+  assertQaDriverAccess({ TELEGRAM_ALLOWED_USER_IDS: '456, 123' }, '123');
+  assertQaDriverAccess({ TELEGRAM_ALLOWED_CHAT_IDS: '123' }, '123');
+  assert.equal(
+    verifiedQaBotPeer({ id: 456, username: 'self_authored_qa_bot' }, '456'),
+    '@self_authored_qa_bot'
+  );
+  assert.throws(() =>
+    verifiedQaBotPeer({ id: 456, username: 'self_authored_qa_bot' }, '789')
+  );
+  assert.throws(() => verifiedQaBotPeer({ id: 456 }, '456'));
+  assert.throws(() =>
+    verifiedQaBotPeer({ id: 456, username: 'invalid/path' }, '456')
+  );
+});
+
+it('marks installed grammY Context replies exactly once after inherited API transforms', async () => {
+  if (typeof Deno !== 'undefined') {
+    return;
+  }
+  const { Bot } = await import('grammy');
+  const { installQaApiBoundary } =
+    await import('../experiments/qa-bot-preload.mjs');
+  const marker = 'qa-actual-context-self-authored-1234';
+  const restore = installQaApiBoundary({ marker, owner: '123' });
+  try {
+    const sends = [];
+    const bot = new Bot('456:self-authored', {
+      botInfo: { id: 456, is_bot: true, first_name: 'QA', username: 'qa_bot' },
+      client: {
+        fetch: async (_url, request) => {
+          const payload = JSON.parse(request.body);
+          sends.push(payload);
+          return new globalThis.Response(
+            JSON.stringify({ ok: true, result: { message_id: sends.length } }),
+            { headers: { 'content-type': 'application/json' } }
+          );
+        },
+      },
+    });
+    bot.on('message:text', async (context) => {
+      await context.reply('Saved preset self-authored.');
+      await context.replyWithPhoto('self-authored-photo', { caption: 'Photo' });
+      await context.replyWithMediaGroup([
+        { type: 'photo', media: 'self-authored-a', caption: 'Album A' },
+        { type: 'photo', media: 'self-authored-b', caption: 'Album B' },
+      ]);
+    });
+    await bot.handleUpdate({
+      update_id: 1,
+      message: {
+        message_id: 1,
+        date: 1,
+        chat: { id: 123, type: 'private', first_name: 'QA' },
+        from: { id: 123, is_bot: false, first_name: 'QA' },
+        text: 'Self-authored command',
+      },
+    });
+    assert.equal(sends[0].text, `${marker}\nSaved preset self-authored.`);
+    assert.equal(sends[1].caption, `${marker}\nPhoto`);
+    assert.deepEqual(
+      sends[2].media.map((media) => media.caption),
+      [`${marker}\nAlbum A`, `${marker}\nAlbum B`]
+    );
+  } finally {
+    restore();
+  }
+});
 
 it('marks actual grammY sends, recovers a lost response and strips only the owner command suffix', async () => {
   if (typeof Deno !== 'undefined') {

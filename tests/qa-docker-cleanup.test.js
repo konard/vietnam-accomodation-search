@@ -78,6 +78,41 @@ function fixture({ refuseContainer = false } = {}) {
 }
 
 describe('scoped Docker QA cleanup', () => {
+  it('compares built-in Docker networks semantically but retains exact user-network IDs', async () => {
+    const inventory = (bridgeId, userId, bridgeDriver = 'bridge') =>
+      dockerInventory(async (args) =>
+        args[0] === 'network'
+          ? `${bridgeId} bridge ${bridgeDriver} local\nhost-id host host local\nnone-id none null local\n${userId} user-network bridge local`
+          : ''
+      );
+    const before = await inventory('old-bridge', 'original-user');
+    assert.deepEqual(await inventory('new-bridge', 'original-user'), before);
+    assert.notDeepEqual(await inventory('new-bridge', 'changed-user'), before);
+    assert.notDeepEqual(
+      await inventory('new-bridge', 'original-user', 'overlay'),
+      before
+    );
+  });
+
+  it('never deletes a built-in network even if an ownership filter unexpectedly selects it', async () => {
+    const calls = [];
+    const builtinId = 'a'.repeat(64);
+    const run = async (args) => {
+      calls.push(args);
+      if (args[0] === 'network' && args[1] === 'ls') {
+        assert(args.includes('--no-trunc'));
+        return args.includes('--filter')
+          ? builtinId
+          : `${builtinId} bridge bridge local`;
+      }
+      return '';
+    };
+    const baseline = await dockerInventory(run);
+    const cleanup = new QaDockerCleanup({ runId, baseline, run });
+    assert.equal((await cleanup.cleanup()).pass, false);
+    assert(!calls.some((args) => args[0] === 'network' && args[1] === 'rm'));
+  });
+
   it('removes every owned resource while preserving all original resources', async () => {
     const state = fixture();
     const cleanup = new QaDockerCleanup({

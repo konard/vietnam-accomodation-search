@@ -38,6 +38,7 @@ function boundedInteger(value, name, minimum, maximum) {
 // eslint-disable-next-line complexity -- One parser owns every live drill boundary.
 export function parseDrillArguments(values, { cwd = process.cwd() } = {}) {
   const options = {
+    allowSharedToken: false,
     healthPort: 18_080,
     markerIntervalMs: 2_000,
     restoreSnapshot: false,
@@ -64,6 +65,10 @@ export function parseDrillArguments(values, { cwd = process.cwd() } = {}) {
     }
     if (value === '--restore-snapshot') {
       options.restoreSnapshot = true;
+      continue;
+    }
+    if (value === '--allow-shared-token') {
+      options.allowSharedToken = true;
       continue;
     }
     const property = valued.get(value);
@@ -129,6 +134,16 @@ export function parseDrillArguments(values, { cwd = process.cwd() } = {}) {
     );
   }
   return options;
+}
+
+// Reuse supplied credentials without removing original deployment records,
+// only after an independent local inventory proves no existing containers.
+export function assertQaSharedTokenBoundary(options, baseline) {
+  if (options.allowSharedToken && baseline.containers.length) {
+    throw new Error(
+      'QA shared-token override requires an empty container inventory.'
+    );
+  }
 }
 
 /** A read-only command whose reply echoes a unique marker. */

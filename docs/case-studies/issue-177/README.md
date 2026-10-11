@@ -159,6 +159,11 @@ vulnerability. Production Node remains the pinned 24.21.0 LTS container runtime.
 
 ## Acceptance limits
 
+Fresh owner-credential acceptance is recorded in
+[the production revalidation](../production-revalidation-2026-10-11/README.md).
+It supersedes the credential availability statement below and records newly
+reproduced blockers; the implementation-only checks above remain historical.
+
 No owner-pinned live Telegram credentials were supplied in this workspace.
 Therefore owner conversation, real-source notification/restart, native live
 photo/OCR and cutover acceptance remain unexecuted. Deterministic SDK, queue,

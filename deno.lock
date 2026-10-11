@@ -12,7 +12,7 @@
     "npm:grammy@^1.46.0": "1.46.0",
     "npm:husky@^9.1.7": "9.1.7",
     "npm:jscpd@^5.4.1": "5.4.1",
-    "npm:links-notation@0.25.1": "0.25.1",
+    "npm:links-notation@0.25.2": "0.25.2",
     "npm:lino-arguments@0.3.0": "0.3.0",
     "npm:lint-staged@^17.6.0": "17.6.0",
     "npm:log-lazy@1.0.4": "1.0.4",
@@ -1096,8 +1096,8 @@
     "links-notation@0.23.0": {
       "integrity": "sha512-g9S4nnJc9xjxbaHL8W1tG5KV+B2wioUzd7rXrJ1IOpY/G7F0fQxy3cVVakqKPp6D9h3vALl2LPFSekp7kbcONg=="
     },
-    "links-notation@0.25.1": {
-      "integrity": "sha512-5SILcnFGCJ8WQ1JMZKTDkf+cNndckly80ZqkOLug41WD15H5RWvstxH3nc/7BngzhxgnCeAUUEGnvZR0LW9+IA=="
+    "links-notation@0.25.2": {
+      "integrity": "sha512-f8h1QZieLXAA6yIx3CiAAgWksGgPQ0y6NQ1vRdKQUGSjIVYpHoVSwd13xVLSFDhUPVJn+pcZMOoQVZViV4ohpg=="
     },
     "lino-arguments@0.3.0": {
       "integrity": "sha512-46RbNaq0kpDxjyzBqhiCjPypHy9tuL0ITC9LgEolFH65PKtwl0/kRxryleG+5HnqS1JLnUUypZ2GoHWhLWH/PQ==",
@@ -1494,7 +1494,7 @@
         "npm:grammy@^1.46.0",
         "npm:husky@^9.1.7",
         "npm:jscpd@^5.4.1",
-        "npm:links-notation@0.25.1",
+        "npm:links-notation@0.25.2",
         "npm:lino-arguments@0.3.0",
         "npm:lint-staged@^17.6.0",
         "npm:log-lazy@1.0.4",

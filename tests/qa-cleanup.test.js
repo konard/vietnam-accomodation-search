@@ -8,6 +8,7 @@ import {
   QaCleanup,
   qaTemporaryDirectory,
   withQaCleanup,
+  onceQaCleanup,
 } from '../experiments/qa-cleanup.mjs';
 import {
   QaOwnedMessages,
@@ -15,6 +16,22 @@ import {
 } from '../experiments/qa-owned-messages.mjs';
 
 describe('QA teardown acceptance', () => {
+  it('runs a grouped teardown once across concurrent and later finally paths', async () => {
+    let calls = 0;
+    const cleanup = onceQaCleanup(async () => {
+      calls += 1;
+      return { producerStopped: true, messagesDeleted: true };
+    });
+    const first = cleanup();
+    assert.equal(cleanup(), first);
+    assert.deepEqual(await first, {
+      producerStopped: true,
+      messagesDeleted: true,
+    });
+    assert.equal(cleanup(), first);
+    assert.equal(calls, 1);
+  });
+
   for (const signal of ['SIGINT', 'SIGTERM']) {
     it(`removes child-owned fixtures after ${signal}`, async () => {
       if (typeof Deno !== 'undefined' || typeof Bun !== 'undefined') {
@@ -241,8 +258,25 @@ describe('QA teardown acceptance', () => {
         values.filter(({ id }) => !offsetId || id < offsetId).slice(0, limit),
     };
     assert.equal((await readQaHistory(client, 'owner')).length, 230);
+    let reads = 0;
+    assert.deepEqual(
+      await readQaHistory(
+        {
+          getMessages: async (_target, options) => {
+            reads += 1;
+            assert.equal(options.minId, 10);
+            assert.equal(options.offsetId, 0);
+            return [{ id: 12 }, { id: 11 }];
+          },
+        },
+        'owner',
+        10
+      ),
+      [{ id: 12 }, { id: 11 }]
+    );
+    assert.equal(reads, 1);
     await assert.rejects(
-      readQaHistory({ getMessages: async () => [{ id: 1 }] }, 'owner'),
+      readQaHistory({ getMessages: async () => [{ id: 2 }] }, 'owner'),
       /did not advance/u
     );
   });

@@ -6,6 +6,25 @@ import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 const exec = promisify(execFile);
 const lines = (value) => [...new Set(value.trim().split('\n').filter(Boolean))];
+const networkList = [
+  'network',
+  'ls',
+  '--no-trunc',
+  '--format',
+  '{{.ID}} {{.Name}} {{.Driver}} {{.Scope}}',
+];
+
+function networkKey(row) {
+  const [id, name, driver, scope] = row.split(/\s+/u);
+  const builtinDrivers = { bridge: 'bridge', host: 'host', none: 'null' };
+  // Docker Desktop may recreate its built-in bridge identity. Ordinary user
+  // networks still require the exact original ID, even with the same name.
+  return Object.hasOwn(builtinDrivers, name) &&
+    builtinDrivers[name] === driver &&
+    scope === 'local'
+    ? `builtin:${name}:${driver}:${scope}`
+    : id;
+}
 
 export async function dockerCommand(args) {
   // Populated production caches can outlive the ordinary command bound.
@@ -18,7 +37,7 @@ export async function dockerCommand(args) {
 export async function dockerInventory(run = dockerCommand) {
   const rows = await Promise.all([
     run(['ps', '-aq', '--no-trunc']),
-    run(['network', 'ls', '-q', '--no-trunc']),
+    run(networkList),
     run(['volume', 'ls', '-q']),
     run([
       'image',
@@ -31,7 +50,12 @@ export async function dockerInventory(run = dockerCommand) {
   ]);
   return Object.fromEntries(
     ['containers', 'networks', 'volumes', 'images', 'builders'].map(
-      (name, index) => [name, lines(rows[index]).sort()]
+      (name, index) => [
+        name,
+        lines(rows[index])
+          .map((row) => (name === 'networks' ? networkKey(row) : row))
+          .sort(),
+      ]
     )
   );
 }
@@ -129,12 +153,12 @@ export class QaDockerCleanup {
       for (const [kind, list, remove] of [
         [
           'containers',
-          ['ps', '-aq', '--filter', `label=${label}`],
+          ['ps', '-aq', '--no-trunc', '--filter', `label=${label}`],
           ['rm', '-f'],
         ],
         [
           'networks',
-          ['network', 'ls', '-q', '--filter', `label=${label}`],
+          ['network', 'ls', '-q', '--no-trunc', '--filter', `label=${label}`],
           ['network', 'rm'],
         ],
         [
@@ -144,9 +168,17 @@ export class QaDockerCleanup {
         ],
       ]) {
         await attempt(kind, async () => {
+          const protectedBuiltins =
+            kind === 'networks'
+              ? new Set(
+                  lines(await this.run(networkList))
+                    .filter((row) => networkKey(row) !== row.split(/\s+/u)[0])
+                    .map((row) => row.split(/\s+/u)[0])
+                )
+              : new Set();
           for (const id of lines(await this.run(list))) {
             // A unique label alone is not permission to destroy the baseline.
-            if (this.baseline[kind].includes(id)) {
+            if (this.baseline[kind].includes(id) || protectedBuiltins.has(id)) {
               throw new Error(
                 'QA label unexpectedly belongs to baseline resource.'
               );

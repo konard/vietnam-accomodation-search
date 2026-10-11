@@ -9,6 +9,19 @@ const textOf = (message) =>
 const exists = (message) =>
   !['MessageEmpty', 'MessageService'].includes(message?.className);
 
+// Read-only final audits must recognize every current QA harness, not only
+// the original cleanup fixture. Matching is never permission to delete.
+export function isKnownQaMessage(text = '') {
+  return (
+    /(?:^|\n)qa-(?:cleanup|conversation|real-source|native|drill|capability)-[0-9a-f]{8,16}(?:-|\n|$)/u.test(
+      text
+    ) ||
+    /(?:real-source|native)-e2e-[0-9a-f]{16}|Self-authored QA rental|E2E synthetic offer [0-9a-f]{10}|cutover-[0-9a-f]{12}/u.test(
+      text
+    )
+  );
+}
+
 export class QaOwnedMessages {
   constructor({ marker, baseline = 0, journal }) {
     assert(/^qa-[a-z0-9-]{8,100}$/u.test(marker), 'Unique QA marker required.');
@@ -58,6 +71,12 @@ export class QaOwnedMessages {
   }
 
   install(api, owner) {
+    // Context APIs inherit the bot's transformers. The preload also marks
+    // each Context API, so the same boundary can run more than once.
+    const mark = (text = '') =>
+      String(text).startsWith(`${this.marker}\n`)
+        ? String(text)
+        : `${this.marker}\n${text}`;
     api.config.use(async (previous, method, payload, signal) => {
       let outgoing = payload;
       if (method.startsWith('send')) {
@@ -68,14 +87,14 @@ export class QaOwnedMessages {
         );
         outgoing = { ...payload };
         if ('text' in payload) {
-          outgoing.text = `${this.marker}\n${payload.text}`;
+          outgoing.text = mark(payload.text);
         } else if (Array.isArray(payload.media)) {
           outgoing.media = payload.media.map((media) => ({
             ...media,
-            caption: `${this.marker}\n${media.caption || ''}`,
+            caption: mark(media.caption || ''),
           }));
         } else {
-          outgoing.caption = `${this.marker}\n${payload.caption || ''}`;
+          outgoing.caption = mark(payload.caption || '');
         }
         // Persist the recovery marker before a potentially ambiguous send.
         await this.save();
@@ -149,7 +168,9 @@ export async function readQaHistory(client, target, baseline = 0) {
     if (!Number.isFinite(next) || (offsetId && next >= offsetId)) {
       throw new Error('QA history pagination did not advance.');
     }
-    if (next <= baseline) {
+    // minId is exclusive: no integer IDs remain between baseline and
+    // baseline+1. Teleproto cannot initialize this exhausted adjacent window.
+    if (next <= Number(baseline) + 1) {
       return messages;
     }
     offsetId = next;
