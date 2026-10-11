@@ -8,9 +8,11 @@ const exec = promisify(execFile);
 const lines = (value) => [...new Set(value.trim().split('\n').filter(Boolean))];
 
 export async function dockerCommand(args) {
-  return (
-    await exec('docker', args, { timeout: 30_000, maxBuffer: 4 * 1024 ** 2 })
-  ).stdout;
+  // Populated production caches can outlive the ordinary command bound.
+  // Give Buildx's explicit removal deadline time to report its result.
+  const timeout = args[0] === 'buildx' && args[1] === 'rm' ? 70_000 : 30_000;
+  return (await exec('docker', args, { timeout, maxBuffer: 4 * 1024 ** 2 }))
+    .stdout;
 }
 
 export async function dockerInventory(run = dockerCommand) {
@@ -165,7 +167,7 @@ export class QaDockerCleanup {
           await attempt('builder stop', () =>
             this.run(['buildx', 'stop', builder])
           );
-          await this.run(['buildx', 'rm', builder]);
+          await this.run(['buildx', 'rm', '--timeout=60s', builder]);
         }
       });
     }

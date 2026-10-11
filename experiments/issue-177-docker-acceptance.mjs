@@ -150,5 +150,5 @@ await withQaCleanup(
       signal
     );
   },
-  { cleanupTimeoutMs: 90_000 }
+  { cleanupTimeoutMs: 120_000 }
 );

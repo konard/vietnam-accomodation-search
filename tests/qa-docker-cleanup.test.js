@@ -134,6 +134,7 @@ describe('scoped Docker QA cleanup', () => {
       }
       if (args[0] === 'buildx' && args[1] === 'rm') {
         assert.equal(stopped, true);
+        assert(args.includes('--timeout=60s'));
       }
       return state.run(args);
     };
