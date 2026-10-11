@@ -41,6 +41,12 @@ export function replayRuntime(cases) {
       return {
         destroy: () => Promise.resolve(),
         evaluate: (operation) => {
+          if (operation.name === 'extractWebPagination') {
+            return Promise.resolve({
+              complete: true,
+              evidence: 'complete-corpus-replay',
+            });
+          }
           if (operation.name === 'extractPageState') {
             return Promise.resolve({ status: 200, url });
           }

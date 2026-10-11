@@ -270,14 +270,21 @@ export function assembleTelegramAlbums(messages) {
   });
 }
 
-// eslint-disable-next-line complexity -- Reconciliation accounts explicitly for every media, classification, OCR, and extraction terminal state.
+// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- Reconciliation accounts explicitly for every media, classification, OCR, and extraction terminal state.
 export async function reconcileTelegramMaterials(
   messages,
-  { extract, maxOcrPhotos = 3, ocr, signal, targetLocation = 'nha-trang' } = {}
+  { extract, maxOcrPhotos = 10, ocr, signal, targetLocation = 'nha-trang' } = {}
 ) {
   const accepted = [];
   let eligibleAttempts = 0;
   const reviewQueue = [];
+  const mediaCoverage = {
+    photoOnlyMaterials: 0,
+    photoOnlyPhotos: 0,
+    ocrProcessed: 0,
+    ocrComplete: true,
+    uploadComplete: true,
+  };
   for (const material of assembleTelegramAlbums(messages)) {
     signal?.throwIfAborted();
     if (material.captionConflict) {
@@ -292,7 +299,10 @@ export async function reconcileTelegramMaterials(
     let text = material.text;
     let ocrState = 'not-needed';
     if (!text.trim() && material.mediaIds.length) {
+      mediaCoverage.photoOnlyMaterials += 1;
+      mediaCoverage.photoOnlyPhotos += material.mediaIds.length;
       if (!ocr) {
+        mediaCoverage.ocrComplete = false;
         reviewQueue.push({
           id: material.id,
           reason: 'photo-only-ocr-unavailable',
@@ -306,6 +316,7 @@ export async function reconcileTelegramMaterials(
         for (const mediaId of material.mediaIds.slice(0, maxOcrPhotos)) {
           signal?.throwIfAborted();
           const result = await ocr(mediaId, { material, signal });
+          mediaCoverage.ocrProcessed += 1;
           const fragment = typeof result === 'string' ? result : result?.text;
           fragments.push(fragment);
           extraction.push({
@@ -318,10 +329,19 @@ export async function reconcileTelegramMaterials(
         text = fragments.filter(Boolean).join('\n');
         ocrState = 'completed';
         material.mediaExtraction = extraction;
+        if (extraction.length < material.mediaIds.length) {
+          mediaCoverage.ocrComplete = false;
+          reviewQueue.push({
+            id: material.id,
+            reason: 'photo-only-ocr-budget',
+            state: 'degraded',
+          });
+        }
       } catch (error) {
         if (signal?.aborted) {
           throw error;
         }
+        mediaCoverage.ocrComplete = false;
         reviewQueue.push({
           id: material.id,
           reason: 'photo-only-ocr-failed',
@@ -352,6 +372,9 @@ export async function reconcileTelegramMaterials(
         id: material.id,
         reason: relevance.reason,
         state: relevance.label === 'uncertain' ? 'review' : 'excluded',
+        ...(ocrState === 'completed'
+          ? { mediaExtraction: material.mediaExtraction }
+          : {}),
       });
       continue;
     }
@@ -360,6 +383,12 @@ export async function reconcileTelegramMaterials(
     try {
       const extracted = extract ? await extract(reconciled) : reconciled;
       if (extracted) {
+        if (
+          material.mediaIds.length &&
+          extracted.cachedPhotos?.length !== material.mediaIds.length
+        ) {
+          mediaCoverage.uploadComplete = false;
+        }
         if (extracted.mediaStatus === 'incomplete') {
           reviewQueue.push({
             id: material.id,
@@ -403,5 +432,6 @@ export async function reconcileTelegramMaterials(
     eligibleAttempts,
     complete: reviewQueue.every(({ state }) => state === 'excluded'),
     reviewQueue,
+    mediaCoverage,
   };
 }

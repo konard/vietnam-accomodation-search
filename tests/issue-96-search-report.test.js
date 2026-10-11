@@ -568,17 +568,19 @@ describe('createApplication collection settings', () => {
           return {
             destroy: async () => {},
             evaluate: async (operation) =>
-              operation.name === 'extractPageState'
-                ? { status: url.includes('limited') ? 429 : 200, url }
-                : url.includes('limited')
-                  ? []
-                  : [
-                      {
-                        text: 'Sea view studio 9,000,000 VND/month',
-                        title: 'Sea view studio',
-                        url: 'https://rent.example/studio',
-                      },
-                    ],
+              operation.name === 'extractWebPagination'
+                ? { complete: true, evidence: 'self-authored-single-page' }
+                : operation.name === 'extractPageState'
+                  ? { status: url.includes('limited') ? 429 : 200, url }
+                  : url.includes('limited')
+                    ? []
+                    : [
+                        {
+                          text: 'Sea view studio 9,000,000 VND/month',
+                          title: 'Sea view studio',
+                          url: 'https://rent.example/studio',
+                        },
+                      ],
             goto: async ({ url: target }) => {
               url = target;
             },

@@ -60,6 +60,9 @@ function fakeBrowser({ behaviour = {}, newPage = true } = {}) {
         },
         evaluate: async (operation) => {
           const host = new URL(url).hostname.split('.')[0];
+          if (operation.name === 'extractWebPagination') {
+            return { complete: true, evidence: 'self-authored-single-page' };
+          }
           if (operation.name === 'extractPageState') {
             return { status: 200, url };
           }

@@ -33,6 +33,9 @@ function fakeRuntime() {
       return {
         destroy: async () => {},
         evaluate: async (operation) => {
+          if (operation.name === 'extractWebPagination') {
+            return { complete: true, evidence: 'self-authored-single-page' };
+          }
           if (operation.name === 'extractPageState') {
             return { status: 200, url };
           }

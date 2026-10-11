@@ -123,7 +123,13 @@ describe('telegram paging deadline', () => {
       return [];
     };
     await collector.collectWithReport(
-      [{ id: 'telegram:rentals', searchUrl: 'https://t.me/s/rentals' }],
+      [
+        {
+          id: 'telegram:rentals',
+          searchUrl: 'https://t.me/s/rentals',
+          type: 'telegram',
+        },
+      ],
       '',
       { traceRecorder: { persist: async () => {}, record: () => {} } }
     );
