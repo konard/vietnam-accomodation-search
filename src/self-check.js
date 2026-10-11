@@ -22,17 +22,44 @@ export const FIXTURE_SOURCE_ID = 'self-check-fixture';
 // Serves the fixture page on a loopback port for the duration of `operation`.
 export async function withFixtureServer(
   operation,
-  html = FIXTURE_LISTING_HTML
+  html = FIXTURE_LISTING_HTML,
+  { serverFactory = createServer, signal } = {}
 ) {
-  const server = createServer((_request, response) => {
+  signal?.throwIfAborted();
+  const server = serverFactory((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(html);
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let abort;
+  let failed;
   try {
-    return await operation(`http://127.0.0.1:${server.address().port}`);
+    await new Promise((resolve, reject) => {
+      abort = () => reject(signal.reason);
+      failed = (error) => reject(error);
+      server.once('error', failed);
+      signal?.addEventListener('abort', abort, { once: true });
+      const ready = () => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      };
+      server.listen(0, '127.0.0.1', ready);
+    });
+    signal?.throwIfAborted();
+    return await operation(`http://127.0.0.1:${server.address().port}`, signal);
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    signal?.removeEventListener('abort', abort);
+    try {
+      await new Promise((resolve, reject) => {
+        server.close((error) =>
+          error && error.code !== 'ERR_SERVER_NOT_RUNNING'
+            ? reject(error)
+            : resolve()
+        );
+        server.closeAllConnections?.();
+      });
+    } finally {
+      server.removeListener('error', failed);
+    }
   }
 }
 
@@ -51,46 +78,55 @@ export async function runFixtureSearch({
   createApplication,
   environment = {},
   query = 'Nha Trang apartment',
+  signal,
+  serverFactory,
+  temporaryRoot = tmpdir(),
 }) {
-  const directory = await mkdtemp(join(tmpdir(), 'self-check-'));
+  signal?.throwIfAborted();
+  const directory = await mkdtemp(join(temporaryRoot, 'self-check-'));
   try {
-    return await withFixtureServer(async (origin) => {
-      const application = createApplication({
-        environment: {
-          ...environment,
-          BROWSER_MAX_INTERVAL_MS: '1',
-          BROWSER_MIN_INTERVAL_MS: '1',
-          DATA_DIRECTORY: directory,
-        },
-        registry: {
-          list: () =>
-            Promise.resolve([
-              {
-                id: FIXTURE_SOURCE_ID,
-                searchUrl: `${origin}/search?q={query}`,
-                type: 'web',
-              },
-            ]),
-        },
-      });
-      const { offers: found, report } =
-        await application.service.searchWithReport({
-          query,
-          refresh: true,
+    return await withFixtureServer(
+      async (origin) => {
+        const application = createApplication({
+          environment: {
+            ...environment,
+            BROWSER_MAX_INTERVAL_MS: '1',
+            BROWSER_MIN_INTERVAL_MS: '1',
+            DATA_DIRECTORY: directory,
+          },
+          registry: {
+            list: () =>
+              Promise.resolve([
+                {
+                  id: FIXTURE_SOURCE_ID,
+                  searchUrl: `${origin}/search?q={query}`,
+                  type: 'web',
+                },
+              ]),
+          },
         });
-      const offers = found.filter(
-        (offer) => offer.sourceId === FIXTURE_SOURCE_ID
-      );
-      if (!offers.length) {
-        const outcome = report?.outcomes?.[0];
-        throw new Error(
-          `Fixture search found no offers (${outcome?.status || 'no outcome'}${
-            outcome?.message ? `: ${outcome.message}` : ''
-          }).`
+        const { offers: found, report } =
+          await application.service.searchWithReport({
+            query,
+            refresh: true,
+            signal,
+          });
+        const offers = found.filter(
+          (offer) => offer.sourceId === FIXTURE_SOURCE_ID
         );
-      }
-      return { check: 'search', offers: offers.length, ok: true };
-    });
+        if (!offers.length) {
+          const outcome = report?.outcomes?.[0];
+          throw new Error(
+            `Fixture search found no offers (${outcome?.status || 'no outcome'}${
+              outcome?.message ? `: ${outcome.message}` : ''
+            }).`
+          );
+        }
+        return { check: 'search', offers: offers.length, ok: true };
+      },
+      FIXTURE_LISTING_HTML,
+      { serverFactory, signal }
+    );
   } finally {
     await rm(directory, { force: true, recursive: true });
   }

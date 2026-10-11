@@ -354,6 +354,7 @@ export class SubscriptionScheduler {
   }
 
   start() {
+    this.stopped = false;
     if (!this.timer) {
       const run = () =>
         void this.tick().catch((error) =>
@@ -367,22 +368,33 @@ export class SubscriptionScheduler {
   }
 
   async stop() {
+    this.stopped = true;
     clearInterval(this.timer);
     this.timer = undefined;
+    this.controller?.abort(
+      Object.assign(new Error('Subscription scheduler stopped.'), {
+        name: 'AbortError',
+      })
+    );
     await this.running;
   }
 
   tick() {
+    if (this.stopped) {
+      return Promise.resolve();
+    }
     if (this.running) {
       return this.running;
     }
-    this.running = this.#run().finally(() => {
+    this.controller = new AbortController();
+    this.running = this.#run(this.controller.signal).finally(() => {
       this.running = undefined;
     });
     return this.running;
   }
 
-  async #run() {
+  // eslint-disable-next-line complexity -- Scheduler checks cancellation before searches and each durable delivery.
+  async #run(signal) {
     const subscriptions = await this.presets.listSubscriptions();
     const groups = new Map();
     for (const subscription of subscriptions) {
@@ -391,6 +403,9 @@ export class SubscriptionScheduler {
     }
     let groupIndex = 0;
     for (const group of groups.values()) {
+      if (signal.aborted) {
+        return;
+      }
       groupIndex += 1;
       const now = this.now();
       const runId = `subscription:${now.toISOString()}:${groupIndex}`;
@@ -402,7 +417,7 @@ export class SubscriptionScheduler {
       let offers;
       try {
         offers = (
-          await this.search({ ...group[0].options, traceRunId: runId })
+          await this.search({ ...group[0].options, traceRunId: runId, signal })
         ).filter((offer) => {
           const collectedAt = new Date(offer.collectedAt).getTime();
           const age = now.getTime() - collectedAt;
@@ -420,16 +435,28 @@ export class SubscriptionScheduler {
         this.trace.record({
           runId,
           stage: 'subscription-search',
-          status: 'failure',
+          status: signal.aborted ? 'cancelled' : 'failure',
           metadata: { code: error?.code, message: error?.message },
         });
         await this.trace.persist();
+        if (signal.aborted) {
+          return;
+        }
         throw error;
       }
+      if (signal.aborted) {
+        return;
+      }
       for (const subscription of group) {
+        if (signal.aborted) {
+          return;
+        }
         await this.presets.markSuccessfulRun(subscription.userId, now);
         const unseen = await this.presets.unseen(subscription.userId, offers);
         for (const offer of unseen) {
+          if (signal.aborted) {
+            return;
+          }
           this.trace.record({
             runId,
             offerId: offer.id,

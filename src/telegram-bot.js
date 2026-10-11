@@ -423,10 +423,16 @@ export function registerTelegramHandlers(bot, dependencies) {
       }
       const name = String(context.match || '').trim() || undefined;
       const subscription = await presetService.subscribe(userId(context), name);
-      await subscriptionScheduler?.tick?.();
       await context.reply(
         `Subscribed to preset ${subscription?.presetName || name}.`
       );
+      // The scheduler owns and joins this work during stop(). A search
+      // failure cannot undo an already durable subscription or its reply.
+      void Promise.resolve()
+        .then(() => subscriptionScheduler?.tick?.())
+        .catch((error) =>
+          logger.error?.('subscription search failed', { error: error.message })
+        );
     } catch (error) {
       await context.reply(`${error.message}\nUsage: /subscribe [PRESET]`);
     }
