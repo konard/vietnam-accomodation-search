@@ -39,6 +39,18 @@ are part of the baseline, not new evidence for unresolved acceptance.
   ownership-aware disposal. External resources are not removed.
 - [Docker Buildx rm](https://docs.docker.com/reference/cli/docker/buildx/rm/)
   is the scoped disposal path for isolated build instances and their cache.
+- [Buildx removal implementation](https://github.com/docker/buildx/blob/v0.37.0/commands/rm.go)
+  shares the status deadline with daemon shutdown and removal. Stop the exact
+  owned builder separately before removing its populated cache, and still
+  attempt removal if stopping fails.
+- [Node child-process signals](https://nodejs.org/api/child_process.html#subprocesskillsignal)
+  explains unconditional termination on Windows. Verify signal handlers through
+  IPC on Windows and actual OS signal delivery on POSIX; neither proves cleanup
+  after an uncatchable kill, which needs a durable recovery journal.
+- [Lychee rate limits](https://lychee.cli.rs/troubleshooting/rate-limits/)
+  recommends limiting concurrent requests. Repeated remote GitHub 503s for
+  locally healthy links motivate lower concurrency and spaced retries; rejected
+  HTTP responses still fail the link check.
 - [command-stream upstream exception](https://github.com/link-foundation/command-stream/issues/221)
   records the original 2.0.0 dependency security problem, now closed. The safe
   2.0.2 runtime dependencies omit ShellJS and its vulnerable compatibility tree.

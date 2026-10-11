@@ -47,6 +47,9 @@ priority and failed clink probe retirement. Native media controls cover shared
 lookups, flood waits, deadline cancellation, deferred retry and restart reuse.
 QA controls cover pre-send ownership, lost acknowledgements, full pagination,
 foreign owner protection, cleanup failures, signals and durable journals.
+The bounded quote-scanning worker reproduces the CodeQL input with 131,072
+digits, a 32 MiB worker heap and a five-second deadline. It failed before the
+linear scan and now completes within the deadline without claiming a unit quote.
 
 ## Reusable verification
 
@@ -54,9 +57,9 @@ Local checks against the committed implementation completed on 2026-10-11:
 
 | Check                                          | Result                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Node with required real clink                  | 1,393 passed; zero failures or skips; 100% product line coverage                        |
-| Bun                                            | 1,393 passed; zero failures                                                             |
-| Deno, ordinary frozen lock                     | 1,276 passed plus 19 steps; zero failures; 11 documented ignored tests                  |
+| Node with required real clink                  | 1,396 passed; zero failures or skips; 100% product line coverage                        |
+| Bun                                            | 1,396 passed; zero failures                                                             |
+| Deno, ordinary frozen lock                     | 1,279 passed plus 19 steps; zero failures; 11 documented ignored tests                  |
 | Strict suite cleanup                           | Empty fixture TMPDIR and independently verified disposal in all three runtimes          |
 | Dependency audits                              | Zero vulnerabilities in both repositories and a clean production consumer               |
 | Release, shell, SQLite and browser conformance | 62 passed                                                                               |
@@ -64,17 +67,19 @@ Local checks against the committed implementation completed on 2026-10-11:
 | Disposable Docker cleanup                      | All six success, failure, signal and hard-kill recovery controls restored the baseline  |
 | Repository checks                              | Lint, formatting, duplication, syntax, required docs, line limits and changesets passed |
 | Example web build                              | Passed                                                                                  |
+| Repository link check                          | 219 valid references; zero errors; existing path exclusions retained                    |
 
 ```sh
-npm run test:coverage
+REQUIRE_REAL_CLINK=1 npm run test:coverage
 npm run test:cleanup
-node scripts/test-with-cleanup.mjs bun test --timeout 30000 tests/
+REQUIRE_REAL_CLINK=1 node scripts/test-with-cleanup.mjs bun test --timeout 30000 tests/
 node scripts/test-with-cleanup.mjs deno test --frozen --allow-read tests/
 node experiments/revalidation-unit-value-metrics.mjs
 node experiments/issue-177-browser-http.mjs
 QA_DOCKER_CLEANUP=1 node experiments/revalidation-qa-docker-cleanup.mjs
 QA_DOCKER_ACCEPTANCE=1 node experiments/issue-177-docker-acceptance.mjs
 node experiments/issue-177-dependency-inventory.mjs
+node --max-old-space-size=64 experiments/issue-177-quote-scan.mjs
 npm run check
 npm audit
 npm --prefix examples/universal-app audit
@@ -87,12 +92,36 @@ explicit `CHROMIUM_EXECUTABLE_PATH`. Docker controls create isolated builders
 and populate their caches; success, setup/assertion failure, SIGINT, SIGTERM and
 actual SIGKILL journal recovery must restore the original inventory. They never
 run global prune. A failed resource cleanup retains its private recovery journal.
+Set `QA_DOCKER_DEBUG=1` for sanitized Docker disposal error tracing; it is off
+by default.
 
 The first real production image passed its Chromium, Tesseract, native SQLite,
 provider and fresh clink smoke checks. Its initial 10-second wrapper disposal
 bound expired; exact owned-resource recovery restored the baseline. Docker
 acceptance has a separate disposal bound and preserves its recovery directory
 until independent verification succeeds.
+
+## CI investigation
+
+The logs for the pushed `5cd878d` candidate were downloaded before fixes:
+
+- Checks run `38102451449`, log lines 37387–37424: two Windows Node signal
+  controls failed with `null !== 1` at `tests/qa-cleanup.test.js:44`. Windows
+  child.kill force-terminates the process. The controls exercise the installed
+  handlers via IPC there and both IPC and real OS signals on POSIX.
+- CodeQL review at `src/value-pricing.js:19`: uncontrolled repeated digits
+  triggered polynomial backtracking. The bounded worker failed its deadline
+  before the fix; a first-digit search followed by one suffix scan passes it.
+- Link run `38102451557`, second-attempt log lines 289–307: GitHub blob URLs
+  returned 503, while all 19 distinct reported URLs passed the local Lychee
+  check. Four concurrent requests and spaced retries reduce remote bursts;
+  HTTP failures remain failures rather than accepted or ignored statuses.
+
+The production image also restored its complete Docker baseline while Buildx
+reported a builder-removal failure. Exact journal recovery passed. Buildx's
+shared status deadline covers shutdown and populated-cache removal; cleanup
+now quiesces only the owned builder separately before removal, with an injected
+sequencing regression and optional sanitized acceptance tracing.
 
 Deno lock regeneration used the one-time `--min-dep-age=0` opt-in for the newly
 published safe release. Ordinary tests use the frozen lock and normal age policy.
