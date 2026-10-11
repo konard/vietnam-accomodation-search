@@ -12,6 +12,26 @@ const THRESHOLDS = {
 const present = (value) =>
   value !== null && value !== undefined && value !== false;
 
+export function findMaterialOffer(offers, material, source) {
+  const members = new Set((material.messageIds || [material.id]).map(String));
+  return offers
+    .flatMap((offer) => (offer.variants?.length ? offer.variants : [offer]))
+    .find((offer) => {
+      if ((offer.provenance?.sourceId || offer.sourceId) !== source.id) {
+        return false;
+      }
+      if (source.type !== 'telegram') {
+        return offer.url === material.url || offer.raw?.url === material.url;
+      }
+      return [
+        offer.provenance?.messageId,
+        ...(offer.provenance?.messageIds || []),
+      ]
+        .filter((id) => id !== undefined)
+        .some((id) => members.has(String(id)));
+    });
+}
+
 export function reviewTemplate(observation) {
   return {
     sourceId: observation.sourceId,

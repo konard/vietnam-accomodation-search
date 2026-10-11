@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'test-anywhere';
 import {
   evaluateSourceAcceptance,
+  findMaterialOffer,
   reviewTemplate,
 } from '../experiments/source-acceptance-lib.mjs';
+import { deduplicateOffers } from '../src/offers.js';
 
 // Structural controls only. These fixtures are never live acceptance evidence.
 function control() {
@@ -56,6 +58,40 @@ function control() {
 }
 
 describe('independent source acceptance gate', () => {
+  it('reviews native provenance from the requested source even after cross-source deduplication', () => {
+    const original = {
+      id: 'unit-a',
+      sourceId: 'native-a',
+      provenance: { sourceId: 'native-a', messageIds: [7, 8] },
+      title: 'Self-authored apartment',
+      priceVnd: 12_000_000,
+      price: { amount: 12_000_000, currency: 'VND', period: 'month' },
+      identifiers: { propertyId: 'unit-a' },
+      collectedAt: new Date().toISOString(),
+    };
+    const repeated = {
+      ...original,
+      id: 'unit-b',
+      sourceId: 'native-b',
+      provenance: { sourceId: 'native-b', messageId: 9 },
+    };
+    const merged = deduplicateOffers([original, repeated]);
+    assert.equal(merged.length, 1);
+    const found = findMaterialOffer(
+      merged,
+      { messageIds: ['8'] },
+      { id: 'native-a', type: 'telegram' }
+    );
+    assert.equal(found.sourceId, 'native-a');
+    assert.equal(
+      findMaterialOffer(
+        merged,
+        { messageIds: [9] },
+        { id: 'native-a', type: 'telegram' }
+      ),
+      undefined
+    );
+  });
   it('never produces labels from the parser prediction', () => {
     const { observation } = control();
     const template = reviewTemplate(observation);
@@ -81,6 +117,7 @@ describe('independent source acceptance gate', () => {
       { provenance: 'fixture' },
       { paginationComplete: false },
       { fetchComplete: false },
+      { parseComplete: false },
       { retentionLoss: true },
       { observedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
     ]) {

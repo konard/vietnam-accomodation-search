@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'test-anywhere';
 import { EventEmitter } from 'node:events';
 import { access, mkdtemp, readdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runFixtureSearch, withFixtureServer } from '../src/self-check.js';
 
@@ -137,7 +137,7 @@ describe('owned self-check server failure paths', () => {
           })
         )
       ).toBe(error);
-      expect(await readdir(root)).toEqual([unrelated.split('/').at(-1)]);
+      expect(await readdir(root)).toEqual([basename(unrelated)]);
       await access(unrelated);
     } finally {
       await rm(root, { recursive: true, force: true });

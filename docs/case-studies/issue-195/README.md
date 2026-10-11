@@ -108,6 +108,18 @@ log lines 14651–14653 identify changeset-check as the failing job. The patch
 changeset prepares the repository's automatic release; package version is not
 manually changed. Final suite and current-commit CI results belong in the PR.
 
+The complete local Node coverage run passes 1,445 tests with 100% source line
+coverage. Final review adds a cross-source deduplication/provenance control to
+the acceptance gate and preserves incomplete parse outcomes.
+
+CI at SHA `5a4071d` found a Windows-only test assertion: the fixture cleanup
+control split a path on `/`, whereas Windows uses `\\`. Downloaded Bun job
+log `checks-38122788607-bun-windows.log`, lines 1078–1085, identifies the
+failure; using the platform's `basename` preserves the original assertion.
+Link run `38122788605`, log lines 311–314, returned HTTP 503 for two existing
+historical code references. Both exact links subsequently returned HTTP 200;
+the valid historical references and strict link-check policy are preserved.
+
 ## Private live acceptance workflow
 
 Review evidence stays in `.deploy/source-acceptance` by default, with private

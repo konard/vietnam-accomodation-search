@@ -15,6 +15,7 @@ import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
 import { withQaCleanup } from './qa-cleanup.mjs';
 import {
   evaluateSourceAcceptance,
+  findMaterialOffer,
   reviewTemplate,
 } from './source-acceptance-lib.mjs';
 
@@ -85,6 +86,7 @@ async function collectObservation(
       await application.store.loadRecords('telegram-ingestion-checkpoints')
     ).find(({ id }) => id === source.id);
     observation.historyComplete = checkpoint?.historyComplete === true;
+    observation.parseComplete = checkpoint?.complete === true;
     observation.mediaCoverage = (
       await application.store.loadRecords('telegram-media-checkpoints')
     ).find(({ id }) => id === source.id);
@@ -104,9 +106,7 @@ async function collectObservation(
       }
     }
     materials = assembleTelegramAlbums([...latest.values()]);
-    offers = (await application.store.listOffers()).filter(
-      ({ sourceId }) => sourceId === source.id
-    );
+    offers = await application.store.listOffers();
   } else {
     const report = await application.collector.collectWithReport([source], '', {
       signal,
@@ -127,12 +127,12 @@ async function collectObservation(
       outcome?.status
     );
     observation.paginationComplete = stored.complete === true;
+    observation.parseComplete = outcome?.parseComplete === true;
     observation.retentionLoss = stored.retentionLoss === true;
     if (!observation.fetchComplete) {
       observation.exclusion = outcome?.category || 'fetch-failed';
     }
   }
-  observation.parseComplete = true;
   observation.observedAt = new Date().toISOString();
   const reviewPack = materials.map((material, index) => ({
     id: material.id || material.url || String(index),
@@ -141,13 +141,7 @@ async function collectObservation(
     material,
   }));
   observation.materials = reviewPack.map(({ material, ...metadata }) => {
-    const offer = offers.find((entry) =>
-      source.type === 'telegram'
-        ? entry.messageIds?.some((id) =>
-            material.messageIds?.map(String).includes(String(id))
-          )
-        : entry.url === material.url || entry.raw?.url === material.url
-    );
+    const offer = findMaterialOffer(offers, material, source);
     return { ...metadata, prediction: prediction(offer) };
   });
   return { ...observation, reviewPack };
