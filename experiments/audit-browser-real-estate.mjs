@@ -213,7 +213,8 @@ async function auditSite({ options, pacer, site, writer }) {
       { signal: options.signal }
     );
     owned = launched;
-    commander = makeBrowserCommander({ page: launched.page });
+    // Explicit private audit traces below are owned separately from profiles.
+    commander = makeBrowserCommander({ page: launched.page, debug: false });
     owned.setCommander(commander);
     launched.page.on('requestfailed', () => {
       network.failed += 1;

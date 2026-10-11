@@ -13,6 +13,14 @@ const networkList = [
   '--format',
   '{{.ID}} {{.Name}} {{.Driver}} {{.Scope}}',
 ];
+const imageList = [
+  'image',
+  'ls',
+  '--no-trunc',
+  '--format',
+  '{{.ID}} {{.Repository}}:{{.Tag}}',
+];
+const builderList = ['buildx', 'ls', '--format', '{{.Name}}'];
 
 function networkKey(row) {
   const [id, name, driver, scope] = row.split(/\s+/u);
@@ -39,14 +47,8 @@ export async function dockerInventory(run = dockerCommand) {
     run(['ps', '-aq', '--no-trunc']),
     run(networkList),
     run(['volume', 'ls', '-q']),
-    run([
-      'image',
-      'ls',
-      '--no-trunc',
-      '--format',
-      '{{.ID}} {{.Repository}}:{{.Tag}}',
-    ]),
-    run(['buildx', 'ls', '--format', '{{.Name}}']),
+    run(imageList),
+    run(builderList),
   ]);
   return Object.fromEntries(
     ['containers', 'networks', 'volumes', 'images', 'builders'].map(
@@ -193,7 +195,7 @@ export class QaDockerCleanup {
     }
     for (const builder of this.builders) {
       await attempt('builder deletion', async () => {
-        if ((await dockerInventory(this.run)).builders.includes(builder)) {
+        if (lines(await this.run(builderList)).includes(builder)) {
           // Buildx's status deadline also covers stop/removal. Quiesce the
           // daemon first so deleting a populated cache gets its own deadline.
           await attempt('builder stop', () =>
@@ -206,7 +208,7 @@ export class QaDockerCleanup {
     for (const ref of this.imageRefs) {
       await attempt('image deletion', async () => {
         if (
-          (await dockerInventory(this.run)).images.some((row) =>
+          lines(await this.run(imageList)).some((row) =>
             row.endsWith(` ${ref}`)
           )
         ) {

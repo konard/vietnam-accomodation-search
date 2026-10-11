@@ -158,6 +158,55 @@ describe('scoped Docker QA cleanup', () => {
     assert.equal((await cleanup.cleanup()).pass, true);
   });
 
+  it('removes owned builders even when unrelated image inventory fails', async () => {
+    const state = fixture();
+    const cleanup = new QaDockerCleanup({
+      runId,
+      baseline: state.baseline,
+      run: (args) => {
+        if (args[0] === 'image' && args[1] === 'ls') {
+          throw new Error('injected image inventory failure');
+        }
+        return state.run(args);
+      },
+    });
+    cleanup.ownImage(`${runId}:fixture`);
+    cleanup.ownBuilder(`${runId}-builder`);
+    const result = await cleanup.cleanup();
+    assert.equal(result.pass, false);
+    assert.equal(result.baselineRestored, false);
+    assert(result.failures.includes('baseline verification'));
+    assert.deepEqual(state.current.builders, state.baseline.builders);
+    assert(!result.failures.includes('builder deletion'));
+    assert(
+      !state.calls.some((args) => args.includes('default') && args[1] !== 'ls')
+    );
+    assert(!state.calls.some((args) => args.includes('prune')));
+  });
+
+  it('removes owned images even when unrelated network inventory fails', async () => {
+    const state = fixture();
+    const cleanup = new QaDockerCleanup({
+      runId,
+      baseline: state.baseline,
+      run: (args) => {
+        if (args[0] === 'network' && args[1] === 'ls') {
+          throw new Error('injected network inventory failure');
+        }
+        return state.run(args);
+      },
+    });
+    cleanup.ownImage(`${runId}:fixture`);
+    cleanup.ownBuilder(`${runId}-builder`);
+    const result = await cleanup.cleanup();
+    assert.equal(result.pass, false);
+    assert.equal(result.baselineRestored, false);
+    assert.deepEqual(state.current.images, state.baseline.images);
+    assert.deepEqual(state.current.builders, state.baseline.builders);
+    assert(!result.failures.includes('image deletion'));
+    assert(!state.calls.some((args) => args.includes('prune')));
+  });
+
   it('quiesces the owned builder separately before removing its populated cache', async () => {
     const state = fixture();
     let stopped = false;

@@ -29,7 +29,11 @@ await withQaCleanup(async (scope, signal) => {
   });
   scope.defer('browser', () => browser.close());
   const page = await browser.newPage();
-  const commander = makeBrowserCommander({ page, logLevel: 'none' });
+  const commander = makeBrowserCommander({
+    page,
+    debug: false,
+    logLevel: 'none',
+  });
   scope.defer('commander', () => commander.destroy());
   const results = [];
   for (const status of [200, 202, 404, 502, 503]) {

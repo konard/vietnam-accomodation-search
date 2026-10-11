@@ -11,7 +11,11 @@ await withQaCleanup(async (scope) => {
   const browser = await chromium.launch();
   scope.defer('browser', () => browser.close());
   const page = await browser.newPage();
-  const commander = makeBrowserCommander({ page, logLevel: 'none' });
+  const commander = makeBrowserCommander({
+    page,
+    debug: false,
+    logLevel: 'none',
+  });
   scope.defer('commander', () => commander.destroy());
   const trace = await commander.startTrace({
     output: directory,

@@ -23,6 +23,7 @@ try {
     const page = await browser.newPage();
     const commander = runtime.makeBrowserCommander({
       page,
+      debug: false,
       engine: 'playwright',
       enableNetworkTracking: tracking,
       logLevel: 'none',
@@ -62,6 +63,7 @@ try {
   // Node is deliberately not Chrome. Its rejected Chrome switches provide
   // a deterministic early-exit control without touching an installed browser.
   const unexpected = await runtime.launchRealBrowser({
+    debug: false,
     engine: 'playwright',
     executablePath: process.execPath,
     headless: true,
