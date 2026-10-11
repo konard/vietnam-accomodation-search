@@ -139,6 +139,67 @@ it('shares standalone availability, identity validation and revocation with a na
   assert.equal(clients[0].destroyed, true);
 });
 
+it('starts native update processing when validation opens the shared transport before ingestion', async () => {
+  let finish;
+  const gate = new Promise((resolve) => {
+    finish = resolve;
+  });
+  let entered;
+  const ready = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const { clients, create, emit, clientFactory } = fixture((client) => {
+    let identityReads = 0;
+    let updatesStarted = false;
+    const originalEmit = client.onNewMessage.emit;
+    client.onNewMessage.emit = (message) =>
+      updatesStarted
+        ? originalEmit.call(client.onNewMessage, message)
+        : undefined;
+    client.startUpdatesLoop = async () => {
+      updatesStarted = true;
+    };
+    client.getMe = async () => {
+      if (++identityReads === 2) {
+        entered();
+        await gate;
+      }
+      return { id: 99 };
+    };
+  });
+  const auth = new TelegramAuthService({
+    apiId: 12,
+    apiHash: 'self-authored',
+    session: 'self-authored-session',
+    clientFactory,
+    expectedUserId: 99,
+  });
+  const validating = auth.validate();
+  const provider = create();
+  let received = 0;
+  try {
+    await ready;
+    await provider.liveUpdates(
+      () => {
+        received += 1;
+      },
+      { sources: [{ id: 'telegram:fixture' }] }
+    );
+    await emit();
+    assert.equal(
+      received,
+      1,
+      'an authenticated transport must also process updates'
+    );
+    assert.equal(clients.length, 1);
+  } finally {
+    finish();
+    await validating;
+    await provider.destroy();
+  }
+  assert.equal(clients[0].destroyed, true);
+});
+
 it('joins listener registration before destruction and leaves no late listeners', async () => {
   let finish;
   const gate = new Promise((resolve) => {

@@ -107,6 +107,10 @@ keys are internal. Each logical owner still validates its identity pin. Its
 listeners are separately disposable. Open/close failures that cannot quiesce
 the transport block replacement, preserving the cause instead of reopening a
 possibly competing client. Successful final close permits a later reconnect.
+Validation-first acquisition also starts the SDK's native update processing
+before ingestion can borrow the authenticated transport; `getMe` alone does
+not establish that readiness. A reverse-order event control reproduces the
+missing processing and verifies the shared listener receives the event.
 
 [mtcute storage guidance](https://mtcute.dev/guide/topics/storage) also warns
 about reusing exported sessions across IPs. This patch shares an existing local

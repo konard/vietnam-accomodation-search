@@ -386,7 +386,12 @@ export class TelegramAuthService {
       () =>
         openTelegramClient(this.clientFactory, credentials, async (client) => {
           await client.importSession(payload);
-          return client.getMe();
+          const me = await client.getMe();
+          // getMe authenticates an imported session without starting native
+          // update processing. A concurrent ingestion owner can borrow this
+          // transport, so initialize the SDK's usual updates loop first.
+          await client.startUpdatesLoop?.();
+          return me;
         })
     );
     const { client } = lease;
