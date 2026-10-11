@@ -199,6 +199,7 @@ function parseSearchTokens(input, { partial = false } = {}) {
   for (const [flag, field] of [
     ['--sort-by', 'sortBy'],
     ['--comparison-period', 'comparisonPeriod'],
+    ['--comparison-basis', 'comparisonBasis'],
     ['--stay-nights', 'stayNights'],
   ]) {
     const index = tokens.indexOf(flag);

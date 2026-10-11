@@ -66,6 +66,12 @@ export function offerDenominator(offer, field) {
 }
 
 export function validateComparison(options = {}) {
+  if (
+    options.comparisonBasis !== undefined &&
+    !['property', 'bedroom', 'room', 'bed'].includes(options.comparisonBasis)
+  ) {
+    throw new TypeError('Unknown comparison basis.');
+  }
   if (options.sortBy !== undefined && !VALUE_SORTS.includes(options.sortBy)) {
     throw new TypeError('Unknown value sort.');
   }
@@ -104,21 +110,28 @@ function quoteTotal(offer, { basis, converted, quotedPeriod, nights }) {
   return { totalVnd, exclusions };
 }
 
-function unitValues(offer, totalVnd) {
-  const units = {};
-  for (const [field, key] of [
-    ['bedrooms', 'pricePerBedroomVnd'],
-    ['rooms', 'pricePerRoomVnd'],
-    ['beds', 'pricePerBedVnd'],
+function unitValues(offer, totalVnd, basis, unitQuote) {
+  const units = { metricProvenance: {} };
+  for (const [field, key, unit] of [
+    ['bedrooms', 'pricePerBedroomVnd', 'bedroom'],
+    ['rooms', 'pricePerRoomVnd', 'room'],
+    ['beds', 'pricePerBedVnd', 'bed'],
   ]) {
     const denominator = offerDenominator(offer, field);
     const valid =
       Number.isSafeInteger(denominator.count) && denominator.count > 0;
     units[field] = { ...denominator, status: valid ? 'known' : 'excluded' };
     units[key] =
-      valid && totalVnd !== undefined
-        ? totalVnd / denominator.count
-        : undefined;
+      basis === unit
+        ? unitQuote
+        : valid && totalVnd !== undefined
+          ? totalVnd / denominator.count
+          : undefined;
+    units.metricProvenance[key] = Number.isFinite(units[key])
+      ? basis === unit
+        ? 'explicit-unit-quote'
+        : 'property-total-divided-by-count'
+      : 'unknown';
   }
   return units;
 }
@@ -153,9 +166,18 @@ export function compareOfferValue(offer, options = {}) {
     quotedPeriod,
     nights,
   });
-  const units = unitValues(offer, totalVnd);
+  // Reuse rent/period validation while keeping a unit quote separate from
+  // whole-property arithmetic. Counts never imply cross-unit conversion.
+  const unitQuote = quoteTotal(offer, {
+    basis: 'property',
+    converted,
+    quotedPeriod,
+    nights,
+  }).totalVnd;
+  const units = unitValues(offer, totalVnd, basis, unitQuote);
   return {
     basis,
+    comparisonPool: `quote-per-${basis}`,
     basisProvenance:
       offer.priceBasisProvenance ||
       (offer.price?.basis || offer.priceBasis
@@ -210,7 +232,7 @@ export function formatOfferValue(value) {
     const denominator = value[field];
     lines.push(
       Number.isFinite(value[key])
-        ? `${Math.round(value[key]).toLocaleString('en-US')} VND/${label}/${value.comparisonPeriod} ÷ ${denominator.count} (${denominator.provenance})`
+        ? `${Math.round(value[key]).toLocaleString('en-US')} VND/${label}/${value.comparisonPeriod} ${value.metricProvenance?.[key] === 'explicit-unit-quote' ? '(explicit unit quote)' : `÷ ${denominator.count} (${denominator.provenance})`}`
         : `${label}: excluded (${denominator?.count ?? 'unknown'} denominator or non-property quote)`
     );
   }

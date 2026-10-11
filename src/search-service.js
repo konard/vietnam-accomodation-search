@@ -14,6 +14,18 @@ import {
   refreshSources,
 } from './search-refresh.js';
 
+const BASIS_VALUE_SORTS = Object.freeze({
+  bedroom: 'pricePerBedroomVnd',
+  room: 'pricePerRoomVnd',
+  bed: 'pricePerBedVnd',
+});
+
+function comparisonKey(options) {
+  return (
+    options.sortBy || BASIS_VALUE_SORTS[options.comparisonBasis] || 'totalVnd'
+  );
+}
+
 function isFresh(offer, now, maxAgeMs) {
   const collectedAt = new Date(offer.collectedAt).getTime();
   const age = now.getTime() - collectedAt;
@@ -176,36 +188,67 @@ function isAvailable(offer, options, since) {
   );
 }
 
+function valueExclusionReasons(value, key, { wrongBasis, mixedBasis, mixed }) {
+  if (wrongBasis) {
+    return ['outside-comparison-basis'];
+  }
+  if (mixedBasis) {
+    return ['mixed-quote-bases-require-comparison-basis'];
+  }
+  if (mixed) {
+    return ['mixed-billing-periods-require-comparison-policy'];
+  }
+  return [...value.exclusions, `missing-${key}`];
+}
+
 function rankValues(unique, options) {
   const { cheapest = false, limit = 10 } = options;
   const valueExclusions = [];
-  const periods = new Set(
-    unique.map((offer) => offer.price?.period || 'unknown')
+  for (const offer of unique) {
+    offer.value = compareOfferValue(offer, options);
+  }
+  const key = comparisonKey(options);
+  const candidates = unique.filter(
+    (offer) =>
+      Number.isFinite(offer.value[key]) &&
+      (!options.comparisonBasis ||
+        offer.value.basis === options.comparisonBasis)
   );
+  const bases = new Set(candidates.map(({ value }) => value.basis));
+  const periods = new Set(candidates.map((offer) => offer.value.quotedPeriod));
   const comparable =
     options.sortBy ||
     cheapest ||
     options.stayNights ||
     options.comparisonPeriod ||
+    options.comparisonBasis ||
     Object.keys(options).some((key) =>
       /^(?:min|max)(?:Total|Per|PricePer).*Vnd$/u.test(key)
     );
   const ranked = comparable
     ? unique.filter((offer) => {
-        offer.value = compareOfferValue(offer, options);
-        const key = options.sortBy || 'totalVnd';
+        const wrongBasis =
+          options.comparisonBasis &&
+          offer.value.basis !== options.comparisonBasis;
+        const mixedBasis = bases.size > 1 && !options.comparisonBasis;
         const mixed =
           !options.stayNights &&
           (!options.comparisonPeriod ||
             options.comparisonPeriod === 'quoted') &&
           periods.size > 1;
-        const accepted = Number.isFinite(offer.value[key]) && !mixed;
+        const accepted =
+          Number.isFinite(offer.value[key]) &&
+          !mixed &&
+          !mixedBasis &&
+          !wrongBasis;
         if (!accepted) {
           valueExclusions.push({
             offerId: offer.id,
-            reasons: mixed
-              ? ['mixed-billing-periods-require-comparison-policy']
-              : [...offer.value.exclusions, `missing-${key}`],
+            reasons: valueExclusionReasons(offer.value, key, {
+              wrongBasis,
+              mixedBasis,
+              mixed,
+            }),
           });
         }
         if (accepted && !matchesNamedFilters(offer, options)) {
@@ -222,8 +265,7 @@ function rankValues(unique, options) {
     : unique.filter((offer) => matchesNamedFilters(offer, options));
   ranked.sort((left, right) =>
     comparable
-      ? left.value[options.sortBy || 'totalVnd'] -
-        right.value[options.sortBy || 'totalVnd']
+      ? left.value[key] - right.value[key]
       : cheapest
         ? left.priceVnd - right.priceVnd
         : new Date(right.collectedAt || 0) - new Date(left.collectedAt || 0)
@@ -563,8 +605,10 @@ export class SearchService {
           valueExclusions,
           comparison: comparable
             ? {
-                sortBy: options.sortBy || 'totalVnd',
+                sortBy: comparisonKey(options),
                 comparisonPeriod: options.comparisonPeriod || 'quoted',
+                comparisonBasis:
+                  options.comparisonBasis || result[0]?.value.basis,
                 stayNights: options.stayNights,
               }
             : undefined,

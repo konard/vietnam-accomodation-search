@@ -246,7 +246,13 @@ export function createApplication(options = {}) {
     accessPolicy,
     collector,
     createAvailabilityService: (credentials = {}) =>
-      new TelegramAvailabilityService({ ...credentials, store }),
+      new TelegramAvailabilityService({
+        ...credentials,
+        clientFactory: options.mtcuteClientFactory || credentials.clientFactory,
+        expectedUserId:
+          environment.TELEGRAM_EXPECTED_USER_ID || credentials.expectedUserId,
+        store,
+      }),
     createBot: async (token, credentials = {}) => {
       const bot = await createTelegramBot(token, {
         accessPolicy,

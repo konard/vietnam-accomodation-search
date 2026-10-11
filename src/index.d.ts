@@ -208,6 +208,7 @@ export interface SearchOptions {
   sortBy?:
     'totalVnd' | 'pricePerBedroomVnd' | 'pricePerRoomVnd' | 'pricePerBedVnd';
   comparisonPeriod?: 'quoted' | 'night' | 'week' | 'month' | 'year';
+  comparisonBasis?: Exclude<QuoteBasis, 'person'>;
   /** Linear estimate using 30-night months and 365-night years. */
   stayNights?: number;
   sourceMode?: 'ranked' | 'exhaustive';
@@ -896,6 +897,7 @@ export declare class SearchService {
       comparison?: {
         sortBy: SearchOptions['sortBy'];
         comparisonPeriod: SearchOptions['comparisonPeriod'];
+        comparisonBasis?: SearchOptions['comparisonBasis'];
         stayNights?: number;
       };
       refreshingSources?: string[];
@@ -941,6 +943,7 @@ export declare class TelegramAvailabilityService {
   constructor(options?: {
     apiHash?: string;
     apiId?: number | string;
+    expectedUserId?: number | string;
     clientFactory?: (options: {
       apiHash: string;
       apiId: number;
@@ -1257,6 +1260,11 @@ export type QuoteBasis = 'property' | 'bedroom' | 'room' | 'bed' | 'person';
 export interface OfferValue {
   basis: QuoteBasis;
   basisProvenance: string;
+  comparisonPool: string;
+  metricProvenance: Record<
+    string,
+    'explicit-unit-quote' | 'property-total-divided-by-count' | 'unknown'
+  >;
   totalVnd?: number;
   pricePerBedroomVnd?: number;
   pricePerRoomVnd?: number;

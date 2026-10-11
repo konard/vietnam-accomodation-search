@@ -1,5 +1,9 @@
 import { SESSION_FORMAT, nativeSessionPayload } from './session-envelope.js';
 import { installTelegramSdkLogging } from './telegram-sdk-logging.js';
+import {
+  acquireTelegramClient,
+  openTelegramClient,
+} from './telegram-client-pool.js';
 
 function normalizeRecipient(value) {
   const username = String(value || '')
@@ -38,6 +42,7 @@ export class TelegramAvailabilityService {
     apiHash,
     apiId,
     clientFactory = createMtcuteClient,
+    expectedUserId,
     now,
     router,
     session,
@@ -47,6 +52,7 @@ export class TelegramAvailabilityService {
     this.apiHash = apiHash;
     this.apiId = apiId;
     this.clientFactory = clientFactory;
+    this.expectedUserId = expectedUserId;
     this.now = now || (() => new Date());
     this.router = router;
     this.session = session;
@@ -94,13 +100,25 @@ export class TelegramAvailabilityService {
       };
     }
     const session = nativeSessionPayload(this.session, this.sessionFormat);
-    const client = await this.clientFactory(credentials);
+    const lease = await acquireTelegramClient(
+      this.clientFactory,
+      [credentials.apiId, credentials.apiHash, session],
+      () =>
+        openTelegramClient(this.clientFactory, credentials, async (client) => {
+          await client.start({ session });
+          return client.getMe?.();
+        })
+    );
+    const { client } = lease;
     let failure;
     let result;
     try {
-      await client.start({
-        session,
-      });
+      if (
+        this.expectedUserId !== undefined &&
+        String(lease.me?.id) !== String(this.expectedUserId)
+      ) {
+        throw new Error('Telegram identity mismatch.');
+      }
       const sent = await client.sendText(
         destination,
         message || createAvailabilityMessage(offer)
@@ -115,7 +133,7 @@ export class TelegramAvailabilityService {
       failure = error;
     }
     try {
-      await client.destroy();
+      await lease.release();
     } catch (cleanupError) {
       if (failure) {
         throw new AggregateError(

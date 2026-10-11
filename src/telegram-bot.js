@@ -12,7 +12,7 @@ import { stableHash } from './utils.js';
 import { offerPhotoMedia, sendPhotoMedia } from './telegram-offer-media.js';
 
 const SEARCH_USAGE =
-  'Usage: /search [--cheapest [1-50]] [--filter field=value] [--sort-by totalVnd|pricePerBedroomVnd|pricePerRoomVnd|pricePerBedVnd] [--stay-nights N] [--comparison-period night|week|month|year] [--all-sources] [location]';
+  'Usage: /search [--cheapest [1-50]] [--filter field=value] [--sort-by totalVnd|pricePerBedroomVnd|pricePerRoomVnd|pricePerBedVnd] [--comparison-basis property|bedroom|room|bed] [--stay-nights N] [--comparison-period night|week|month|year] [--all-sources] [location]';
 const SEARCH_FAILURE = 'Search could not be completed. Please try again later.';
 const NO_FRESH_OFFERS = 'No fresh offers could be collected.';
 
