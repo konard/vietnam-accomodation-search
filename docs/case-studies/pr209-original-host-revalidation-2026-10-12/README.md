@@ -46,11 +46,13 @@ closure on merge is not original-host acceptance.
 - Actual browser contracts, privacy, HTTP, process/profile ownership, managed
   recording/default-off and production recording-disabled controls pass on
   Browser Commander 0.31.1.
-- Official registry identifies Command Stream 2.2.0 as the only newer direct
-  root/example dependency. Manifest, compatible Browser Commander override and
-  npm/Deno locks are updated; complete Node/Bun/browser/pricing checks repeat on
-  the final tree. Subsequent registry comparison finds all direct dependencies
-  current. No incompatible transitive pre-1.0 minor is forced through a range.
+- Official registry first identifies Command Stream 2.2.0 as the only newer
+  direct root/example dependency. After that complete validation and QA push,
+  2.3.0 is published during this run. Manifest, compatible Browser Commander
+  override and npm/Deno locks are updated again; the final pin is 2.3.0 and
+  registry comparison finds all direct dependencies current. The repeated final
+  runtime/browser/pricing results are recorded below. No incompatible transitive
+  pre-1.0 minor is forced through a range.
 - Root/example advisory audits report zero vulnerabilities. Zero-warning lint,
   tracked-file formatting, duplication threshold and example web build are
   verified separately.
@@ -164,3 +166,19 @@ known QA workers are stopped and owned Docker/runtime/capture resources are
 absent. Shared cache, unrelated state and original credentials are preserved.
 Owned supported tools are disposed only after validation and commit/push hook
 consumers finish; protected private evidence is retained intentionally.
+
+Real whole-source collection and the isolated full native capability probe above
+ran on 2.2.0. The final 2.3.0 owner-only validation-first live probe repeats all
+three delivery phases successfully and proves exact cleanup and preservation of
+pre-existing messages. Affected public Telegram source-resolution requests are
+not repeated during their observed rate limit. Older evidence is not relabeled
+as fresh final-version whole-source acceptance.
+
+Final 2.3.0 acceptance passes Node/Bun (1,497 each), ordinary frozen Deno
+(1,380 tests, 19 steps, zero failures, 11 native-only exclusions), actual browser
+contract/privacy/HTTP/ownership/recording controls, unit metrics/ranking and the
+held-lock diagnostics control. Final Node coverage is 100% lines, 96.91% branches
+and 98.78% functions; earlier branch measurements remain recorded above. The
+example rebuild, zero-warning lint and root advisory audit also pass. The final
+independent owner-chat audit again finds zero known QA messages. Docker bootstrap
+and the two tracked upstream counterexamples remain intentionally red.
