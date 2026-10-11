@@ -160,6 +160,11 @@ export class QaDockerCleanup {
     for (const builder of this.builders) {
       await attempt('builder deletion', async () => {
         if ((await dockerInventory(this.run)).builders.includes(builder)) {
+          // Buildx's status deadline also covers stop/removal. Quiesce the
+          // daemon first so deleting a populated cache gets its own deadline.
+          await attempt('builder stop', () =>
+            this.run(['buildx', 'stop', builder])
+          );
           await this.run(['buildx', 'rm', builder]);
         }
       });

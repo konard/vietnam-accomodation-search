@@ -45,6 +45,25 @@ await withQaCleanup(
       runId,
       baseline,
       journal: join(directory, 'owned.json'),
+      run: async (args) => {
+        try {
+          return await dockerCommand(args);
+        } catch (error) {
+          if (process.env.QA_DOCKER_DEBUG === '1') {
+            console.error(
+              JSON.stringify({
+                qaDockerFailure: {
+                  operation: args.slice(0, 2),
+                  code: error.code,
+                  signal: error.signal,
+                  killed: error.killed,
+                },
+              })
+            );
+          }
+          throw error;
+        }
+      },
     });
     scope.defer('production acceptance Docker resources', async () => {
       const result = await owned.cleanup();
