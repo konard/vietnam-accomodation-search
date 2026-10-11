@@ -188,6 +188,27 @@ the surviving rental with only live member IDs, then deletes that rental caption
 and verifies that later updates cannot resurrect it. This covers the stored
 deletion replay independently of other live-update test timing.
 
+At `5c7914b`, run `38125944449` passes both complete coverage checks and the
+real clink gate, but Windows Bun fails the existing quote-scan subprocess.
+`checks-38125944449-failure.log` lines 22758–22768 show the synchronous child
+failure after 6.46 seconds; lines 24121–24129 record the sole failed test. The
+same control passes under Windows Node, Linux and macOS. The captured error
+does not expose the child's JSON result, so the precise Windows cause is not
+established. Upstream Bun's
+[child_process implementation](https://github.com/oven-sh/bun/blob/main/src/js/node/child_process.ts)
+confirms that synchronous failures attach output to the thrown error; those
+fields were not included in this Bun test's failure display.
+
+The quote probe now reuses the existing owned asynchronous subprocess helper
+and its small isolated environment. A deterministic inherited-preload regression
+fails before isolation and passes after it. Child exit, timeout, stdout/stderr
+and verified reaping are checked explicitly. The actual Node probe retains its
+131,072-digit input, 64 MiB parent heap, 32 MiB worker heap, 2 MiB worker stack
+and five-second scan deadline; the outer process is bounded separately by the
+helper's existing ten-second limit. No Bun deadline is increased. This is
+verified fixture isolation and improved failure diagnosis; it is not proof of
+the historical intermittent release failure or the Windows worker's cause.
+
 ```bash
 node --test tests/links-workflow.test.js tests/recheck-broken-links.test.js
 node experiments/issue-195-links.mjs /path/to/lychee
