@@ -1,6 +1,13 @@
 // Self-authored no-credential control for implicit filesystem recordings.
 import assert from 'node:assert/strict';
-import { access, realpath } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  readFile,
+  realpath,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { makeBrowserCommander } from 'browser-commander';
@@ -22,16 +29,52 @@ await withQaCleanup(async (scope) => {
   scope.defer('commander', () => commander.destroy());
   await commander.ready;
   await page.setContent('<h1>Self-authored filesystem control</h1>');
-  const path = commander.tracePath;
-  assert(
-    path?.startsWith(
-      join(await realpath(directory), 'browser-commander-traces')
-    )
+  assert.equal(commander.tracePath, null);
+  assert.equal(
+    await access(join(directory, 'browser-commander-traces')).then(
+      () => true,
+      () => false
+    ),
+    false
   );
   await commander.destroy();
-  const retainedAfterDestroy = await access(path).then(
-    () => true,
-    () => false
+  const managedRoot = join(directory, 'owned-evidence');
+  await mkdir(managedRoot, { mode: 0o700 });
+  const sentinel = join(managedRoot, 'unrelated-sentinel');
+  await writeFile(sentinel, 'self-authored preservation control', {
+    mode: 0o600,
+  });
+  const managed = makeBrowserCommander({
+    page: await browser.newPage(),
+    logLevel: 'none',
+    debug: {
+      directory: managedRoot,
+      retain: false,
+      maxDurationMs: 30000,
+    },
+  });
+  scope.defer('managed commander', () => managed.destroy());
+  await managed.ready;
+  const path = managed.tracePath;
+  assert(
+    path &&
+      (await realpath(path)).startsWith(
+        join(await realpath(directory), 'owned-evidence')
+      )
+  );
+  assert.equal((await stat(path)).mode & 0o777, 0o700);
+  await managed.page.setContent('<h1>Self-authored managed recording</h1>');
+  await managed.stopDebug({ discard: true });
+  assert.equal(
+    await access(path).then(
+      () => true,
+      () => false
+    ),
+    false
+  );
+  assert.equal(
+    await readFile(sentinel, 'utf8'),
+    'self-authored preservation control'
   );
   const disabled = makeBrowserCommander({
     page: await browser.newPage(),
@@ -43,11 +86,13 @@ await withQaCleanup(async (scope) => {
   assert.equal(disabled.tracePath, null);
   console.log(
     JSON.stringify({
-      defaultCreatesUnrequestedRecording: true,
-      retainedAfterDestroy,
+      defaultCreatesUnrequestedRecording: false,
+      managedOptInWorks: true,
+      managedRecordingRemoved: true,
+      unrelatedSentinelPreserved: true,
+      privateManagedDirectory: true,
       explicitOptOutWorks: true,
       selfAuthoredOnly: true,
     })
   );
-  assert(retainedAfterDestroy);
 });
