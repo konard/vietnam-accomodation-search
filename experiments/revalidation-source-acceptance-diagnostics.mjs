@@ -70,6 +70,15 @@ await withQaCleanup(async (scope, signal) => {
     'self-authored held-lock control'
   );
   diagnosed = output.includes('QA_HEAVY_BUSY');
+  if (diagnosed) {
+    const failure = JSON.parse(
+      await readFile(join(directory, 'evidence', 'failure.json'), 'utf8')
+    );
+    assert.equal(failure.code, 'QA_HEAVY_BUSY');
+    assert.equal(failure.phase, 'storage-guard');
+    assert.equal(failure.category, 'guard-rejection');
+    assert(!JSON.stringify(failure).includes(directory));
+  }
   console.log(
     JSON.stringify({
       selfAuthoredOnly: true,

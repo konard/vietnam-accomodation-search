@@ -2,15 +2,10 @@ import { FLOOR_PATTERN } from '../src/listing-fields.js';
 import { rentalPriceOptions } from '../src/pricing.js';
 import { readFile } from 'node:fs/promises';
 import { inlineTelegramCredentials } from '../src/telegram-secrets.js';
+import { safeAcceptanceFailure } from './qa-acceptance-diagnostics.mjs';
 
 export function errorSummary(error) {
-  return {
-    code:
-      typeof error?.code === 'number' || typeof error?.code === 'string'
-        ? error.code
-        : undefined,
-    type: error?.constructor?.name || 'Error',
-  };
+  return safeAcceptanceFailure(error);
 }
 
 export async function botStatus(token, fetchImpl = globalThis.fetch) {

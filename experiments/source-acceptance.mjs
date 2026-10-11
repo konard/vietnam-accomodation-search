@@ -15,6 +15,10 @@ import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
 import { withQaCleanup } from './qa-cleanup.mjs';
 import { acquireQaStorageGuard } from './qa-storage-guard.mjs';
 import {
+  acceptancePhase,
+  safeAcceptanceFailure,
+} from './qa-acceptance-diagnostics.mjs';
+import {
   evaluateSourceAcceptance,
   findMaterialOffer,
   nativeParseComplete,
@@ -22,6 +26,7 @@ import {
 } from './source-acceptance-lib.mjs';
 
 const args = process.argv.slice(2);
+const context = { phase: 'setup' };
 const option = (name) => {
   const index = args.indexOf(name);
   return index < 0 ? undefined : args[index + 1];
@@ -152,12 +157,14 @@ async function collectObservation(
   return { ...observation, reviewPack };
 }
 
-// eslint-disable-next-line complexity, max-lines-per-function -- The finite operator command dispatches collect, independent review and inventory status.
 async function main(scope, signal) {
   assertManualLocalRun(process.env);
   const output = resolve(option('--output') || '.deploy/source-acceptance');
   await mkdir(output, { mode: 0o700, recursive: true });
+  context.output = output;
+  context.phase = 'source-selection';
   if (args[0] === 'review') {
+    context.phase = 'review';
     const observation = await load(option('--observation'));
     const review = await load(option('--labels'));
     const result = evaluateSourceAcceptance(observation, review);
@@ -203,6 +210,7 @@ async function main(scope, signal) {
     logger: { debug() {}, warn() {}, error() {} },
   });
   const inventory = await application.registry.inventory();
+  context.phase = 'inventory';
   if (args[0] === 'status') {
     const rows = [];
     for (const source of inventory) {
@@ -258,7 +266,26 @@ async function main(scope, signal) {
   if (!sources.length) {
     throw new Error('No matching source.');
   }
+  await collectSources(
+    application,
+    sources,
+    credentials,
+    scope,
+    signal,
+    output
+  );
+}
+
+async function collectSources(
+  application,
+  sources,
+  credentials,
+  scope,
+  signal,
+  output
+) {
   await mkdir(application.store.directory, { mode: 0o700, recursive: true });
+  context.phase = 'storage-guard';
   const guard = await acquireQaStorageGuard(scope, {
     paths: [application.store.directory, output],
     signal,
@@ -267,7 +294,9 @@ async function main(scope, signal) {
   let collected = 0;
   let excluded = 0;
   for (const source of sources) {
+    context.phase = 'storage-guard';
     await guard.check();
+    context.phase = 'collection';
     let observation;
     try {
       observation = await collectObservation(
@@ -291,9 +320,11 @@ async function main(scope, signal) {
         fetchComplete: false,
         parseComplete: false,
         paginationComplete: false,
+        failure: safeAcceptanceFailure(error, 'collection'),
       };
     }
     const { reviewPack = [], ...safeObservation } = observation;
+    context.phase = 'evidence-write';
     const prefix = join(output, stableHash(source.id));
     await save(`${prefix}-observation.json`, safeObservation);
     await save(`${prefix}-review-pack.json`, reviewPack);
@@ -317,12 +348,35 @@ async function main(scope, signal) {
       })
     );
   }
+  context.phase = 'storage-guard';
   await guard.check();
 }
 
-await withQaCleanup(main).catch(() => {
-  console.error(
-    'Source acceptance failed. Inspect the private evidence locally.'
+await withQaCleanup((scope, signal) =>
+  acceptancePhase(
+    () => context.phase,
+    () => main(scope, signal)
+  )
+).catch(async (error) => {
+  const failure = safeAcceptanceFailure(
+    error,
+    error.name === 'AggregateError' ? 'cleanup' : error.qaPhase || context.phase
   );
+  console.error(JSON.stringify({ sourceAcceptanceFailed: true, ...failure }));
+  if (context.output) {
+    try {
+      await save(join(context.output, 'failure.json'), {
+        observedAt: new Date().toISOString(),
+        ...failure,
+      });
+    } catch (evidenceError) {
+      console.error(
+        JSON.stringify({
+          evidenceWriteFailed: true,
+          ...safeAcceptanceFailure(evidenceError, 'evidence-write'),
+        })
+      );
+    }
+  }
   process.exitCode = 1;
 });

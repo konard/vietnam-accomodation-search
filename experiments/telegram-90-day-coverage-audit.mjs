@@ -30,6 +30,7 @@ import {
   userCredentials,
 } from './telegram-bot-conversation-e2e.mjs';
 import { retryTelegramFloodWait } from './telegram-live-audit-runtime.mjs';
+import { acceptancePhase } from './qa-acceptance-diagnostics.mjs';
 
 const DAY_MS = 86_400_000;
 const USAGE =
@@ -128,7 +129,10 @@ export function normalizedHistoryMessage(message, username) {
     typeof message.date === 'number' ? message.date * 1000 : message.date
   );
   if (!Number.isFinite(date.getTime()) || date.getTime() <= 0) {
-    throw new Error('Telegram returned an invalid message date.');
+    throw Object.assign(
+      new Error('Telegram returned an invalid message date.'),
+      { code: 'INVALID_MESSAGE_DATE', qaPhase: 'history-page' }
+    );
   }
   const groupedId = message.groupedId ?? message.grouped_id;
   const mediaId = mediaIdentity(message);
@@ -236,7 +240,7 @@ export function analyzeHistoryMessages(
       findings.push({
         id: material.id,
         kind: 'parser-error',
-        ...errorSummary(error),
+        ...errorSummary(Object.assign(error, { qaPhase: 'history-analysis' })),
       });
     }
   }
@@ -256,8 +260,11 @@ export async function retainedMessages(directory, pages) {
       join(directory, `page-${String(ordinal).padStart(6, '0')}.json`)
     );
     if (!page || digest(page.payload) !== page.digest) {
-      throw new Error(
-        'Private history page is missing or has a checksum mismatch.'
+      throw Object.assign(
+        new Error(
+          'Private history page is missing or has a checksum mismatch.'
+        ),
+        { code: 'HISTORY_CHECKSUM_MISMATCH' }
       );
     }
     messages.push(...page.payload.messages);
@@ -300,17 +307,22 @@ export async function collectSource(
     checkpoint.startedAt !== cohort.startedAt ||
     checkpoint.username !== source.username
   ) {
-    throw new Error(
-      'Source checkpoint does not match its frozen history cohort.'
+    throw Object.assign(
+      new Error('Source checkpoint does not match its frozen history cohort.'),
+      { code: 'HISTORY_CHECKPOINT_MISMATCH', qaPhase: 'history-checksum' }
     );
   }
-  const entity = await resolvePublicHistoryCommunity(client, source);
+  const entity = await acceptancePhase('source-resolution', () =>
+    resolvePublicHistoryCommunity(client, source)
+  );
   while (!checkpoint.complete) {
-    const page = await retryTelegramFloodWait(() =>
-      client.getMessages(entity, {
-        limit: 100,
-        offsetId: checkpoint.offsetId || 0,
-      })
+    const page = await acceptancePhase('history-page', () =>
+      retryTelegramFloodWait(() =>
+        client.getMessages(entity, {
+          limit: 100,
+          offsetId: checkpoint.offsetId || 0,
+        })
+      )
     );
     const normalized = page.map((message) =>
       normalizedHistoryMessage(message, source.username)
@@ -320,12 +332,18 @@ export async function collectSource(
       ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
       ids.some((id, index) => index > 0 && id >= ids[index - 1])
     ) {
-      throw new Error(
-        'Telegram history IDs are invalid, duplicated or non-descending.'
+      throw Object.assign(
+        new Error(
+          'Telegram history IDs are invalid, duplicated or non-descending.'
+        ),
+        { code: 'HISTORY_PAGINATION_INVALID', qaPhase: 'history-page' }
       );
     }
     if (checkpoint.offsetId && ids.length && ids[0] >= checkpoint.offsetId) {
-      throw new Error('Telegram pagination did not advance to older messages.');
+      throw Object.assign(
+        new Error('Telegram pagination did not advance to older messages.'),
+        { code: 'HISTORY_PAGINATION_INVALID', qaPhase: 'history-page' }
+      );
     }
     const boundary = normalized.find(({ date }) => date < cohort.cutoff);
     const messages = normalized.filter(
@@ -369,7 +387,9 @@ export async function collectSource(
     await delay(250);
   }
   const analysis = analyzeHistoryMessages(
-    await retainedMessages(directory, checkpoint.pages),
+    await acceptancePhase('history-checksum', () =>
+      retainedMessages(directory, checkpoint.pages)
+    ),
     {
       username: source.username,
       now: new Date(cohort.startedAt),
@@ -380,6 +400,26 @@ export async function collectSource(
   );
   await saveJson(join(directory, 'analysis.json'), analysis);
   return { ...checkpoint, counts: analysis.counts };
+}
+
+export function historyCoverageComplete(results, expectedSources) {
+  return (
+    expectedSources > 0 &&
+    results.length === expectedSources &&
+    results.filter(Boolean).length === expectedSources &&
+    results.every((result) => {
+      const counts = result?.counts;
+      return (
+        result?.complete === true &&
+        Number.isSafeInteger(result.messages) &&
+        result.messages >= 0 &&
+        counts?.messages === result.messages &&
+        counts.uniqueMessageIds === result.messages &&
+        counts.accountedMessages === result.messages &&
+        counts.parserErrors === 0
+      );
+    })
+  );
 }
 
 export async function runHistoryCoverageAudit(options) {
@@ -488,9 +528,10 @@ export async function runHistoryCoverageAudit(options) {
             runtimeNode: process.versions.node,
             parserRevision,
             results: results.filter(Boolean),
-            complete:
-              results.filter(Boolean).length === cohort.sources.length &&
-              results.filter(Boolean).every(({ complete }) => complete),
+            complete: historyCoverageComplete(
+              results.filter(Boolean),
+              cohort.sources.length
+            ),
           })
         );
         await reportWrites;
@@ -502,6 +543,13 @@ export async function runHistoryCoverageAudit(options) {
             messages: results[index].messages,
             counts: results[index].counts,
             error: results[index].type,
+            failure: results[index].complete
+              ? undefined
+              : {
+                  phase: results[index].phase,
+                  category: results[index].category,
+                  code: results[index].code,
+                },
           })
         );
         return results[index];
@@ -510,7 +558,7 @@ export async function runHistoryCoverageAudit(options) {
     return {
       cohort,
       results,
-      complete: results.every(({ complete }) => complete),
+      complete: historyCoverageComplete(results, cohort.sources.length),
     };
   } finally {
     await client.disconnect().catch(() => {});
