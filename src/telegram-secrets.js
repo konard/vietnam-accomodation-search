@@ -24,7 +24,7 @@ export async function telegramSecretValue(env, name) {
   const key = secretKey(env, name);
   return key?.endsWith('_FILE')
     ? (await readFile(env[key], 'utf8')).trim()
-    : env[key];
+    : key && env[key];
 }
 
 // The synchronous composition root supports inline credentials. Secret files
@@ -38,7 +38,7 @@ export function inlineTelegramCredentials(env) {
       sessionFormat: 'TELEGRAM_USER_SESSION_FORMAT',
     }).map(([field, name]) => {
       const key = secretKey(env, name);
-      return [field, key?.endsWith('_FILE') ? undefined : env[key]];
+      return [field, key?.endsWith('_FILE') ? undefined : key && env[key]];
     })
   );
 }

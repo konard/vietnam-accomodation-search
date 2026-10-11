@@ -1,6 +1,7 @@
 import { FLOOR_PATTERN } from '../src/listing-fields.js';
 import { rentalPriceOptions } from '../src/pricing.js';
 import { readFile } from 'node:fs/promises';
+import { inlineTelegramCredentials } from '../src/telegram-secrets.js';
 
 export function errorSummary(error) {
   return {
@@ -359,4 +360,3 @@ export function countBy(values) {
     Object.entries(result).sort((left, right) => right[1] - left[1])
   );
 }
-import { inlineTelegramCredentials } from '../src/telegram-secrets.js';

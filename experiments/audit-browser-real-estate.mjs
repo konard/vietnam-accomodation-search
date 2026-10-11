@@ -19,6 +19,7 @@
 
 import { setTimeout as delay } from 'node:timers/promises';
 import { withQaCleanup } from './qa-cleanup.mjs';
+import { acquireQaStorageGuard } from './qa-storage-guard.mjs';
 import { acquireQaBrowser, launchQaBrowser } from './qa-browser.mjs';
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile } from 'node:fs/promises';
@@ -350,13 +351,14 @@ async function auditSite({ options, pacer, site, writer }) {
 }
 
 // Field precision and recall of the offers the product search path persisted.
-async function auditSearchService(outputDirectory) {
+async function auditSearchService(outputDirectory, signal) {
   const directory = join(outputDirectory, 'search-service');
   await mkdir(directory, { mode: 0o700, recursive: true });
   const result = await auditLive({
     corpus: await loadCorpus(),
     directory,
     environment: process.env,
+    signal,
   });
   return {
     fields: result.metrics.fields,
@@ -377,6 +379,11 @@ export async function main(scope, signal) {
     : await mkdtemp(join(tmpdir(), 'vac-browser-e2e-'));
   await mkdir(outputDirectory, { mode: 0o700, recursive: true });
   await chmod(outputDirectory, 0o700);
+  const guard = await acquireQaStorageGuard(scope, {
+    paths: [outputDirectory],
+    signal,
+  });
+  signal = guard.signal;
   options.outputDirectory = outputDirectory;
   options.scope = scope;
   options.signal = signal;
@@ -416,8 +423,9 @@ export async function main(scope, signal) {
     ])
   );
   const searchService = options.searchService
-    ? await auditSearchService(outputDirectory)
+    ? await auditSearchService(outputDirectory, signal)
     : undefined;
+  await guard.check();
   await writer.write({ outcomes, searchService, stage: 'run.finished' });
   console.log(
     JSON.stringify({

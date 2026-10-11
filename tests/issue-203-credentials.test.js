@@ -4,18 +4,57 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'test-anywhere';
 import { resolveTelegramSecrets } from '../src/telegram-auth.js';
-import { userCredentials } from '../experiments/telegram-bot-conversation-e2e.mjs';
 import { configurePrivateOwner } from '../src/telegram-operator.js';
 import { inlineTelegramCredentials } from '../src/telegram-secrets.js';
-import {
-  deriveSuppliedOwner,
-  resolveOwnerCredentials,
-} from '../experiments/configure-private-owner.mjs';
 import { withQaCleanup } from '../experiments/qa-cleanup.mjs';
 import { SESSION_FORMAT } from '../src/session-envelope.js';
+import { runReleaseAudit } from '../experiments/run-release-audit.mjs';
+
+// The read-only Deno suite does not authorize CLI driver environment access.
+// Production normalization below runs there; owned-file/CLI controls run in
+// the Node and Bun suites, following the private-owner test boundary.
+const isDeno = typeof globalThis.Deno !== 'undefined';
+const { userCredentials } = isDeno
+  ? {}
+  : await import('../experiments/telegram-bot-conversation-e2e.mjs');
+const { deriveSuppliedOwner, resolveOwnerCredentials } = isDeno
+  ? {}
+  : await import('../experiments/configure-private-owner.mjs');
 
 describe('consistent supplied Telegram credentials', () => {
+  it('recognizes legacy credentials in offline release evidence readiness', async () => {
+    if (isDeno) {
+      return;
+    }
+    const root = await mkdtemp(join(tmpdir(), 'vac-release-alias-'));
+    try {
+      const result = await runReleaseAudit(
+        ['--live', '--output', join(root, 'report.json')],
+        {
+          RELEASE_AUDIT_LIVE: '1',
+          TELEGRAM_USER_BOT_API_ID: '123',
+          TELEGRAM_USER_BOT_API_HASH: 'self-authored-hash',
+          TELEGRAM_BOT_TOKEN: 'self-authored-token',
+          TELEGRAM_USER_SESSION: 'self-authored-session',
+        }
+      );
+      assert.equal(
+        Object.hasOwn(result.report.gates, 'live-authorization'),
+        false
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('does not treat an unrelated environment key as an unconfigured secret', async () => {
+    const environment = { undefined: 'unrelated-self-authored-value' };
+    assert.equal((await resolveTelegramSecrets(environment)).apiId, undefined);
+    assert.equal(inlineTelegramCredentials(environment).session, undefined);
+  });
   it('checks both environment pins before authentication and applies the selected pin to either session format', async () => {
+    if (isDeno) {
+      return;
+    }
     const credentials = {
       apiId: '123',
       apiHash: 'self-authored-hash',
@@ -97,9 +136,13 @@ describe('consistent supplied Telegram credentials', () => {
       TELEGRAM_USER_SESSION: 'self-authored-session',
     };
     const production = await resolveTelegramSecrets(environment);
-    const qa = await userCredentials(environment);
-    assert.equal(production.apiId, String(qa.apiId));
-    assert.equal(production.apiHash, qa.apiHash);
+    if (!isDeno) {
+      const qa = await userCredentials(environment);
+      assert.equal(production.apiId, String(qa.apiId));
+      assert.equal(production.apiHash, qa.apiHash);
+    }
+    assert.equal(production.apiId, '123');
+    assert.equal(production.apiHash, 'self-authored-hash');
     assert.equal(production.session, environment.TELEGRAM_USER_SESSION);
     assert.equal(
       inlineTelegramCredentials(environment).apiId,
@@ -108,6 +151,9 @@ describe('consistent supplied Telegram credentials', () => {
   });
 
   it('supports legacy secret files and rejects every competing credential representation', async () => {
+    if (isDeno) {
+      return;
+    }
     const directory = await mkdtemp(join(tmpdir(), 'vac-alias-test-'));
     const hashFile = join(directory, 'hash');
     try {
@@ -147,6 +193,9 @@ describe('consistent supplied Telegram credentials', () => {
   });
 
   it('resolves aliases relative to the original private configuration and preserves its owner pin', async () => {
+    if (isDeno) {
+      return;
+    }
     const directory = await mkdtemp(join(tmpdir(), 'vac-owner-alias-'));
     const envFile = join(directory, '.env');
     const original =

@@ -25,12 +25,14 @@ All implementation is on `issue-203-35b74727260e` in PR 204.
       owner configuration/privileged acceptance without publishing identifiers
       when available. None were supplied; live acceptance remains incomplete.
 - [x] Do not manufacture independent labels or shared-host recovery evidence.
-- [ ] Add a patch changeset; format, lint, duplication, all Node/Bun/Deno tests.
-- [ ] Commit useful atomic steps after relevant local checks and push only prepared branch.
-- [ ] Update PR title/body, include every closing reference and explicit limits.
+- [x] Add a patch changeset; format, lint, duplication, all Node/Bun/Deno tests.
+- [x] Commit useful atomic steps after relevant local checks and push only prepared branch.
+- [x] Update PR title/body, include every closing reference and explicit limits.
 - [ ] Read final PR diff, ensure main is contained and working tree is clean.
-- [ ] List latest CI runs with timestamps and SHA; preserve/analyze failed logs;
-      fix failures and wait for final required checks before marking PR ready.
+- [x] List CI runs with timestamps and SHA; preserve/analyze failed logs and
+      repair the missing changeset and read-only Deno regression failures.
+- [ ] Repeat expanded runtime checks and wait for final required CI checks
+      on the final pushed SHA before marking PR ready.
 
 Large command output is retained in ignored `ci-logs/`. Experiments remain in
 `experiments/`. Commands run within the shared 2.92 GiB memory budget. No global

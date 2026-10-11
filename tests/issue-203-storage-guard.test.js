@@ -7,7 +7,64 @@ import { withQaCleanup } from '../experiments/qa-cleanup.mjs';
 import { acquireQaStorageGuard } from '../experiments/qa-storage-guard.mjs';
 
 describe('bounded storage-heavy QA acceptance', () => {
+  it('rejects OCR language acquisition after the capacity signal aborts', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const { verifyTesseractLanguages } =
+      await import('../experiments/audit-telegram-accommodations.mjs');
+    const controller = new AbortController();
+    const reason = Object.assign(new Error('QA_DISK_FLOOR'), {
+      code: 'QA_DISK_FLOOR',
+    });
+    controller.abort(reason);
+    let acquired = false;
+    await assert.rejects(
+      verifyTesseractLanguages(
+        'self-authored-ocr-command',
+        async () => {
+          acquired = true;
+          return 'eng\nrus\nvie';
+        },
+        { signal: controller.signal }
+      ),
+      (error) => error === reason
+    );
+    assert.equal(acquired, false);
+  });
+  it('rejects an older retained audit before OCR or native acquisition when its storage guard fails', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const { runAudit } =
+      await import('../experiments/audit-telegram-accommodations.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'vac-storage-audit-'));
+    const reason = Object.assign(new Error('QA_DISK_PREFLIGHT'), {
+      code: 'QA_DISK_PREFLIGHT',
+    });
+    try {
+      await assert.rejects(
+        runAudit(
+          {
+            stateDirectory: root,
+            tesseractCommand: 'self-authored-ocr-command-that-does-not-exist',
+          },
+          {
+            storageGuard: async () => {
+              throw reason;
+            },
+          }
+        ),
+        (error) => error === reason
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it('keeps the heavy-run lock for explicit recovery when producer cleanup fails', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const root = await mkdtemp(join(tmpdir(), 'vac-storage-test-'));
     const lockDirectory = join(root, 'heavy.lock');
     try {
@@ -30,6 +87,9 @@ describe('bounded storage-heavy QA acceptance', () => {
     }
   });
   it('rejects low space and unreadable capacity before acquiring a producer', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const root = await mkdtemp(join(tmpdir(), 'vac-storage-test-'));
     try {
       for (const statfsImpl of [
@@ -62,6 +122,9 @@ describe('bounded storage-heavy QA acceptance', () => {
   });
 
   it('serializes participating processes and never steals an existing lock', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const root = await mkdtemp(join(tmpdir(), 'vac-storage-test-'));
     const lockDirectory = join(root, 'heavy.lock');
     const options = {
@@ -86,6 +149,9 @@ describe('bounded storage-heavy QA acceptance', () => {
   });
 
   it('aborts an acquired producer and retains its recovery journal while exact cleanup runs', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
     const root = await mkdtemp(join(tmpdir(), 'vac-storage-test-'));
     const owned = join(root, 'owned-producer');
     const journal = join(root, 'recovery.json');

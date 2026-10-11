@@ -79,6 +79,7 @@ export async function acquireQaStorageGuard(
   if (!validGuardSettings(paths, pollMs, checkTimeoutMs)) {
     throw capacityError('QA_CAPACITY_CONFIGURATION');
   }
+  paths = [...new Set([process.cwd(), tmpdir(), ...paths])];
   signal?.throwIfAborted();
   await mkdir(dirname(lockDirectory), { recursive: true, mode: 0o700 });
   try {
