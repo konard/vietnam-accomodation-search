@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
+import { annotateDockerFailure } from './qa-docker-diagnostics.mjs';
 const exec = promisify(execFile);
 const lines = (value) => [...new Set(value.trim().split('\n').filter(Boolean))];
 const networkList = [
@@ -34,12 +35,17 @@ function networkKey(row) {
     : id;
 }
 
-export async function dockerCommand(args) {
+export async function dockerCommand(args, { signal } = {}) {
   // Populated production caches can outlive the ordinary command bound.
   // Give Buildx's explicit removal deadline time to report its result.
   const timeout = args[0] === 'buildx' && args[1] === 'rm' ? 70_000 : 30_000;
-  return (await exec('docker', args, { timeout, maxBuffer: 4 * 1024 ** 2 }))
-    .stdout;
+  try {
+    return (
+      await exec('docker', args, { timeout, signal, maxBuffer: 4 * 1024 ** 2 })
+    ).stdout;
+  } catch (error) {
+    throw annotateDockerFailure(error, args);
+  }
 }
 
 export async function dockerInventory(run = dockerCommand) {
@@ -134,8 +140,8 @@ export class QaDockerCleanup {
     // the journal was written, including interrupted candidate/rollback tags.
     await attempt('project image discovery', async () => {
       if (this.projectName) {
-        const current = await dockerInventory(this.run);
-        for (const row of current.images) {
+        const images = lines(await this.run(imageList));
+        for (const row of images) {
           const ref = row.split(' ').at(-1);
           if (
             ref.startsWith(`${this.projectName}:`) &&

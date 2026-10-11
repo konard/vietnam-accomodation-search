@@ -90,14 +90,20 @@ export function assertDrillBoundary(environment = {}) {
   }
 }
 
-function run(command, args, { env = process.env, log } = {}) {
+function run(command, args, { env = process.env, log, signal } = {}) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, {
       cwd: ROOT,
       env,
+      signal,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
+    let escalation;
+    const abort = () => {
+      escalation = setTimeout(() => child.kill('SIGKILL'), 5000);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     const record = (chunk) =>
       log ? appendFile(log, chunk, { mode: 0o600 }) : undefined;
     child.stdout.on('data', (chunk) => {
@@ -105,8 +111,19 @@ function run(command, args, { env = process.env, log } = {}) {
       record(chunk);
     });
     child.stderr.on('data', record);
-    child.on('error', reject);
-    child.on('close', (code) => resolvePromise({ code, stdout }));
+    let failure;
+    child.on('error', (error) => {
+      failure = error;
+    });
+    child.on('close', (code) => {
+      clearTimeout(escalation);
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted || failure) {
+        reject(signal?.reason || failure);
+      } else {
+        resolvePromise({ code, stdout });
+      }
+    });
   });
 }
 
@@ -195,6 +212,7 @@ async function mutate(options, transition) {
       {
         env,
         log: options.log,
+        signal: options.signal,
       }
     );
     for (let attempt = 0; attempt < 90 && restart.code === 0; attempt += 1) {
@@ -212,7 +230,7 @@ async function mutate(options, transition) {
     const down = await run(
       'docker',
       ['compose', '-f', options.composeFile, '-p', options.projectName, 'down'],
-      { env, log: options.log }
+      { env, log: options.log, signal: options.signal }
     );
     if (down.code !== 0) {
       return down.code;
@@ -221,7 +239,7 @@ async function mutate(options, transition) {
   const deploy = await run(
     process.execPath,
     [DEPLOY, ...deployArguments(options, transition)],
-    { env, log: options.log }
+    { env, log: options.log, signal: options.signal }
   );
   return deploy.code;
 }
@@ -462,6 +480,13 @@ export function runDeployDrill(options, environment = process.env) {
 // eslint-disable-next-line max-lines-per-function, max-statements -- The drill owns one deployment and teardown transaction across setup and every transition.
 async function runOwnedDrill(options, environment, scope, signal) {
   assertDrillBoundary(environment);
+  const { acquireQaStorageGuard, qaDockerStoragePaths } =
+    await import('./qa-storage-guard.mjs');
+  const guard = await acquireQaStorageGuard(scope, {
+    signal,
+    paths: await qaDockerStoragePaths(dockerCommand),
+  });
+  signal = guard.signal;
   const botEnvironment = await environmentFile(options.botEnv);
   const driverEnvironment = await environmentFile(options.userEnv);
   const pins = requireIdentityPins({
@@ -559,6 +584,7 @@ async function runOwnedDrill(options, environment, scope, signal) {
     readyUrl: `http://127.0.0.1:${options.healthPort}/ready`,
     run,
     owned,
+    signal,
     unhealthyCompose,
   };
   // A new drill directory; an existing one must already be a drill's.

@@ -13,23 +13,53 @@ import {
   dockerInventory,
   QaDockerCleanup,
 } from './qa-docker-cleanup.mjs';
+import {
+  safeQaFailure,
+  annotateDockerFailure,
+} from './qa-docker-diagnostics.mjs';
+import {
+  acquireQaStorageGuard,
+  qaDockerStoragePaths,
+} from './qa-storage-guard.mjs';
 
 assert.equal(process.env.QA_DOCKER_ACCEPTANCE, '1');
 const command = (args, signal) =>
   new Promise((resolve, reject) => {
     const child = spawn('docker', args, { stdio: 'inherit', signal });
     let failure;
+    let escalation;
+    const abort = () => {
+      escalation = setTimeout(() => child.kill('SIGKILL'), 5000);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     child.once('error', (error) => {
       failure = error;
     });
-    child.once('close', (code) =>
-      code === 0 && !failure
-        ? resolve()
-        : reject(failure || new Error(`Docker acceptance exited ${code}.`))
-    );
+    child.once('close', (code) => {
+      clearTimeout(escalation);
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) {
+        reject(signal.reason);
+      } else if (code === 0 && !failure) {
+        resolve();
+      } else {
+        reject(
+          annotateDockerFailure(
+            failure ||
+              Object.assign(new Error('Docker acceptance failed.'), { code }),
+            args
+          )
+        );
+      }
+    });
   });
 await withQaCleanup(
   async (scope, signal) => {
+    const guard = await acquireQaStorageGuard(scope, {
+      signal,
+      paths: await qaDockerStoragePaths(dockerCommand),
+    });
+    signal = guard.signal;
     const directory = await mkdtemp(join(tmpdir(), 'vac-docker-acceptance-'));
     let clean = false;
     scope.defer('private Docker recovery directory', async () => {
@@ -51,14 +81,7 @@ await withQaCleanup(
         } catch (error) {
           if (process.env.QA_DOCKER_DEBUG === '1') {
             console.error(
-              JSON.stringify({
-                qaDockerFailure: {
-                  operation: args.slice(0, 2),
-                  code: error.code,
-                  signal: error.signal,
-                  killed: error.killed,
-                },
-              })
+              JSON.stringify({ qaDockerFailure: safeQaFailure(error) })
             );
           }
           throw error;
@@ -81,14 +104,11 @@ await withQaCleanup(
       owned.ownImage('moby/buildkit:buildx-stable-1');
     }
     await owned.save();
-    await dockerCommand([
-      'buildx',
-      'create',
-      '--name',
-      builder,
-      '--driver',
-      'docker-container',
-    ]);
+    await guard.check();
+    await dockerCommand(
+      ['buildx', 'create', '--name', builder, '--driver', 'docker-container'],
+      { signal }
+    );
     const revision = execFileSync('git', ['rev-parse', 'HEAD'], {
       encoding: 'utf8',
     }).trim();
@@ -124,6 +144,7 @@ await withQaCleanup(
       ],
       signal
     );
+    await guard.check();
     await command(
       [
         'run',
@@ -149,6 +170,7 @@ await withQaCleanup(
       ],
       signal
     );
+    await guard.check();
   },
   { cleanupTimeoutMs: 120_000 }
 );

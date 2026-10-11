@@ -13,25 +13,18 @@ import {
   dockerInventory,
   QaDockerCleanup,
 } from './qa-docker-cleanup.mjs';
+import { safeQaFailure } from './qa-docker-diagnostics.mjs';
+import {
+  acquireQaStorageGuard,
+  qaDockerStoragePaths,
+} from './qa-storage-guard.mjs';
 
 assert.equal(process.env.QA_DOCKER_CLEANUP, '1');
 
-async function dockerCommand(args) {
-  try {
-    return await executeDocker(args);
-  } catch (error) {
-    // Fixed operation names and categories only, never raw command output.
-    error.qaOperation = args.slice(0, 2).join(' ');
-    error.qaCategory = /timeout|timed out/iu.test(error.stderr || '')
-      ? 'command-timeout'
-      : /network|resolve|download|fetch|EOF/iu.test(error.stderr || '')
-        ? 'external-acquisition'
-        : 'command-failure';
-    throw error;
-  }
-}
+const dockerCommand = executeDocker;
 
-async function acquire(owned, directory, setupFailure = false) {
+async function acquire(owned, directory, setupFailure = false, signal) {
+  const dockerCommand = (args) => executeDocker(args, { signal });
   const runId = owned.runId;
   await dockerCommand([
     'network',
@@ -93,12 +86,19 @@ async function acquire(owned, directory, setupFailure = false) {
 
 if (process.argv[2] === '--hard-kill-worker') {
   const directory = process.argv[3];
-  await acquire(
-    await QaDockerCleanup.restore(join(directory, 'owned.json')),
-    directory
-  );
-  process.send({ ready: true });
-  setTimeout(() => process.exit(1), 120_000);
+  try {
+    await acquire(
+      await QaDockerCleanup.restore(join(directory, 'owned.json')),
+      directory
+    );
+    process.send({ ready: true });
+    setTimeout(() => process.exit(1), 120_000);
+  } catch (error) {
+    // IPC carries the same sanitized cause as an ordinary row; no raw SDK
+    // or command exception escapes through the worker's inherited stderr.
+    process.send({ failure: safeQaFailure(error) });
+    process.exitCode = 1;
+  }
 } else {
   const results = [];
   for (const mode of [
@@ -111,16 +111,22 @@ if (process.argv[2] === '--hard-kill-worker') {
   ]) {
     const directory = await mkdtemp(join(tmpdir(), 'vac-docker-controls-'));
     const runId = `vac-qa-cleanup-${randomBytes(8).toString('hex')}`;
-    let owned = new QaDockerCleanup({
-      runId,
-      baseline: await dockerInventory(),
-      journal: join(directory, 'owned.json'),
-    });
+    let owned;
     const report = { mode };
     let child;
     try {
       await withQaCleanup(
         async (scope, signal) => {
+          const guard = await acquireQaStorageGuard(scope, {
+            signal,
+            paths: await qaDockerStoragePaths(dockerCommand),
+          });
+          signal = guard.signal;
+          owned = new QaDockerCleanup({
+            runId,
+            baseline: await dockerInventory(),
+            journal: join(directory, 'owned.json'),
+          });
           scope.defer('Docker resources', async () => {
             report.cleanup = await owned.cleanup();
             assert(report.cleanup.pass);
@@ -163,8 +169,28 @@ if (process.argv[2] === '--hard-kill-worker') {
               child.once('close', resolve)
             );
             await new Promise((resolve, reject) => {
+              const abort = () => reject(signal.reason);
+              signal.addEventListener('abort', abort, { once: true });
+              scope.defer('worker abort listener', () => {
+                signal.removeEventListener('abort', abort);
+              });
               child.once('error', reject);
-              child.once('message', resolve);
+              child.once('message', (message) => {
+                if (message.ready === true) {
+                  resolve();
+                } else {
+                  const error = new Error('QA worker acquisition failed.');
+                  const failure = message.failure || {};
+                  Object.assign(error, {
+                    qaOperation: failure.operation,
+                    qaCategory: failure.category,
+                    code: failure.code,
+                    killed: failure.killed,
+                    signal: failure.signal,
+                  });
+                  reject(error);
+                }
+              });
               child.once('exit', () =>
                 reject(new Error('Worker exited before acquisition.'))
               );
@@ -176,7 +202,7 @@ if (process.argv[2] === '--hard-kill-worker') {
             );
             report.hardKillRecovered = true;
           } else {
-            await acquire(owned, directory, mode === 'setup-failure');
+            await acquire(owned, directory, mode === 'setup-failure', signal);
           }
           report.populatedCache = true;
           if (mode === 'assertion-failure') {
@@ -202,14 +228,7 @@ if (process.argv[2] === '--hard-kill-worker') {
       );
       report.expectedOutcome = ['success', 'SIGKILL-recovery'].includes(mode);
     } catch (error) {
-      report.failure = {
-        operation: error.qaOperation,
-        category: error.qaCategory,
-        code: error.code,
-        killed: error.killed,
-        signal: error.signal,
-        assertion: error.name === 'AssertionError',
-      };
+      report.failure = safeQaFailure(error);
       report.expectedOutcome =
         (mode === 'setup-failure' &&
           error.message === 'QA_INJECTED_SETUP_FAILURE') ||
@@ -217,7 +236,7 @@ if (process.argv[2] === '--hard-kill-worker') {
           error.message === 'QA_INJECTED_ASSERTION_FAILURE') ||
         error.message === `QA interrupted by ${mode}.`;
     } finally {
-      if (report.cleanup?.pass) {
+      if (!owned || report.cleanup?.pass) {
         await rm(directory, { recursive: true, force: true });
       }
     }

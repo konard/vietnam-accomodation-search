@@ -108,10 +108,12 @@ export function runClink(
     heartbeatMs = 15_000,
     killGraceMs = 5_000,
     onProgress,
+    signal,
     timeoutMs = 10 * 60_000,
   } = {}
 ) {
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     const startedAt = Date.now();
     const child = spawn(command, arguments_, {
       shell: false,
@@ -137,6 +139,11 @@ export function runClink(
       heartbeatMs
     );
     let killTimer;
+    const abort = () => {
+      child.kill('SIGTERM');
+      killTimer = setTimeout(() => child.kill('SIGKILL'), killGraceMs);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     const deadline = setTimeout(() => {
       timedOut = true;
       report('timed-out');
@@ -153,8 +160,11 @@ export function runClink(
       globalThis.clearInterval(heartbeat);
       clearTimeout(deadline);
       clearTimeout(killTimer);
+      signal?.removeEventListener('abort', abort);
       report(timedOut ? 'timed-out' : 'finished');
-      if (spawnError) {
+      if (signal?.aborted) {
+        reject(signal.reason);
+      } else if (spawnError) {
         reject(spawnError);
       } else if (timedOut) {
         const error = new Error(
