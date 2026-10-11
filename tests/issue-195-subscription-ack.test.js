@@ -117,6 +117,32 @@ describe('durable subscription acknowledgement and owned background search', () 
     assert.deepEqual(owners, ['42']);
   });
 
+  it('suppresses delivery when shutdown starts while unseen offers are loading', async () => {
+    const offer = {
+      id: 'self-authored',
+      collectedAt: new Date().toISOString(),
+    };
+    const loaded = deferred();
+    const started = deferred();
+    const scope = setup(async () => [offer]);
+    await scope.presets.subscribe('42');
+    scope.presets.unseen = () => {
+      started.resolve();
+      return loaded.promise;
+    };
+    const running = scope.scheduler.tick();
+    try {
+      await bounded(started.promise);
+      const stopped = scope.scheduler.stop();
+      loaded.resolve([offer]);
+      await bounded(Promise.all([running, stopped]));
+      assert.equal(scope.deliveries.length, 0);
+    } finally {
+      loaded.resolve([]);
+      await scope.scheduler.stop();
+    }
+  });
+
   it('acknowledges before a slow search finishes and joins a single cancelled search', async () => {
     const started = deferred();
     const finish = deferred();

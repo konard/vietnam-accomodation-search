@@ -165,6 +165,19 @@ file to return HTTP 404 and checker exit 2. It owns and removes its exact cache
 and temporary inputs. No new dependency or release trigger is necessary for
 this CI-only correction; the existing application patch changeset remains.
 
+The repaired [link run 38125163483](https://github.com/konard/vietnam-accomodation-search/actions/runs/38125163483)
+passes both Check Links and Pipeline Status at commit `ee602061`. A complete
+tracked-document local scan also checks 220 URLs with zero errors; a separate
+missing-file control still fails with HTTP 404.
+
+The first local Node 26 coverage run passes all 1,448 tests but reports 99.99%
+source line coverage: the cancellation guard after awaiting unseen subscription
+offers is untested. A new finite barrier control starts shutdown during that
+lookup, releases a nonempty result and verifies that no delivery occurs. Focused
+coverage confirms both guard lines are exercised. The 100% coverage requirement
+and production shutdown behavior remain unchanged; final full-suite results are
+recorded in the PR.
+
 ```bash
 node --test tests/links-workflow.test.js tests/recheck-broken-links.test.js
 node experiments/issue-195-links.mjs /path/to/lychee
