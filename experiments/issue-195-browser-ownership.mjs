@@ -1,34 +1,15 @@
 // Finite actual-browser control; never touches pre-existing profiles/processes.
 import assert from 'node:assert/strict';
-import {
-  mkdtemp,
-  readdir,
-  readFile,
-  access,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdtemp, readFile, access, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launchSettings } from '../src/utils.js';
-import { acquireQaBrowser, launchQaBrowser } from './qa-browser.mjs';
+import {
+  acquireQaBrowser,
+  launchQaBrowser,
+  qaBrowserProfilePids,
+} from './qa-browser.mjs';
 import { withQaCleanup } from './qa-cleanup.mjs';
-
-async function ownedPids(profile) {
-  const pids = [];
-  for (const entry of await readdir('/proc')) {
-    if (!/^\d+$/u.test(entry)) {
-      continue;
-    }
-    const args = await readFile(`/proc/${entry}/cmdline`, 'utf8').catch(
-      () => ''
-    );
-    if (args.split('\0').includes(`--user-data-dir=${profile}`)) {
-      pids.push(Number(entry));
-    }
-  }
-  return pids;
-}
 
 const root = await mkdtemp(join(tmpdir(), 'vac-owned-browser-control-'));
 const unrelated = join(root, 'unrelated-profile');
@@ -68,7 +49,7 @@ try {
           },
           { signal, temporaryRoot: root }
         );
-        pids = await ownedPids(profile);
+        pids = await qaBrowserProfilePids(profile);
         assert(pids.length > 0);
         const page = owned.page;
         if (scenario === 'navigation-failure') {
@@ -95,13 +76,9 @@ try {
       ),
       false
     );
-    assert.deepEqual(await ownedPids(profile), []);
-    for (const pid of pids) {
-      const command = await readFile(`/proc/${pid}/cmdline`, 'utf8').catch(
-        () => ''
-      );
-      assert(!command.includes(`--user-data-dir=${profile}`));
-    }
+    const remaining = await qaBrowserProfilePids(profile);
+    assert.deepEqual(remaining, []);
+    assert(pids.every((pid) => !remaining.includes(pid)));
     assert.equal(await readFile(unrelated, 'utf8'), 'preserve');
     await access(evidence);
     console.log(

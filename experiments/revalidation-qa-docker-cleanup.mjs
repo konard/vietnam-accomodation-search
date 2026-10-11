@@ -9,12 +9,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { withQaCleanup } from './qa-cleanup.mjs';
 import {
-  dockerCommand,
+  dockerCommand as executeDocker,
   dockerInventory,
   QaDockerCleanup,
 } from './qa-docker-cleanup.mjs';
 
 assert.equal(process.env.QA_DOCKER_CLEANUP, '1');
+
+async function dockerCommand(args) {
+  try {
+    return await executeDocker(args);
+  } catch (error) {
+    // Fixed operation names and categories only, never raw command output.
+    error.qaOperation = args.slice(0, 2).join(' ');
+    error.qaCategory = /timeout|timed out/iu.test(error.stderr || '')
+      ? 'command-timeout'
+      : /network|resolve|download|fetch|EOF/iu.test(error.stderr || '')
+        ? 'external-acquisition'
+        : 'command-failure';
+    throw error;
+  }
+}
 
 async function acquire(owned, directory, setupFailure = false) {
   const runId = owned.runId;
@@ -187,6 +202,14 @@ if (process.argv[2] === '--hard-kill-worker') {
       );
       report.expectedOutcome = ['success', 'SIGKILL-recovery'].includes(mode);
     } catch (error) {
+      report.failure = {
+        operation: error.qaOperation,
+        category: error.qaCategory,
+        code: error.code,
+        killed: error.killed,
+        signal: error.signal,
+        assertion: error.name === 'AssertionError',
+      };
       report.expectedOutcome =
         (mode === 'setup-failure' &&
           error.message === 'QA_INJECTED_SETUP_FAILURE') ||

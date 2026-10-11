@@ -1,8 +1,63 @@
 // Disposable audit profiles have a different lifetime from retained evidence.
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { onceQaCleanup } from './qa-cleanup.mjs';
+
+const execute = promisify(execFile);
+
+export function browserPidsForProfile(snapshot, profile) {
+  const argument = `--user-data-dir=${profile}`;
+  const forms = [
+    argument,
+    `"${argument}"`,
+    `'${argument}'`,
+    `--user-data-dir="${profile}"`,
+    `--user-data-dir='${profile}'`,
+  ];
+  return String(snapshot)
+    .split('\n')
+    .flatMap((line) => {
+      const match = /^\s*(\d+)\s+(.+)$/u.exec(line);
+      if (!match) {
+        return [];
+      }
+      const command = ` ${match[2]} `;
+      return forms.some((form) => command.includes(` ${form} `))
+        ? [Number(match[1])]
+        : [];
+    });
+}
+
+// Read process arguments only to prove ownership of this exact disposable
+// profile. Never terminate processes or inspect a person's browser state.
+export async function qaBrowserProfilePids(profile) {
+  if (process.platform === 'linux') {
+    const rows = await Promise.all(
+      (await readdir('/proc'))
+        .filter((entry) => /^\d+$/u.test(entry))
+        .map(async (entry) => {
+          const args = await readFile(`/proc/${entry}/cmdline`, 'utf8').catch(
+            () => ''
+          );
+          return args.split('\0').includes(`--user-data-dir=${profile}`)
+            ? [Number(entry)]
+            : [];
+        })
+    );
+    return rows.flat();
+  }
+  if (process.platform !== 'darwin') {
+    throw new Error('The browser process oracle supports Linux and macOS.');
+  }
+  const { stdout } = await execute('ps', ['-axo', 'pid=,command='], {
+    timeout: 5000,
+    maxBuffer: 4 * 1024 ** 2,
+  });
+  return browserPidsForProfile(stdout, profile);
+}
 
 // Engine/CLI signal handlers can force process.exit before our finally runs.
 // The QA scope owns signals, and Playwright owns a bounded browser launch.

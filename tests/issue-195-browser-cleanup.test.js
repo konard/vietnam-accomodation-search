@@ -4,9 +4,33 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'test-anywhere';
 import { withQaCleanup } from '../experiments/qa-cleanup.mjs';
-import { acquireQaBrowser } from '../experiments/qa-browser.mjs';
+import {
+  acquireQaBrowser,
+  browserPidsForProfile,
+} from '../experiments/qa-browser.mjs';
 
 describe('audit profile ownership', () => {
+  it('matches exact owned profile arguments in macOS process snapshots', () => {
+    const profile = '/private/tmp/self-authored QA.profile';
+    const argument = `--user-data-dir=${profile}`;
+    const snapshot = [
+      `101 /self-authored-browser ${argument} --headless`,
+      `102 /self-authored-browser "${argument}"`,
+      `103 /self-authored-browser --user-data-dir="${profile}"`,
+      `104 /self-authored-browser '${argument}'`,
+      `105 /self-authored-browser --user-data-dir='${profile}'`,
+      `201 /unrelated-browser ${argument}-unrelated`,
+      `202 /unrelated-browser --other=${argument}`,
+      '203 /unrelated-browser --user-data-dir=/private/tmp/unrelated',
+      'not a process row',
+    ].join('\n');
+    assert.deepEqual(
+      browserPidsForProfile(snapshot, profile),
+      [101, 102, 103, 104, 105]
+    );
+    assert.deepEqual(browserPidsForProfile('', profile), []);
+  });
+
   for (const outcome of [
     'success',
     'launch-failure',
