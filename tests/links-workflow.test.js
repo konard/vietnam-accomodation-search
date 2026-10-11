@@ -27,6 +27,7 @@ describe('broken link workflow', () => {
     const checker = getStepBlock('Check links with lychee');
     expect(checker).toContain('--max-concurrency 4');
     expect(checker).toContain('--retry-wait-time 5');
+    expect(checker).toContain('--method head');
     expect(checker).not.toContain('--accept');
   });
   it('fails for every nonzero Lychee exit even when an archive exists', () => {

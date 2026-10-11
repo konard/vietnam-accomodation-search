@@ -76,6 +76,7 @@ jobs:
             --max-retries 3
             --max-concurrency 4
             --retry-wait-time 5
+            --method head
             --timeout 30
             --exclude-path docs/case-studies
             --exclude-path examples/universal-app/index.html
