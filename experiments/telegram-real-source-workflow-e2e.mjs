@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import {
+  selectRealPhotoCandidate,
+  observePhotoNotification,
+  observeNotificationSearch,
+} from './real-photo-acceptance.mjs';
 
 // Manual real-source acceptance. No synthetic offer cache is seeded. The only
 // writes to Telegram are marked notifications to the credential owner's chat.
@@ -237,22 +242,25 @@ async function notify(application, token, owner, ledger, result, bots) {
   assert.notEqual(owner, String(identity.id));
   ledger.install(bot.api, owner);
   bot.api.config.use(async (previous, method, payload, signal) => {
-    const response = await previous(method, payload, signal);
-    if (response.ok && method.startsWith('send')) {
-      const messages = Array.isArray(response.result)
-        ? response.result
-        : [response.result];
-      result.notificationPhotoDelivered ||= messages.some(
-        (message) => message.photo?.length
-      );
+    try {
+      const response = await previous(method, payload, signal);
+      observePhotoNotification(result, method, response);
+      return response;
+    } catch (error) {
+      observePhotoNotification(result, method, { ok: false });
+      throw error;
     }
-    return response;
   });
-  const candidate = (await application.store.listOffers()).find(
-    (offer) =>
-      offer.photos?.length &&
-      offer.cachedPhotos?.length &&
-      offer.attributes?.reviewRequired !== true
+  const search = bot.subscriptionScheduler.search;
+  bot.subscriptionScheduler.search = async (options) => {
+    const offers = await search(options);
+    observeNotificationSearch(result, offers);
+    return offers;
+  };
+  const candidate = await selectRealPhotoCandidate(
+    application.service,
+    application.store,
+    result
   );
   assert(
     candidate,

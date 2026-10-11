@@ -1,4 +1,5 @@
 import { SESSION_FORMAT, nativeSessionPayload } from './session-envelope.js';
+import { installTelegramSdkLogging } from './telegram-sdk-logging.js';
 
 function normalizeRecipient(value) {
   const username = String(value || '')
@@ -12,13 +13,16 @@ function normalizeRecipient(value) {
   return `@${username}`;
 }
 
-export async function createMtcuteClient({ apiHash, apiId }) {
+export async function createMtcuteClient({ apiHash, apiId, logger }) {
   const { MemoryStorage, TelegramClient } = await import('@mtcute/node');
-  return new TelegramClient({
-    apiHash,
-    apiId,
-    storage: new MemoryStorage(),
-  });
+  return installTelegramSdkLogging(
+    new TelegramClient({
+      apiHash,
+      apiId,
+      storage: new MemoryStorage(),
+    }),
+    logger
+  );
 }
 
 export function createAvailabilityMessage(offer) {

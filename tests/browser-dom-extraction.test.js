@@ -550,7 +550,10 @@ describe('in-page listing extraction', () => {
     try {
       const commander = {
         destroy: async () => {},
-        evaluate: async (operation, type) => operation(type),
+        evaluate: async (operation, type) =>
+          operation.name === 'extractWebPagination'
+            ? { complete: true, evidence: 'self-authored-single-page' }
+            : operation(type),
         goto: async () => {},
       };
       const collector = new BrowserCollector({
@@ -595,7 +598,10 @@ describe('in-page listing extraction', () => {
     try {
       const commander = {
         destroy: async () => {},
-        evaluate: async (operation, type) => operation(type),
+        evaluate: async (operation, type) =>
+          operation.name === 'extractWebPagination'
+            ? { complete: true, evidence: 'self-authored-single-page' }
+            : operation(type),
         goto: async () => {},
       };
       const collector = new BrowserCollector({

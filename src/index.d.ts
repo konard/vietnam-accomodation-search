@@ -911,6 +911,7 @@ export interface SourceOutcome {
   fetchComplete?: boolean;
   parseComplete?: boolean;
   paginationComplete?: boolean;
+  paginationCheckpoint?: Record<string, unknown>;
   reviewComplete?: boolean;
   historyCheckpoint?: Record<string, unknown>;
   historyComplete?: boolean;

@@ -1,7 +1,7 @@
 /* eslint local/no-changelog-comments: ["warn", {"allowDatesInStrings": true}] -- Dates are fixed fixture inputs. */
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { it } from 'test-anywhere';
+import { runQuoteScanFixture } from '../experiments/quote-scan-fixture.mjs';
 import {
   compareOfferValue,
   formatOfferValue,
@@ -29,19 +29,25 @@ const base = {
   collectedAt: now.toISOString(),
 };
 
-it('bounds quote scanning for a long digit-only listing', () => {
+it('bounds quote scanning for a long digit-only listing', async () => {
   if (typeof Deno !== 'undefined') {
     return;
   }
-  const result = JSON.parse(
-    execFileSync(
-      'node',
-      ['--max-old-space-size=64', 'experiments/issue-177-quote-scan.mjs'],
-      {
-        encoding: 'utf8',
-      }
-    )
-  );
+  const result = await runQuoteScanFixture();
+  assert.equal(result.pass, true);
+});
+
+it('keeps the finite quote scan independent of inherited runtime preloads', async () => {
+  if (typeof Deno !== 'undefined') {
+    return;
+  }
+  const result = await runQuoteScanFixture({
+    inherited: {
+      ...process.env,
+      NODE_OPTIONS: '--require missing-self-authored-preload.cjs',
+      BUN_OPTIONS: '--preload missing-self-authored-preload.mjs',
+    },
+  });
   assert.equal(result.pass, true);
 });
 

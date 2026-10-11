@@ -23,6 +23,43 @@ function getStepBlock(stepName) {
 }
 
 describe('broken link workflow', () => {
+  it('checks GitHub file contents at the same revision without the HTML renderer', () => {
+    const checker = getStepBlock('Check links with lychee');
+    const rule = checker.match(/--remap '([^ ]+) ([^']+)'/);
+
+    expect(Boolean(rule)).toBe(true);
+    const pattern = new RegExp(rule[1]);
+    const replacement = rule[2];
+    const revision = '49dcb1830094e8e7e14d40978c4974ab54dd4fcf';
+
+    for (const [repository, ref, file] of [
+      [
+        'konard/vietnam-accomodation-search',
+        revision,
+        'src/application.js#L34-L59',
+      ],
+      ['changesets/changesets', 'main', 'docs/command-line-options.md'],
+      ['owner/repo', 'feature/paging', 'docs/a%20file.md'],
+      ['owner/repo', 'main', 'missing-file.md'],
+    ]) {
+      const url = `https://github.com/${repository}/blob/${ref}/${file}`;
+      expect(url.replace(pattern, replacement)).toBe(
+        `https://raw.githubusercontent.com/${repository}/${ref}/${file}`
+      );
+    }
+
+    for (const url of [
+      'https://github.com/owner/repo/issues/195',
+      'https://github.com/owner/repo/tree/main',
+      'https://github.com/owner/repo/blob/main',
+      'https://github.com/user-attachments/assets/image.png',
+      'https://github.com.example.com/owner/repo/blob/main/file.md',
+      'https://example.com/github.com/owner/repo/blob/main/file.md',
+    ]) {
+      expect(url.replace(pattern, replacement)).toBe(url);
+    }
+  });
+
   it('limits concurrent requests while retaining strict HTTP status checks', () => {
     const checker = getStepBlock('Check links with lychee');
     expect(checker).toContain('--max-concurrency 4');

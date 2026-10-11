@@ -17,13 +17,16 @@
  *   node experiments/audit-browser-real-estate.mjs --max-sites 3
  */
 
+import { setTimeout as delay } from 'node:timers/promises';
+import { withQaCleanup } from './qa-cleanup.mjs';
+import { acquireQaBrowser, launchQaBrowser } from './qa-browser.mjs';
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 
-import { launchBrowser, makeBrowserCommander } from 'browser-commander';
+import { makeBrowserCommander } from 'browser-commander';
 import { browserAdapterFor } from '../src/browser-adapters.js';
 import { extractPageListings } from '../src/browser-collector.js';
 import { auditLive } from './audit-search-service.mjs';
@@ -153,8 +156,8 @@ function safeError(error) {
   };
 }
 
-async function politeWait(milliseconds) {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+async function politeWait(milliseconds, signal) {
+  await delay(milliseconds, undefined, { signal });
 }
 
 async function startSiteTrace(commander, outputDirectory, site) {
@@ -181,31 +184,37 @@ async function auditSite({ options, pacer, site, writer }) {
     siteId: site.id,
     stage: 'site.queued',
   });
-  await politeWait(delayMs);
+  await politeWait(delayMs, options.signal);
   await writer.write({
     domain,
     siteId: site.id,
     stage: 'browser.launch.started',
   });
 
-  let browser;
+  let owned;
   let commander;
   let runningTrace;
   let runError;
   let outcome = 'unexpected_error';
   const network = { failed: 0, mainStatus: undefined, statuses: {} };
   try {
-    const launched = await launchBrowser(
-      launchSettings({
-        channel: 'chrome',
-        engine: 'playwright',
-        headless: !options.headed,
-        slowMo: 150,
-        userDataDir: join(options.outputDirectory, 'browser-profile', site.id),
-      })
+    const launched = await acquireQaBrowser(
+      options.scope,
+      (profile) =>
+        launchQaBrowser(
+          launchSettings({
+            channel: 'chrome',
+            engine: 'playwright',
+            headless: !options.headed,
+            slowMo: 150,
+            userDataDir: profile,
+          })
+        ),
+      { signal: options.signal }
     );
-    browser = launched.browser;
+    owned = launched;
     commander = makeBrowserCommander({ page: launched.page });
+    owned.setCommander(commander);
     launched.page.on('requestfailed', () => {
       network.failed += 1;
     });
@@ -224,13 +233,21 @@ async function auditSite({ options, pacer, site, writer }) {
       options.outputDirectory,
       site
     );
+    owned.setTrace({
+      stop: () => runningTrace.trace.stop({ error: runError }),
+    });
     await writer.write({
       domain,
       siteId: site.id,
       stage: 'navigation.started',
       url: sanitizedUrl(site.url),
     });
-    await gotoPage(commander, site.url, options.navigationTimeoutMs);
+    await gotoPage(
+      commander,
+      site.url,
+      options.navigationTimeoutMs,
+      options.signal
+    );
     await runningTrace.trace.checkpoint('loaded', {
       actor: 'local-e2e',
       reason: 'post-navigation-evidence',
@@ -315,22 +332,12 @@ async function auditSite({ options, pacer, site, writer }) {
       stage: 'site.failed',
     });
   } finally {
-    await pacer.record(domain, outcome);
-    if (runningTrace) {
-      try {
-        await runningTrace.trace.stop({ error: runError });
-      } catch (error) {
-        await writer.write({
-          domain,
-          error: safeError(error),
-          severity: 'error',
-          siteId: site.id,
-          stage: 'trace.stop_failed',
-        });
-      }
+    try {
+      await pacer.record(domain, outcome);
+    } finally {
+      await owned?.close();
     }
-    await commander?.destroy().catch(() => {});
-    await browser?.close().catch(() => {});
+    options.signal?.throwIfAborted();
   }
   const result = {
     durationMs: Date.now() - startedAt,
@@ -360,7 +367,7 @@ async function auditSearchService(outputDirectory) {
   };
 }
 
-async function main() {
+export async function main(scope, signal) {
   assertManualLocalRun(process.env);
   const options = parseArguments(process.argv.slice(2));
   const runId = randomUUID();
@@ -370,6 +377,8 @@ async function main() {
   await mkdir(outputDirectory, { mode: 0o700, recursive: true });
   await chmod(outputDirectory, 0o700);
   options.outputDirectory = outputDirectory;
+  options.scope = scope;
+  options.signal = signal;
   const manifestSites = JSON.parse(await readFile(options.manifest, 'utf8'));
   const selectedSites = options.siteIds.length
     ? manifestSites.filter(({ id }) => options.siteIds.includes(id))
@@ -423,7 +432,7 @@ async function main() {
     searchService?.pass === false
       ? 1
       : 0;
-  process.exit(exitCode);
+  process.exitCode = exitCode;
 }
 
-await main();
+await withQaCleanup((scope, signal) => main(scope, signal));

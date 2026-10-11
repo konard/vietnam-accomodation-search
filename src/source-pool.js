@@ -110,7 +110,8 @@ function historyCoverage(value) {
 }
 
 function sourceResult(sourceId, value, durationMs) {
-  const partial = value.historyComplete === false;
+  const partial =
+    value.historyComplete === false || value.paginationComplete === false;
   return {
     durationMs,
     offers: value.length,
@@ -119,8 +120,16 @@ function sourceResult(sourceId, value, durationMs) {
     paginationComplete: value.paginationComplete,
     reviewComplete: value.reviewComplete,
     historyCheckpoint: value.historyCheckpoint,
+    paginationCheckpoint: value.paginationCheckpoint,
     ...historyCoverage(value),
-    ...(partial ? { category: 'incomplete-history' } : {}),
+    ...(partial
+      ? {
+          category:
+            value.historyComplete === false
+              ? 'incomplete-history'
+              : 'incomplete-pagination',
+        }
+      : {}),
     sourceId,
     status: partial
       ? SOURCE_STATUSES.PARTIAL
@@ -284,7 +293,8 @@ function collected({ status, historyComplete }) {
 function incomplete(outcome) {
   return (
     outcome.status === SOURCE_STATUSES.PARTIAL ||
-    outcome.historyComplete === false
+    outcome.historyComplete === false ||
+    outcome.paginationComplete === false
   );
 }
 
@@ -300,7 +310,7 @@ export function summarizeOutcomes(outcomes = []) {
     byStatus[status] = (byStatus[status] || 0) + 1;
     if (!collected(outcome)) {
       const category = incomplete(outcome)
-        ? 'incomplete-history'
+        ? outcome.category || 'incomplete-history'
         : outcome.category || outcome.status;
       failedCategories[category] = (failedCategories[category] || 0) + 1;
     }

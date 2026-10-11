@@ -18,6 +18,7 @@ import {
 } from '../src/index.js';
 import { secretPrompt } from '../src/secret-prompt.js';
 import { checkBrowser, runFixtureSearch } from '../src/self-check.js';
+import { configurePrivateOwner } from '../src/telegram-operator.js';
 
 const packageVersion = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8')
@@ -35,6 +36,7 @@ function usage() {
     '  check-availability ID [@U] Send an availability inquiry as a user',
     '  self-check browser|search   Launch the browser, or search a local fixture page',
     '  telegram preflight          Validate storage and Telegram identities',
+    '  telegram authorize-owner --env-file PATH   Privately authorize the supplied session owner',
     '  telegram ingest             Backfill and monitor configured Telegram sources',
     '  telegram auth login|status|validate|rotate|logout',
     '',
@@ -65,17 +67,19 @@ async function runSearchCommand(application, options, io) {
     return [signal, handler];
   });
   try {
-    const service = application.service;
-    const { offers, report } = service.searchWithReport
-      ? await service.searchWithReport({
-          ...options,
-          signal: controller.signal,
-        })
-      : { offers: await service.search(options) };
+    const service = application?.service;
+    const { offers, report } = io.search
+      ? await io.search(controller.signal)
+      : service.searchWithReport
+        ? await service.searchWithReport({
+            ...options,
+            signal: controller.signal,
+          })
+        : { offers: await service.search(options) };
     const failures = formatSearchFailures(report);
     const nothingCollected = report?.summary?.allFailed && !offers.length;
     if (!nothingCollected) {
-      stdout(formatSearchResults(offers));
+      stdout((io.format || formatSearchResults)(offers));
     }
     if (failures) {
       stderr(failures);
@@ -101,6 +105,7 @@ export async function runCli(
     application,
     applicationFactory = createApplication,
     authFactory = (options) => new TelegramAuthService(options),
+    configureOwner = configurePrivateOwner,
     env = process.env,
     processRef = process,
     prompt = secretPrompt,
@@ -116,6 +121,19 @@ export async function runCli(
     }
     if (command === '--version' || command === '-v') {
       stdout(packageVersion);
+      return 0;
+    }
+    if (command === 'telegram' && rest[0] === 'authorize-owner') {
+      const index = rest.indexOf('--env-file');
+      const result = await configureOwner({
+        envFile: index < 0 ? undefined : rest[index + 1],
+        identityProvider: ({ credentials, environment }) =>
+          authFactory({
+            ...credentials,
+            expectedUserId: environment.TELEGRAM_EXPECTED_USER_ID,
+          }).validate(),
+      });
+      stdout(JSON.stringify(result));
       return 0;
     }
     if (command === 'telegram' && rest[0] === 'auth') {
@@ -361,15 +379,25 @@ export async function runCli(
       return 0;
     }
     if (command === 'self-check' && rest[0] === 'search') {
-      stdout(
-        JSON.stringify(
-          await runFixtureSearch({
-            createApplication: applicationFactory,
-            environment: env,
-          })
-        )
+      return await runSearchCommand(
+        undefined,
+        {},
+        {
+          processRef,
+          stderr,
+          stdout,
+          search: async (signal) => ({
+            offers: [
+              await runFixtureSearch({
+                createApplication: applicationFactory,
+                environment: env,
+                signal,
+              }),
+            ],
+          }),
+          format: (offers) => JSON.stringify(offers[0]),
+        }
       );
-      return 0;
     }
     if (command === 'self-check') {
       throw new Error('Usage: self-check browser|search');

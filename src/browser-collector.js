@@ -1,5 +1,10 @@
 import { telegramHistoryWindow } from './telegram-window.js';
 import { TelegramPreviewProgress } from './telegram-preview-progress.js';
+import {
+  collectWebPages,
+  extractWebPagination,
+  WebPaginationProgress,
+} from './web-pagination.js';
 import { normalizeOffer } from './offers.js';
 import { parseTelegramOffer } from './telegram-parser.js';
 import { classifyTelegramPost } from './telegram-pipeline.js';
@@ -223,17 +228,15 @@ export function extractPageListings(sourceType, selectors = {}) {
       (detailPage ? selectors.detailCards : selectors.cards) ||
         '[data-testid="property-card"], [data-testid="card-container"], article, .property-card, [itemtype*="Hotel"]'
     ),
-  ]
-    .filter(
-      (element) =>
-        !selectors.locationTerms?.length ||
-        selectors.locationTerms.some((term) =>
-          String(selectedText(element, selectors.fields?.location) || '')
-            .toLocaleLowerCase('en')
-            .includes(term.toLocaleLowerCase('en'))
-        )
-    )
-    .slice(0, 100);
+  ].filter(
+    (element) =>
+      !selectors.locationTerms?.length ||
+      selectors.locationTerms.some((term) =>
+        String(selectedText(element, selectors.fields?.location) || '')
+          .toLocaleLowerCase('en')
+          .includes(term.toLocaleLowerCase('en'))
+      )
+  );
   return cards.map((element) => {
     const linkSelector = selectors.link || 'a[href]';
     const anchor = element.matches?.(linkSelector)
@@ -303,6 +306,7 @@ function extractPageState() {
   const documentRef = globalThis.document;
   return {
     status: 200,
+    text: (documentRef?.body?.innerText || '').slice(0, 32_000),
     title: documentRef?.title || '',
     url: documentRef?.location?.href || globalThis.location?.href || '',
   };
@@ -396,6 +400,7 @@ function safeOfficialUrl(value) {
 }
 
 export class BrowserCollector {
+  // eslint-disable-next-line complexity -- Collector options own independent browser, pagination, scheduling and trace services.
   constructor({
     browserLaunchOptions,
     browserRuntime,
@@ -404,6 +409,7 @@ export class BrowserCollector {
     historyDays = 90,
     logger,
     maxTelegramPages = 200,
+    maxWebPages = 25,
     navigationTimeoutMs = NAVIGATION_TIMEOUT_MS,
     now,
     rateProvider,
@@ -424,6 +430,8 @@ export class BrowserCollector {
     this.logger = logger || { debug: () => {} };
     this.maxTelegramPages = maxTelegramPages;
     this.previewProgress = new TelegramPreviewProgress(store);
+    this.webProgress = new WebPaginationProgress(store);
+    this.maxWebPages = maxWebPages;
     this.navigationTimeoutMs = navigationTimeoutMs;
     this.now = now || (() => new Date());
     this.rateProvider = rateProvider;
@@ -446,31 +454,46 @@ export class BrowserCollector {
     url,
     sourceType,
     adapter,
-    { expectedLocation, signal } = {}
+    { expectedLocation, deadline, signal } = {}
   ) {
-    return this.scheduler.run(
-      url,
-      async () => {
-        const navigation = await gotoPage(
-          commander,
-          url,
-          this.navigationTimeoutMs,
-          signal
-        );
-        const rows =
-          (await commander.evaluate(
-            extractPageListings,
-            sourceType,
-            adapter.selectors
-          )) || [];
-        await this.assertListingPage(commander, url, rows.length, {
-          expectedLocation,
-          status: navigation?.httpStatus,
-        });
-        return rows;
-      },
-      { signal }
-    );
+    return collectWebPages({
+      firstUrl: url,
+      maxPages: this.maxWebPages,
+      deadline,
+      signal,
+      progress: this.webProgress,
+      fetchPage: (pageUrl) =>
+        this.scheduler.run(
+          pageUrl,
+          async () => {
+            const navigation = await gotoPage(
+              commander,
+              pageUrl,
+              this.navigationTimeoutMs,
+              signal
+            );
+            const rows =
+              (await commander.evaluate(
+                extractPageListings,
+                sourceType,
+                adapter.selectors
+              )) || [];
+            await this.assertListingPage(commander, pageUrl, rows.length, {
+              expectedLocation,
+              status: navigation?.httpStatus,
+            });
+            const pagination = await commander.evaluate(
+              extractWebPagination,
+              adapter.selectors
+            );
+            return {
+              rows,
+              pagination: Array.isArray(pagination) ? {} : pagination,
+            };
+          },
+          { signal }
+        ),
+    });
   }
 
   async assertListingPage(
@@ -663,6 +686,7 @@ export class BrowserCollector {
             ? 'nha-trang'
             : undefined,
           signal,
+          deadline,
         }
       );
     }
@@ -735,6 +759,11 @@ export class BrowserCollector {
       });
       Object.defineProperty(offers, 'historyCheckpoint', {
         value: rows.historyCheckpoint,
+      });
+    } else {
+      Object.defineProperties(offers, {
+        paginationComplete: { value: rows.paginationComplete },
+        paginationCheckpoint: { value: rows.paginationCheckpoint },
       });
     }
     return offers;
@@ -966,10 +995,10 @@ export class BrowserCollector {
 
   // Paging ends a reserve before the source or search deadline so the pages
   // read so far are parsed and kept.
-  #pagingDeadline(startedAt) {
+  #pagingDeadline(startedAt, sourceType) {
     return (
       Math.min(Date.now() + this.sourceTimeoutMs, startedAt + this.budgetMs) -
-      this.telegramPageReserveMs
+      (sourceType === 'telegram' ? this.telegramPageReserveMs : 0)
     );
   }
 
@@ -1079,7 +1108,7 @@ export class BrowserCollector {
             });
           }
           return this.collectSource(worker.commander, source, query, rates, {
-            deadline: this.#pagingDeadline(startedAt),
+            deadline: this.#pagingDeadline(startedAt, source.type),
             signal: sourceSignal,
             window,
           });
