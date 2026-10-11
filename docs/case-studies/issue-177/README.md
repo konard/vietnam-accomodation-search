@@ -50,6 +50,21 @@ foreign owner protection, cleanup failures, signals and durable journals.
 
 ## Reusable verification
 
+Local checks against the committed implementation completed on 2026-10-11:
+
+| Check                                          | Result                                                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Node with required real clink                  | 1,393 passed; zero failures or skips; 100% product line coverage                        |
+| Bun                                            | 1,393 passed; zero failures                                                             |
+| Deno, ordinary frozen lock                     | 1,276 passed plus 19 steps; zero failures; 11 documented ignored tests                  |
+| Strict suite cleanup                           | Empty fixture TMPDIR and independently verified disposal in all three runtimes          |
+| Dependency audits                              | Zero vulnerabilities in both repositories and a clean production consumer               |
+| Release, shell, SQLite and browser conformance | 62 passed                                                                               |
+| Real browser HTTP control                      | Identical rental cards classified correctly for 200, 202, 404, 502 and 503              |
+| Disposable Docker cleanup                      | All six success, failure, signal and hard-kill recovery controls restored the baseline  |
+| Repository checks                              | Lint, formatting, duplication, syntax, required docs, line limits and changesets passed |
+| Example web build                              | Passed                                                                                  |
+
 ```sh
 npm run test:coverage
 npm run test:cleanup
