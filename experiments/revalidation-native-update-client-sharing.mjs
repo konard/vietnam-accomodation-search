@@ -7,7 +7,8 @@ import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Api } from 'grammy';
 import { writeStringSession } from '@mtcute/core/utils.js';
-import { MtcuteTelegramProvider } from '../src/index.js';
+import { MtcuteTelegramProvider, TelegramAuthService } from '../src/index.js';
+import { createMtcuteClient } from '../src/telegram-user.js';
 import { qaTemporaryDirectory, withQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages } from './qa-owned-messages.mjs';
 import {
@@ -27,6 +28,7 @@ function options() {
     '--bot-env': 'botEnv',
     '--user-env': 'userEnv',
     '--converter-module': 'converter',
+    '--validation-first': 'validationFirst',
   };
   for (let index = 2; index < process.argv.length; index += 2) {
     const key = keys[process.argv[index]];
@@ -34,7 +36,42 @@ function options() {
     values[key] = process.argv[index + 1];
   }
   assert(values.botEnv && values.userEnv && values.converter);
+  assert(
+    values.validationFirst === undefined || values.validationFirst === '1'
+  );
   return values;
+}
+
+// Hold the validation lease after its normal import/getMe/update-loop setup.
+// The real ingestion provider must borrow that transport without a new start.
+async function validationFirst(settings, scope) {
+  let opened;
+  let release;
+  let ready;
+  const released = new Promise((done) => (release = done));
+  const acquired = new Promise((done) => (ready = done));
+  settings.clientFactory = async (options) => {
+    assert.equal(opened, undefined);
+    opened = await createMtcuteClient(options);
+    const getMe = opened.getMe.bind(opened);
+    let calls = 0;
+    opened.getMe = async (...args) => {
+      if (++calls === 2) {
+        ready();
+        await released;
+      }
+      return getMe(...args);
+    };
+    return opened;
+  };
+  const pending = new TelegramAuthService(settings).validate();
+  pending.catch(() => {});
+  scope.defer('validation-first lease', async () => {
+    release();
+    await pending;
+  });
+  await withDeadline(() => acquired, 20_000, 'validation-first readiness');
+  return { client: opened, release, pending };
 }
 
 function capture(target, marker) {
@@ -129,9 +166,17 @@ async function run(scope, signal, result) {
     sessionFormat: 'mtcute/session-string-v1',
     logger: silent,
   };
+  const validation = paths.validationFirst
+    ? await validationFirst(settings, scope)
+    : undefined;
   const primary = new MtcuteTelegramProvider(settings);
   scope.defer('primary native provider', () => primary.destroy());
   const owner = String((await primary.identity()).id);
+  if (validation) {
+    result.validationFirstTransportShared =
+      primary.client === validation.client;
+    assert(result.validationFirstTransportShared);
+  }
   assert.notEqual(owner, identity.id);
   const target = await primary.resolveEntity(`@${identity.username}`);
   let lastRead;
@@ -193,6 +238,11 @@ async function run(scope, signal, result) {
   scope.defer('primary raw observer', () =>
     primary.client.onNewMessage.remove(raw)
   );
+  if (validation) {
+    validation.release();
+    assert.equal(String((await validation.pending).id), owner);
+    result.validationFirstOwnerVerified = true;
+  }
   result.phases = [await probe(api, owner, 'isolated', seen, signal)];
   result.phases.push(
     await overlap({
