@@ -60,6 +60,7 @@ await withQaCleanup(
       paths: await qaDockerStoragePaths(dockerCommand),
     });
     signal = guard.signal;
+    const baseline = await dockerInventory();
     const directory = await mkdtemp(join(tmpdir(), 'vac-docker-acceptance-'));
     let clean = false;
     scope.defer('private Docker recovery directory', async () => {
@@ -70,7 +71,6 @@ await withQaCleanup(
     const runId = `vac-qa-image-${randomBytes(8).toString('hex')}`;
     const tag = `${runId}:fixture`;
     const builder = `${runId}-builder`;
-    const baseline = await dockerInventory();
     const owned = new QaDockerCleanup({
       runId,
       baseline,
