@@ -125,6 +125,51 @@ Link run `38122788605`, log lines 311–314, returned HTTP 503 for two existing
 historical code references. Both exact links subsequently returned HTTP 200;
 the valid historical references and strict link-check policy are preserved.
 
+## CI link failure investigation and repair
+
+The latest failed link run `38123473909` was created at 2026-10-11T08:03:29Z
+for head `a6c2231435d3142974c284c59d39f45fcb3c69ec`. Its downloaded log
+`ci-logs/links-38123473909.log`, lines 323–363, reports 19 HTTP 503 errors
+from GitHub HTML `blob` pages. Lines 824–830 show the link workflow's terminal
+Pipeline Status failing because `link-checker` failed. The separate Checks and
+release workflow passed at that same head. Latest fetched main `b6a4c818` is
+already an ancestor, so no conflict-resolution merge is necessary.
+
+All 19 public file references are preserved in [links-failures.md](links-failures.md).
+Their exact repository, revision and path remain valid. GitHub's raw content
+endpoint serves all 19 successfully. The precise infrastructure cause of the
+HTML endpoint's CI-only 503 responses remains unknown.
+
+The existing Lychee component provides
+[regular-expression URL remapping](https://github.com/lycheeverse/lychee/blob/lychee-v0.24.2/lychee-lib/src/remap.rs).
+Its [GitHub token fallback](https://github.com/lycheeverse/lychee/blob/lychee-v0.24.2/lychee-lib/src/checker/website.rs)
+rejects individual public-repository endpoints; adding another token cannot
+validate these files. The workflow therefore maps every GitHub `blob` reference
+to the equivalent raw file before checking, covering every input document and
+repository. Rendered links in the documents keep their original review context.
+Lychee reports failures with the remapped URL, so the existing unanswered-link
+recheck and archive diagnostics already use the same checked endpoint.
+
+| Option                                            | Assessment and plan                                                                                                     |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Rerun or increase retries                         | Earlier reruns retained the same 19 failures; no durable correction.                                                    |
+| Ignore GitHub or accept 503                       | Would lose missing-file detection; rejected.                                                                            |
+| Build a custom authenticated Contents API checker | Can validate revisions but duplicates an existing component and adds token/rate-limit handling.                         |
+| Use Lychee's built-in content remapping           | Selected. Preserve exact repository/ref/path, strict accepted statuses, bounded concurrency and existing failure gates. |
+
+The workflow regression fails before the change and passes after it. It checks
+revision/path/fragment preservation, branch names containing slashes, missing
+paths, and unrelated or lookalike domains. The finite actual-binary experiment
+uses the workflow's arguments and all captured URLs, then requires a missing
+file to return HTTP 404 and checker exit 2. It owns and removes its exact cache
+and temporary inputs. No new dependency or release trigger is necessary for
+this CI-only correction; the existing application patch changeset remains.
+
+```bash
+node --test tests/links-workflow.test.js tests/recheck-broken-links.test.js
+node experiments/issue-195-links.mjs /path/to/lychee
+```
+
 ## Private live acceptance workflow
 
 Review evidence stays in `.deploy/source-acceptance` by default, with private

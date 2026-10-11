@@ -68,6 +68,9 @@ jobs:
           # URLs are only valid when served by Vite.
           # Exclude tests/fixtures - the captured lychee reports there contain
           # deliberately broken links used as parser test input.
+          # GitHub's HTML blob renderer can return 503 to CI HEAD requests.
+          # Check the exact repository/ref/file through its content endpoint;
+          # missing files and rejected HTTP statuses still fail normally.
           args: >-
             --verbose
             --no-progress
@@ -77,6 +80,7 @@ jobs:
             --max-concurrency 4
             --retry-wait-time 5
             --method head
+            --remap '^https://github[.]com/([^/]+/[^/]+)/blob/([^/]+/.+)$ https://raw.githubusercontent.com/$1/$2'
             --timeout 30
             --exclude-path docs/case-studies
             --exclude-path examples/universal-app/index.html
