@@ -110,7 +110,12 @@ manually changed. Final suite and current-commit CI results belong in the PR.
 
 The complete local Node coverage run passes 1,445 tests with 100% source line
 coverage. Final review adds a cross-source deduplication/provenance control to
-the acceptance gate and preserves incomplete parse outcomes.
+the acceptance gate and preserves incomplete parse outcomes. Full Bun passes
+1,446 tests with its unchanged 30-second deadline. Deno passes 1,331 tests and
+19 steps, with 11 existing ignored tests and no failures. Each suite independently
+verifies teardown. Final QA-only review corrections also have focused controls
+in all three runtimes. ESLint, Prettier, duplication checks and patch changeset
+status pass; current-commit CI results are recorded in the PR.
 
 CI at SHA `5a4071d` found a Windows-only test assertion: the fixture cleanup
 control split a path on `/`, whereas Windows uses `\\`. Downloaded Bun job
@@ -148,6 +153,9 @@ The gate requires matching source/time/material digest, complete reviewed materi
 coverage and explicit offer labels. Unknown fields remain null. Photo-only rows
 also require independent media review. Wrong scalar values count as both false
 positives and false negatives; missing/excess values are reported separately.
+Independent labels can resolve the pending review of already extracted OCR
+fields. Missing extraction, conflicting captions, retention loss and failed
+native media remain incomplete.
 Precision/recall with no positive denominator are not evaluated and cannot pass.
 Default measured thresholds are offer 95%/95%, counts 95%/90%, and billing basis
 and period 98%/90%; these are explicit QA policy choices, not an issue SLA.

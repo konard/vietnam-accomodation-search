@@ -12,6 +12,27 @@ const THRESHOLDS = {
 const present = (value) =>
   value !== null && value !== undefined && value !== false;
 
+export function nativeParseComplete(checkpoint, reviews) {
+  if (checkpoint?.historyComplete !== true || checkpoint.retentionLoss) {
+    return false;
+  }
+  if (checkpoint.complete === true) {
+    return true;
+  }
+  // Independently reviewed labels may resolve extracted OCR fields. They
+  // cannot resolve missing extraction, conflicting captions or media failures.
+  return (
+    reviews.length > 0 &&
+    reviews.every(
+      (review) =>
+        review.state === 'excluded' ||
+        (review.state === 'review' &&
+          review.accepted === true &&
+          review.reason === 'ocr-fields-unverified')
+    )
+  );
+}
+
 export function findMaterialOffer(offers, material, source) {
   const members = new Set((material.messageIds || [material.id]).map(String));
   return offers

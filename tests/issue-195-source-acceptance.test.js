@@ -3,6 +3,7 @@ import { describe, it } from 'test-anywhere';
 import {
   evaluateSourceAcceptance,
   findMaterialOffer,
+  nativeParseComplete,
   reviewTemplate,
 } from '../experiments/source-acceptance-lib.mjs';
 import { deduplicateOffers } from '../src/offers.js';
@@ -58,6 +59,40 @@ function control() {
 }
 
 describe('independent source acceptance gate', () => {
+  it('allows independent review of extracted OCR fields while retaining genuine native parse failures', () => {
+    const checkpoint = { historyComplete: true, complete: false };
+    const review = {
+      state: 'review',
+      accepted: true,
+      reason: 'ocr-fields-unverified',
+    };
+    assert.equal(nativeParseComplete(checkpoint, [review]), true);
+    for (const reviews of [
+      [],
+      [{ ...review, accepted: false }],
+      [{ ...review, reason: 'conflicting-album-captions' }],
+      [{ ...review, state: 'degraded' }],
+      [{ ...review, state: 'error' }],
+    ]) {
+      assert.equal(nativeParseComplete(checkpoint, reviews), false);
+    }
+    assert.equal(
+      nativeParseComplete({ ...checkpoint, retentionLoss: true }, [review]),
+      false
+    );
+    assert.equal(
+      nativeParseComplete({ ...checkpoint, historyComplete: false }, [review]),
+      false
+    );
+    const { observation, review: labels } = control();
+    assert.equal(
+      evaluateSourceAcceptance(
+        { ...observation, parseComplete: true },
+        { ...labels, independent: false }
+      ).pass,
+      false
+    );
+  });
   it('reviews native provenance from the requested source even after cross-source deduplication', () => {
     const original = {
       id: 'unit-a',

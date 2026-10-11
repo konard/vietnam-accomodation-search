@@ -16,6 +16,7 @@ import { withQaCleanup } from './qa-cleanup.mjs';
 import {
   evaluateSourceAcceptance,
   findMaterialOffer,
+  nativeParseComplete,
   reviewTemplate,
 } from './source-acceptance-lib.mjs';
 
@@ -86,7 +87,10 @@ async function collectObservation(
       await application.store.loadRecords('telegram-ingestion-checkpoints')
     ).find(({ id }) => id === source.id);
     observation.historyComplete = checkpoint?.historyComplete === true;
-    observation.parseComplete = checkpoint?.complete === true;
+    const reviews = (
+      await application.store.loadRecords('telegram-reviews')
+    ).filter(({ sourceId }) => sourceId === source.id);
+    observation.parseComplete = nativeParseComplete(checkpoint, reviews);
     observation.mediaCoverage = (
       await application.store.loadRecords('telegram-media-checkpoints')
     ).find(({ id }) => id === source.id);
