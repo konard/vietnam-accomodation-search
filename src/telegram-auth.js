@@ -10,6 +10,7 @@ import {
   nativeSessionPayload,
 } from './session-envelope.js';
 import { createMtcuteClient } from './telegram-user.js';
+import { telegramSecretValue as secretValue } from './telegram-secrets.js';
 
 function sessionConfiguration(session, sessionFormat) {
   if (!session) {
@@ -78,14 +79,6 @@ export function validateTelegramConfiguration({
     throw new Error(userUnavailable);
   }
   return { mode: botToken && user ? 'both' : user ? 'user-only' : 'bot-only' };
-}
-
-async function secretValue(env, name) {
-  const file = env[`${name}_FILE`];
-  if (file && env[name]) {
-    throw new Error(`${name} and ${name}_FILE cannot both be configured.`);
-  }
-  return file ? (await readFile(file, 'utf8')).trim() : env[name];
 }
 
 export async function resolveTelegramSecrets(env = process.env) {

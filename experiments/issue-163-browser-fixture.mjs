@@ -9,7 +9,7 @@ import { extractPageListings } from '../src/browser-collector.js';
 const phase = process.argv[2] || 'after';
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1000, height: 640 } });
-const commander = makeBrowserCommander({ page });
+const commander = makeBrowserCommander({ page, debug: false });
 const card = (id) =>
   `<div class="good-item"><a class="good-item__img" href="/property/o${id}/"><img src="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="220" height="150"><rect width="220" height="150" fill="#bbd8c4"/><text x="45" y="80">QA rental unit</text></svg>')}"></a><div><a class="good-item__desc" href="https://vietnam-real.estate/ru/property/o${id}/">Studio for rent in Nha Trang</a><div class="good-item__top--rental"><span class="good-item__price">₫ 13 000 000</span> / в месяц</div><div class="good-item__tags"><span class="tag"><i class="kit-icon bed"></i><p>1 Спальня</p></span><span class="tag"><i class="kit-icon bath"></i><p>1 Ванная</p></span><span class="tag"><i class="kit-icon ruler"></i><p>35 m²</p></span></div><a href="tel:+84900000000">QA contact</a></div><a class="good-item__logo" href="/agency/qa/"><img alt="QA agency" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="></a></div>`;
 try {

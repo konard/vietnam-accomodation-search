@@ -9,7 +9,7 @@ const browser = await chromium.launch({ headless: true });
 let commander;
 try {
   const page = await browser.newPage();
-  commander = makeBrowserCommander({ page });
+  commander = makeBrowserCommander({ page, debug: false });
   await page.goto('https://vietnam-real.estate/ru/rent/', {
     waitUntil: 'domcontentloaded',
     timeout: 60000,

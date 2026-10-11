@@ -213,17 +213,10 @@ export async function botCredentials(environment, expectedId) {
 }
 
 export async function userCredentials(environment, expectedId) {
-  const apiId = Number(
-    await secretValue(environment, [
-      'TELEGRAM_API_ID',
-      'TELEGRAM_USER_BOT_API_ID',
-    ])
-  );
-  const apiHash = await secretValue(environment, [
-    'TELEGRAM_API_HASH',
-    'TELEGRAM_USER_BOT_API_HASH',
-  ]);
-  const session = await secretValue(environment, ['TELEGRAM_USER_SESSION']);
+  const { resolveTelegramSecrets } = await import('../src/telegram-auth.js');
+  const credentials = await resolveTelegramSecrets(environment);
+  const apiId = Number(credentials.apiId);
+  const { apiHash, session } = credentials;
   if (!Number.isInteger(apiId) || apiId < 1 || !apiHash || !session) {
     throw new Error('The test-user environment is incomplete.');
   }

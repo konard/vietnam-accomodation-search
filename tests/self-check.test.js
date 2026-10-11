@@ -85,6 +85,7 @@ describe('browser launch check', () => {
         args: ['--disable-dev-shm-usage', '--no-sandbox'],
         engine: 'playwright',
         headless: true,
+        debug: false,
       },
     ]);
     expect(events[1][1].startsWith('data:text/html,')).toBe(true);

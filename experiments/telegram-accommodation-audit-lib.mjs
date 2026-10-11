@@ -151,15 +151,11 @@ export async function loadCredentialEnvironment(paths = []) {
 }
 
 export function telegramCredentials(environment) {
+  const credentials = inlineTelegramCredentials(environment);
   return {
-    apiHash:
-      environment.TELEGRAM_API_HASH || environment.TELEGRAM_USER_BOT_API_HASH,
-    apiId: Number(
-      environment.TELEGRAM_API_ID || environment.TELEGRAM_USER_BOT_API_ID
-    ),
+    ...credentials,
+    apiId: Number(credentials.apiId),
     botToken: environment.TELEGRAM_BOT_TOKEN,
-    session: environment.TELEGRAM_USER_SESSION,
-    sessionFormat: environment.TELEGRAM_USER_SESSION_FORMAT,
   };
 }
 
@@ -363,3 +359,4 @@ export function countBy(values) {
     Object.entries(result).sort((left, right) => right[1] - left[1])
   );
 }
+import { inlineTelegramCredentials } from '../src/telegram-secrets.js';

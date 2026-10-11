@@ -27,12 +27,13 @@ if (!checkpoint.startsWith('/tmp/')) {
 
 await withQaCleanup(async (scope) => {
   const launched = await launchBrowser({
+    debug: false,
     channel: 'chrome',
     engine: 'playwright',
     headless: true,
   });
   scope.defer('browser', () => launched.browser.close());
-  const commander = makeBrowserCommander({ page: launched.page });
+  const commander = makeBrowserCommander({ page: launched.page, debug: false });
   scope.defer('commander', () => commander.destroy());
   await commander.goto({
     url: pathToFileURL(checkpoint).toString(),

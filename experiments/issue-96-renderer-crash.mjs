@@ -16,6 +16,7 @@ await withQaCleanup(async (scope) => {
   ];
   const extra = (process.env.EXTRA_ARGS || '').split(' ').filter(Boolean);
   const { browser, page } = await launchBrowser({
+    debug: false,
     args: ['--no-sandbox', '--disable-setuid-sandbox', ...extra],
     engine: 'playwright',
     headless: true,

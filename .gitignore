@@ -56,6 +56,8 @@ web_modules/
 # Optional eslint cache
 .eslintcache
 .playwright-mcp/
+# Raw automatic Browser Commander captures are never commit artifacts.
+browser-commander-traces/
 
 # Optional stylelint cache
 .stylelintcache

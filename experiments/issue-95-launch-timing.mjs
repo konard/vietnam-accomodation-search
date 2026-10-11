@@ -6,12 +6,13 @@ await withQaCleanup(async (scope) => {
   const started = Date.now();
   const mark = (label) => console.log(`${Date.now() - started} ms ${label}`);
   const { browser, page } = await launchBrowser({
+    debug: false,
     engine: 'playwright',
     headless: true,
   });
   scope.defer('browser', () => browser.close());
   mark('launched');
-  const commander = makeBrowserCommander({ page });
+  const commander = makeBrowserCommander({ page, debug: false });
   scope.defer('commander', () => commander.destroy());
   await commander.goto({
     url: 'data:text/html,<title>t</title>',

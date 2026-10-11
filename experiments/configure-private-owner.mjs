@@ -18,21 +18,35 @@ import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
 import { withQaCleanup } from './qa-cleanup.mjs';
 import { withDeadline } from './telegram-bot-conversation-e2e.mjs';
 
-export async function deriveSuppliedOwner(credentials, scope) {
+export async function resolveOwnerCredentials(
+  credentials,
+  environment,
+  userEnvironment
+) {
   if (
-    credentials.sessionFormat === SESSION_FORMAT ||
-    inspectSessionEnvelope(credentials.session).state === 'active-unverified'
+    userEnvironment?.TELEGRAM_EXPECTED_USER_ID &&
+    environment.TELEGRAM_EXPECTED_USER_ID &&
+    userEnvironment.TELEGRAM_EXPECTED_USER_ID !==
+      environment.TELEGRAM_EXPECTED_USER_ID
   ) {
-    return new TelegramAuthService(credentials).validate();
+    throw new Error('Configured owner pins conflict.');
   }
-  if (!credentials.apiId || !credentials.apiHash || !credentials.session) {
-    throw new Error('The existing authenticated user session is unavailable.');
-  }
+  return {
+    ...(userEnvironment
+      ? await resolveTelegramSecrets(userEnvironment)
+      : credentials),
+    expectedUserId:
+      userEnvironment?.TELEGRAM_EXPECTED_USER_ID ||
+      environment.TELEGRAM_EXPECTED_USER_ID,
+  };
+}
+
+async function legacyClient(credentials) {
   const [{ TelegramClient }, { StringSession }] = await Promise.all([
     import('teleproto'),
     import('teleproto/sessions/index.js'),
   ]);
-  const client = new TelegramClient(
+  return new TelegramClient(
     new StringSession(credentials.session),
     Number(credentials.apiId),
     credentials.apiHash,
@@ -43,6 +57,26 @@ export async function deriveSuppliedOwner(credentials, scope) {
       autoReconnect: false,
     }
   );
+}
+
+export async function deriveSuppliedOwner(
+  credentials,
+  scope,
+  {
+    authFactory = (options) => new TelegramAuthService(options),
+    legacyFactory = legacyClient,
+  } = {}
+) {
+  if (
+    credentials.sessionFormat === SESSION_FORMAT ||
+    inspectSessionEnvelope(credentials.session).state === 'active-unverified'
+  ) {
+    return authFactory(credentials).validate();
+  }
+  if (!credentials.apiId || !credentials.apiHash || !credentials.session) {
+    throw new Error('The existing authenticated user session is unavailable.');
+  }
+  const client = await legacyFactory(credentials);
   client.setLogLevel('none');
   scope.defer('supplied owner session', () => client.destroy());
   return withDeadline(
@@ -52,6 +86,12 @@ export async function deriveSuppliedOwner(credentials, scope) {
         throw new Error('The supplied session is not authenticated.');
       }
       const me = await client.getMe();
+      if (
+        credentials.expectedUserId &&
+        String(me.id) !== String(credentials.expectedUserId)
+      ) {
+        throw new Error('The supplied session owner pin does not match.');
+      }
       return { id: String(me.id) };
     },
     30_000,
@@ -88,12 +128,14 @@ export async function main(args = process.argv.slice(2)) {
       : undefined;
     const result = await configurePrivateOwner({
       envFile,
-      identityProvider: async ({ credentials }) => {
+      identityProvider: async ({ credentials, environment }) => {
         signal.throwIfAborted();
         return deriveSuppliedOwner(
-          userEnvironment
-            ? await resolveTelegramSecrets(userEnvironment)
-            : credentials,
+          await resolveOwnerCredentials(
+            credentials,
+            environment,
+            userEnvironment
+          ),
           scope
         );
       },
