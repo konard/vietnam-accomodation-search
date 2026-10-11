@@ -71,8 +71,8 @@
   },
   "dependencies": {
     "@mtcute/node": "^0.32.4",
-    "browser-commander": "0.28.0",
-    "command-stream": "1.5.0",
+    "browser-commander": "0.29.0",
+    "command-stream": "2.0.2",
     "grammy": "^1.46.0",
     "links-notation": "0.25.1",
     "lino-arguments": "0.3.0",
@@ -106,7 +106,7 @@
   },
   "overrides": {
     "browser-commander": {
-      "command-stream": "1.5.0"
+      "command-stream": "2.0.2"
     },
     "@mtcute/node": {
       "better-sqlite3": "13.0.3"

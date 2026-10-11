@@ -4,8 +4,8 @@
     "npm:@changesets/cli@^3.0.3": "3.0.3",
     "npm:@eslint/js@^10.0.1": "10.0.1_eslint@10.12.0",
     "npm:@mtcute/node@~0.32.4": "0.32.4",
-    "npm:browser-commander@0.28.0": "0.28.0_playwright@1.64.0",
-    "npm:command-stream@1.5.0": "1.5.0",
+    "npm:browser-commander@0.29.0": "0.29.0_playwright@1.64.0",
+    "npm:command-stream@2.0.2": "2.0.2",
     "npm:eslint-config-prettier@^10.1.8": "10.1.8_eslint@10.12.0",
     "npm:eslint-plugin-prettier@^5.5.6": "5.5.6_eslint@10.12.0_eslint-config-prettier@10.1.8_prettier@3.9.10",
     "npm:eslint@^10.12.0": "10.12.0",
@@ -579,8 +579,8 @@
         "balanced-match"
       ]
     },
-    "browser-commander@0.28.0_playwright@1.64.0": {
-      "integrity": "sha512-N5FRRx2ovHVkJn56RfxSNYyqKV4NaA4mjNE8zRHlpE42Yosw9ZT1QRnB8OGKHmwqp5f4tB4Xp8wpaiwGT8PlSA==",
+    "browser-commander@0.29.0_playwright@1.64.0": {
+      "integrity": "sha512-I6048aqixLYt+PmDAi7VGp5bQFvxu868ZEwQ5Zy3OTE/HPOj06LR4ye47qpdc0W/IL2HwdiSQoOrBaB6SF1Dmg==",
       "dependencies": [
         "bplist-parser",
         "command-stream",
@@ -645,14 +645,16 @@
     "color-name@1.1.4": {
       "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="
     },
-    "command-stream@1.5.0": {
-      "integrity": "sha512-1lb6sUiuR+1D4nMc00eTiwSCbScnhjkvG+IeFRz5UZRdQ0eXr0j+6+zpXvhB+1c8ba+yWBr5W5giYsEA4t29sQ==",
+    "command-stream@2.0.2": {
+      "integrity": "sha512-90qiIb7EJ8N9u+YcXKvP0shMZAli0D1yC2i3F9TSzgr7KYaEfvob0Jfcl10SIBqTMggJVAA/39IP/hwju4tYYQ==",
       "dependencies": [
         "@resvg/resvg-js",
         "@xterm/headless",
         "cross-spawn",
         "execa",
-        "gifenc",
+        "gifenc"
+      ],
+      "optionalDependencies": [
         "node-pty"
       ],
       "bin": true
@@ -817,11 +819,10 @@
     "event-target-shim@5.0.1": {
       "integrity": "sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ=="
     },
-    "execa@9.6.1": {
-      "integrity": "sha512-9Be3ZoN4LmYR90tUoVu2te2BsbzHfhJyfEiAVfz7N5/zv+jduIfLrV2xdQXOHbaD6KgpGdO9PRPM1Y4Q9QkPkA==",
+    "execa@10.1.0": {
+      "integrity": "sha512-5HT/600HqXEtmkb9mK/PkTWw+bQSCzPnWiZ4/87wD3Hi0wFzCapOuNT9p4M08PDd+KLHdHvFhKjOWmNx/npRNQ==",
       "dependencies": [
         "@sindresorhus/merge-streams",
-        "cross-spawn",
         "figures",
         "get-stream",
         "human-signals",
@@ -831,6 +832,7 @@
         "pretty-ms",
         "signal-exit",
         "strip-final-newline",
+        "which-command",
         "yoctocolors"
       ]
     },
@@ -1170,8 +1172,8 @@
         "write-file-atomic"
       ]
     },
-    "node-pty@1.2.0-beta.15": {
-      "integrity": "sha512-vORSzHXi4Ofl7HemVWpuudLqCPdaQb4LfpRCUpE5HPxhp4JYscl8zZwxh11p26v2wvW24WMwnMfLjhRLixrfxA==",
+    "node-pty@1.1.0": {
+      "integrity": "sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==",
       "dependencies": [
         "node-addon-api@7.1.1"
       ],
@@ -1416,6 +1418,10 @@
         "webidl-conversions"
       ]
     },
+    "which-command@0.1.0": {
+      "integrity": "sha512-XZyoF5/5hZtXitIwzrU4NKK+Wtbb9aB9CezUEw2Q0wlYK8NUYQxC1rRXgNueYLtBAJwXIb+/tFVk4dozciNJMA==",
+      "bin": true
+    },
     "which@2.0.2": {
       "integrity": "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==",
       "dependencies": [
@@ -1480,8 +1486,8 @@
         "npm:@changesets/cli@^3.0.3",
         "npm:@eslint/js@^10.0.1",
         "npm:@mtcute/node@~0.32.4",
-        "npm:browser-commander@0.28.0",
-        "npm:command-stream@1.5.0",
+        "npm:browser-commander@0.29.0",
+        "npm:command-stream@2.0.2",
         "npm:eslint-config-prettier@^10.1.8",
         "npm:eslint-plugin-prettier@^5.5.6",
         "npm:eslint@^10.12.0",
@@ -1500,7 +1506,7 @@
       ],
       "overrides": {
         "browser-commander": {
-          "command-stream": "1.5.0"
+          "command-stream": "2.0.2"
         },
         "@mtcute/node": {
           "better-sqlite3": "13.0.3"
