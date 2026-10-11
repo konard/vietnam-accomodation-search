@@ -4,6 +4,10 @@ import { mkdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import {
+  desktopDiskImage,
+  prepareDockerCapacityProbe,
+} from './qa-docker-capacity.mjs';
 
 const GIB = 1024 ** 3;
 export const QA_DISK_PREFLIGHT_BYTES = 8 * GIB;
@@ -42,14 +46,35 @@ async function checkCapacity(paths, minimum, statfsImpl, code, checkTimeoutMs) {
   }
 }
 
-export async function qaDockerStoragePaths(run) {
-  const root = (await run(['info', '--format', '{{.DockerRootDir}}'])).trim();
-  if (!isAbsolute(root) || /[\r\n]/u.test(root)) {
+export async function qaDockerStoragePaths(run, options = {}) {
+  const info = JSON.parse(await run(['info', '--format', '{{json .}}']));
+  const environment = options.environment || process.env;
+  const endpoint =
+    !environment.DOCKER_CONTEXT && environment.DOCKER_HOST
+      ? environment.DOCKER_HOST
+      : JSON.parse(
+          await run([
+            'context',
+            'inspect',
+            '--format',
+            '{{json .Endpoints.docker.Host}}',
+          ])
+        );
+  if (!/^unix:\/\/\//u.test(endpoint) || info.OSType !== 'linux') {
     throw capacityError('QA_CAPACITY_UNAVAILABLE');
   }
-  // A remote daemon without a locally readable storage filesystem is not
-  // accepted by these host-capacity controls.
-  return [...new Set([process.cwd(), tmpdir(), root])];
+  const root = info.DockerRootDir;
+  if (typeof root !== 'string' || !isAbsolute(root) || /[\r\n]/u.test(root)) {
+    throw capacityError('QA_CAPACITY_UNAVAILABLE');
+  }
+  const desktop = /Docker Desktop/iu.test(info.OperatingSystem || '');
+  const backing = desktop ? await desktopDiskImage(options) : root;
+  const paths = [...new Set([process.cwd(), tmpdir(), backing])];
+  if (desktop) {
+    paths.prepareCapacity = (scope, directory, signal) =>
+      prepareDockerCapacityProbe(run, scope, directory, signal, environment);
+  }
+  return paths;
 }
 
 function validGuardSettings(paths, pollMs, checkTimeoutMs) {
@@ -79,6 +104,7 @@ export async function acquireQaStorageGuard(
   if (!validGuardSettings(paths, pollMs, checkTimeoutMs)) {
     throw capacityError('QA_CAPACITY_CONFIGURATION');
   }
+  const prepareCapacity = paths.prepareCapacity;
   paths = [...new Set([process.cwd(), tmpdir(), ...paths])];
   signal?.throwIfAborted();
   await mkdir(dirname(lockDirectory), { recursive: true, mode: 0o700 });
@@ -119,6 +145,16 @@ export async function acquireQaStorageGuard(
     'QA_DISK_PREFLIGHT',
     checkTimeoutMs
   );
+  const daemonCapacity = await prepareCapacity?.(scope, lockDirectory, signal);
+  const checkDaemon = async (minimum, code, signal) => {
+    if (
+      daemonCapacity &&
+      (await daemonCapacity(checkTimeoutMs, signal)) < BigInt(minimum)
+    ) {
+      throw capacityError(code);
+    }
+  };
+  await checkDaemon(QA_DISK_PREFLIGHT_BYTES, 'QA_DISK_PREFLIGHT', signal);
   const controller = new AbortController();
   const combined = signal
     ? AbortSignal.any([signal, controller.signal])
@@ -133,6 +169,7 @@ export async function acquireQaStorageGuard(
         'QA_DISK_FLOOR',
         checkTimeoutMs
       );
+      await checkDaemon(QA_DISK_FLOOR_BYTES, 'QA_DISK_FLOOR', combined);
     } catch (error) {
       controller.abort(error);
       throw error;

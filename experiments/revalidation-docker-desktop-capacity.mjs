@@ -18,7 +18,10 @@ let failureCode;
 await withQaCleanup(async (scope, signal) => {
   const directory = await qaTemporaryDirectory(scope, 'vac-desktop-capacity-');
   const paths = await qaDockerStoragePaths(dockerCommand);
-  const daemonRootReadableOnHost = await statfs(paths.at(-1)).then(
+  const daemonRoot = (
+    await dockerCommand(['info', '--format', '{{.DockerRootDir}}'])
+  ).trim();
+  const daemonRootReadableOnHost = await statfs(daemonRoot).then(
     () => true,
     () => false
   );

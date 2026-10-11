@@ -521,6 +521,8 @@ jobs:
       - name: Smoke-test image tools and health contract
         if: steps.docker_config.outputs.enabled == 'true'
         timeout-minutes: 3
+        env:
+          QA_DOCKER_CAPACITY: '1'
         run: |
           docker run --rm --entrypoint node "pr-check:${{ github.sha }}" bin/vietnam-accomodation-search.js --help
           docker run --rm --entrypoint clink "pr-check:${{ github.sha }}" --help
@@ -579,6 +581,7 @@ jobs:
               await rm(directory, { force: true, recursive: true });
             }
           "
+          node scripts/test-with-cleanup.mjs node experiments/issue-208-docker-guest-capacity.mjs
           container="accommodation-health-${{ github.run_id }}"
           trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
           docker run -d --name "$container" --entrypoint node "pr-check:${{ github.sha }}" \
