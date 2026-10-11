@@ -13,9 +13,7 @@ import { compareOfferValue } from '../src/value-pricing.js';
 // review. `--live` searches the real default web sources instead and scores
 // the persisted offers whose anonymised text matches a reviewed card; listings
 // change daily, so it also reports how many offers matched.
-import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { LinksStore, createApplication } from '../src/index.js';
@@ -118,10 +116,12 @@ function storedFields(offer) {
   };
 }
 
-async function searchAndReload({ application, directory }) {
+async function searchAndReload({ application, directory, signal }) {
+  signal?.throwIfAborted();
   const { offers, report } = await application.service.searchWithReport({
     query: QUERY,
     refresh: true,
+    signal,
   });
   const stored = await new LinksStore({ directory }).listOffers();
   return {
@@ -166,6 +166,7 @@ export async function auditLive({
   directory,
   environment,
   rateProvider,
+  signal,
   sources,
 }) {
   const application = createApplication({
@@ -177,7 +178,7 @@ export async function auditLive({
   if (sources) {
     application.registry.list = () => Promise.resolve(sources);
   }
-  const search = await searchAndReload({ application, directory });
+  const search = await searchAndReload({ application, directory, signal });
   const byText = new Map(
     search.stored.map((offer) => [
       anonymize(offer.raw?.text || '').trim(),
@@ -200,13 +201,25 @@ export async function auditLive({
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const { withQaCleanup, qaTemporaryDirectory } =
+    await import('./qa-cleanup.mjs');
+  const { acquireQaStorageGuard } = await import('./qa-storage-guard.mjs');
   const live = process.argv.includes('--live');
-  const directory = await mkdtemp(join(tmpdir(), 'vac-search-audit-'));
-  try {
+  await withQaCleanup(async (scope, signal) => {
+    const guard = live
+      ? await acquireQaStorageGuard(scope, { paths: [tmpdir()], signal })
+      : undefined;
+    const directory = await qaTemporaryDirectory(scope, 'vac-search-audit-');
     const corpus = await loadCorpus();
     const result = live
-      ? await auditLive({ corpus, directory, environment: process.env })
+      ? await auditLive({
+          corpus,
+          directory,
+          environment: process.env,
+          signal: guard.signal,
+        })
       : await auditReplay({ corpus, directory });
+    await guard?.check();
     const misses = process.argv.includes('--misses');
     console.log(
       JSON.stringify(
@@ -220,7 +233,5 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       )
     );
     process.exitCode = result.metrics.pass ? 0 : 1;
-  } finally {
-    await rm(directory, { force: true, recursive: true });
-  }
+  });
 }

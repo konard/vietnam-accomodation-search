@@ -207,6 +207,27 @@ describe('scoped Docker QA cleanup', () => {
     assert(!state.calls.some((args) => args.includes('prune')));
   });
 
+  it('discovers journal-owned project image tags despite unavailable unrelated inventory', async () => {
+    const state = fixture();
+    const cleanup = new QaDockerCleanup({
+      runId,
+      projectName: runId,
+      baseline: state.baseline,
+      run: (args) => {
+        if (args[0] === 'network' && args[1] === 'ls') {
+          throw new Error('injected network inventory failure');
+        }
+        return state.run(args);
+      },
+    });
+    cleanup.ownBuilder(`${runId}-builder`);
+    const result = await cleanup.cleanup();
+    assert.equal(result.pass, false);
+    assert.deepEqual(state.current.images, state.baseline.images);
+    assert.deepEqual(state.current.builders, state.baseline.builders);
+    assert(!result.failures.includes('project image discovery'));
+  });
+
   it('quiesces the owned builder separately before removing its populated cache', async () => {
     const state = fixture();
     let stopped = false;

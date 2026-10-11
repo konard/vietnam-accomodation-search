@@ -230,6 +230,7 @@ async function captureTile({ browser, locale, theme, contextLocale, url }) {
   const page = await context.newPage();
 
   const commander = makeBrowserCommander({
+    debug: false,
     page,
     enableNavigationManager: false,
     enableNetworkTracking: false,

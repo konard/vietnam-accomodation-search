@@ -360,6 +360,10 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun install
 
+      - name: Verify Bun lifecycle ownership
+        if: matrix.runtime == 'bun'
+        run: node scripts/test-with-cleanup.mjs node experiments/issue-203-bun-install-concurrency.mjs
+
       - name: Run tests (Bun)
         if: matrix.runtime == 'bun'
         shell: bash

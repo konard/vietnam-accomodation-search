@@ -13,6 +13,7 @@ import { durableWrite } from '../src/link-cli-mirror.js';
 import { resolveTelegramSecrets } from '../src/telegram-auth.js';
 import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
 import { withQaCleanup } from './qa-cleanup.mjs';
+import { acquireQaStorageGuard } from './qa-storage-guard.mjs';
 import {
   evaluateSourceAcceptance,
   findMaterialOffer,
@@ -257,10 +258,16 @@ async function main(scope, signal) {
   if (!sources.length) {
     throw new Error('No matching source.');
   }
+  await mkdir(application.store.directory, { mode: 0o700, recursive: true });
+  const guard = await acquireQaStorageGuard(scope, {
+    paths: [application.store.directory, output],
+    signal,
+  });
+  signal = guard.signal;
   let collected = 0;
   let excluded = 0;
   for (const source of sources) {
-    signal.throwIfAborted();
+    await guard.check();
     let observation;
     try {
       observation = await collectObservation(
@@ -310,6 +317,7 @@ async function main(scope, signal) {
       })
     );
   }
+  await guard.check();
 }
 
 await withQaCleanup(main).catch(() => {

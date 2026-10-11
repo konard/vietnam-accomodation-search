@@ -81,7 +81,7 @@ describe('browser commander options', () => {
   it('uses supported per-call readiness with the default network tracker', () => {
     const made = [];
     openCommander(recordingRuntime(made), 'page');
-    expect(made).toEqual([{ page: 'page' }]);
+    expect(made).toEqual([{ page: 'page', debug: false }]);
   });
 
   it('opens the launch check commander with the supported default tracker', async () => {
@@ -89,7 +89,7 @@ describe('browser commander options', () => {
     await new BrowserCollector({
       browserRuntime: recordingRuntime(made),
     }).checkLaunch();
-    expect(made).toEqual([{ page: {} }]);
+    expect(made).toEqual([{ page: {}, debug: false }]);
   });
 
   it('opens the discovery commander with the supported default tracker', async () => {
@@ -97,7 +97,7 @@ describe('browser commander options', () => {
     await new BrowserSourceDiscoverer({
       browserRuntime: recordingRuntime(made),
     }).discover('web', { candidates: [] });
-    expect(made).toEqual([{ page: {} }]);
+    expect(made).toEqual([{ page: {}, debug: false }]);
   });
 
   it('builds every commander in src through openCommander', async () => {

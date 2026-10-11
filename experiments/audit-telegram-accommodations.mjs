@@ -9,13 +9,15 @@ import { createTelegramOcr } from '../src/telegram-ocr.js';
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Api, TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import { runClink } from '../src/link-cli-mirror.js';
+import { withQaCleanup } from './qa-cleanup.mjs';
+import { acquireQaStorageGuard } from './qa-storage-guard.mjs';
 // Shared scalar media identity; GramJS media objects carry bytes (#82).
 import { mediaIdentity } from '../src/telegram-pipeline.js';
 
@@ -142,23 +144,39 @@ function cutoffDate(now, months) {
   return months >= 3 && cutoff > minimum ? minimum : cutoff;
 }
 
-function commandOutput(command, arguments_) {
+function commandOutput(command, arguments_, { signal } = {}) {
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     const child = spawn(command, arguments_, {
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
     let stderr = '';
+    let spawnError;
+    let killTimer;
+    const abort = () => {
+      child.kill('SIGTERM');
+      killTimer = setTimeout(() => child.kill('SIGKILL'), 5000);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     child.stdout.on('data', (chunk) => {
       stdout = `${stdout}${chunk}`.slice(0, 64 * 1024);
     });
     child.stderr.on('data', (chunk) => {
       stderr = `${stderr}${chunk}`.slice(-4096);
     });
-    child.on('error', reject);
+    child.on('error', (error) => {
+      spawnError = error;
+    });
     child.on('close', (code) => {
-      if (code === 0) {
+      clearTimeout(killTimer);
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) {
+        reject(signal.reason);
+      } else if (spawnError) {
+        reject(spawnError);
+      } else if (code === 0) {
         resolve(stdout);
       } else {
         const error = new Error(
@@ -173,12 +191,14 @@ function commandOutput(command, arguments_) {
 
 export async function verifyTesseractLanguages(
   command,
-  execute = commandOutput
+  execute = commandOutput,
+  { signal } = {}
 ) {
+  signal?.throwIfAborted();
   if (!command) {
     throw new TypeError('--tesseract-command is required for the live audit.');
   }
-  const output = await execute(command, ['--list-langs']);
+  const output = await execute(command, ['--list-langs'], { signal });
   const available = new Set(
     String(output)
       .split(/\r?\n/u)
@@ -565,6 +585,7 @@ export async function auditSource(
     } catch (error) {
       sourceError = errorSummary(error);
     }
+    options.signal?.throwIfAborted();
     const normalizedMessages = messages.map((message) =>
       normalizedAuditMessage(message, alias)
     );
@@ -573,7 +594,10 @@ export async function auditSource(
       auditTelegramBatch(normalizedMessages, {
         now: new Date(report.generatedAt),
         since: report.cutoff,
-        ocr: (...args) => timing.measure('ocr', () => ocr(...args)),
+        ocr: (identity, settings) =>
+          timing.measure('ocr', () =>
+            ocr(identity, { ...settings, signal: options.signal })
+          ),
         sourceAlias: alias,
       })
     );
@@ -672,6 +696,7 @@ export async function auditSource(
     }
   }
   await timing.measure('store', async () => {
+    options.signal?.throwIfAborted();
     await auditStore.appendRecords('domain-records', batch.domainRecords);
     await auditStore.appendRecords('traces', batch.traceRecords);
     if (batch.offers.length) {
@@ -716,9 +741,32 @@ export async function auditSource(
   return { audit, domainRecords: batch.domainRecords, offers: batch.offers };
 }
 
+export function runAudit(
+  options,
+  { storageGuard = acquireQaStorageGuard } = {}
+) {
+  return withQaCleanup(async (scope, signal) => {
+    await mkdir(options.stateDirectory, { recursive: true, mode: 0o700 });
+    const guard = await storageGuard(scope, {
+      paths: [options.stateDirectory],
+      signal,
+    });
+    const report = await runOwnedAudit(
+      { ...options, signal: guard.signal },
+      scope
+    );
+    await guard.check();
+    return report;
+  });
+}
+
 // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- The live runner assembles a single evidence report across discovery, ingestion, storage, and acceptance gates.
-export async function runAudit(options) {
-  const ocrLanguages = await verifyTesseractLanguages(options.tesseractCommand);
+async function runOwnedAudit(options, scope) {
+  const ocrLanguages = await verifyTesseractLanguages(
+    options.tesseractCommand,
+    undefined,
+    { signal: options.signal }
+  );
   const environment = await loadCredentialEnvironment([
     options.userEnv,
     options.botEnv,
@@ -753,9 +801,11 @@ export async function runAudit(options) {
     // Preserve the app's chunk/shard boundaries on retained stores. Changing
     // their size here would repartition offers and defeat verified reuse.
     mirror: new LinkCliMirror({
-      run: (...args) =>
+      run: (command, args, settings) =>
         project(() =>
-          measurePhase({ phase: 'projection' }, () => runClink(...args))
+          measurePhase({ phase: 'projection' }, () =>
+            runClink(command, args, { ...settings, signal: options.signal })
+          )
         ),
       onProgress: (event) => process.stderr.write(`${JSON.stringify(event)}\n`),
     }),
@@ -787,7 +837,19 @@ export async function runAudit(options) {
     { autoReconnect: false, connectionRetries: 2, requestRetries: 2 }
   );
   client.setLogLevel?.('none');
+  let stopping;
+  const stop = () =>
+    (stopping ||= Promise.resolve().then(() => client.destroy()));
+  const abort = () => {
+    void stop().catch(() => {});
+  };
+  options.signal.addEventListener('abort', abort, { once: true });
+  scope.defer('retained audit user client', async () => {
+    options.signal.removeEventListener('abort', abort);
+    await stop();
+  });
   try {
+    options.signal.throwIfAborted();
     await client.connect();
     report.user.active = await client.checkAuthorization();
     if (!report.user.active) {
@@ -922,6 +984,7 @@ export async function runAudit(options) {
     const storageSample = [];
     let privateIndex = 0;
     for (const [index, source] of sources.entries()) {
+      options.signal.throwIfAborted();
       const ordinal = index + 1;
       if (!selectedOrdinals.includes(ordinal)) {
         continue;
@@ -1141,7 +1204,7 @@ export async function runAudit(options) {
     ]);
   } finally {
     await client.disconnect().catch(() => {});
-    await client.destroy?.().catch(() => {});
+    await stop().catch(() => {});
   }
   return report;
 }

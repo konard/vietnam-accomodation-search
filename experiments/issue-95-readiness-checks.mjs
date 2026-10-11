@@ -11,6 +11,7 @@ import { createNetworkTracker } from '../node_modules/browser-commander/src/core
 
 await withQaCleanup(async (scope) => {
   const { browser, page } = await launchBrowser({
+    debug: false,
     engine: 'playwright',
     headless: true,
     args: ['--no-sandbox'],

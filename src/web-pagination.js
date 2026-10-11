@@ -42,13 +42,24 @@ export function extractWebPagination(selectors = {}) {
       ?.querySelector('[aria-current="page"], .current, .active')
       ?.textContent?.trim()
   );
-  const numbers = [...(pager?.querySelectorAll('a[href]') || [])]
-    .map((element) => Number(element.textContent.trim()))
-    .filter((number) => Number.isSafeInteger(number) && number > 0);
+  const numbered = [...(pager?.querySelectorAll('a[href]') || [])]
+    .map((element) => ({ element, number: Number(element.textContent.trim()) }))
+    .filter(({ number }) => Number.isSafeInteger(number) && number > 0);
+  const consecutive = numbered.find(({ number }) => number === current + 1);
+  if (current > 0 && consecutive) {
+    return {
+      nextUrl: new globalThis.URL(
+        consecutive.element.getAttribute('href'),
+        href
+      ).href,
+      evidence: 'consecutive-numbered-page',
+    };
+  }
   if (
+    controls.length === 0 &&
     current > 0 &&
-    numbers.length &&
-    numbers.every((number) => number <= current)
+    numbered.length &&
+    numbered.every(({ number }) => number <= current)
   ) {
     return { complete: true, evidence: 'last-numbered-page' };
   }

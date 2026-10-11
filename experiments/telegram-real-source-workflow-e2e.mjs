@@ -28,8 +28,12 @@ import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
 
 import { withQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages } from './qa-owned-messages.mjs';
-import { getBotIdentity } from './telegram-bot-conversation-e2e.mjs';
+import {
+  getBotIdentity,
+  userCredentials,
+} from './telegram-bot-conversation-e2e.mjs';
 import { verifiedQaBotPeer } from './qa-telegram-peer.mjs';
+import { acquireQaStorageGuard } from './qa-storage-guard.mjs';
 
 function options(values) {
   const names = new Map([
@@ -78,6 +82,7 @@ async function credentials(paths) {
     bot.TELEGRAM_BOT_TOKEN.split(':')[0],
     bot.TELEGRAM_EXPECTED_BOT_ID
   );
+  const supplied = await userCredentials(user, user.TELEGRAM_EXPECTED_USER_ID);
   return {
     token: bot.TELEGRAM_BOT_TOKEN,
     botPeer: verifiedQaBotPeer(
@@ -88,10 +93,10 @@ async function credentials(paths) {
       bot.TELEGRAM_EXPECTED_BOT_ID
     ),
     user: {
-      apiId: user.TELEGRAM_API_ID || user.TELEGRAM_USER_BOT_API_ID,
-      apiHash: user.TELEGRAM_API_HASH || user.TELEGRAM_USER_BOT_API_HASH,
+      apiId: supplied.apiId,
+      apiHash: supplied.apiHash,
       session: writeStringSession(
-        converter.convertFromGramjsSession(user.TELEGRAM_USER_SESSION)
+        converter.convertFromGramjsSession(supplied.session)
       ),
       sessionFormat: 'mtcute/session-string-v1',
       expectedUserId: user.TELEGRAM_EXPECTED_USER_ID,
@@ -99,16 +104,17 @@ async function credentials(paths) {
   };
 }
 
-function guardedStore(directory, result, started) {
+function guardedStore(directory, result, started, signal) {
   return new LinksStore({
     directory,
     binaryMirror: true,
     mirror: new LinkCliMirror({
-      run: async (...arguments_) => {
+      run: async (command, arguments_, options) => {
+        signal.throwIfAborted();
         const space = await statfs(directory);
         assert(space.bavail * space.bsize >= 2 * 1024 ** 3, 'QA_DISK_FLOOR');
         assert(performance.now() - started < 60 * 60_000, 'QA_TIME_BUDGET');
-        await runClink(...arguments_);
+        await runClink(command, arguments_, { ...options, signal });
         result.imports += 1;
       },
     }),
@@ -376,6 +382,11 @@ async function run(paths) {
 async function runOwned(paths, scope, signal) {
   assertManualLocalRun(process.env);
   assert.equal(process.env.TELEGRAM_REAL_WORKFLOW_E2E, '1');
+  const guard = await acquireQaStorageGuard(scope, {
+    paths: [resolve(paths.dataDirectory, '..')],
+    signal,
+  });
+  signal = guard.signal;
   const started = performance.now();
   const initial = await statfs(resolve(paths.dataDirectory, '..'));
   assert(initial.bavail * initial.bsize >= 8 * 1024 ** 3, 'QA_DISK_PREFLIGHT');
@@ -413,7 +424,7 @@ async function runOwned(paths, scope, signal) {
     enabled: true,
   };
   const secret = await credentials(paths);
-  const store = guardedStore(paths.dataDirectory, result, started);
+  const store = guardedStore(paths.dataDirectory, result, started, signal);
   const silent = { debug() {}, info() {}, warn() {}, error() {} };
   const nativeMedia = new Map();
   const application = createApplication({
@@ -476,6 +487,7 @@ async function runOwned(paths, scope, signal) {
     signal.throwIfAborted();
     await notify(restored, secret.token, owner, ledger, result, bots);
     result.phase = 'complete';
+    await guard.check();
     result.pass = true;
   } catch (error) {
     result.error = {

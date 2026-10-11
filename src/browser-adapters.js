@@ -430,6 +430,7 @@ export const BROWSER_SOURCE_ADAPTERS = Object.freeze({
     '/cho-thue-nha/khanh-hoa/nha-trang',
     {
       cards: '.property-item',
+      paginationContainer: 'nav.page[aria-label="Phân trang"]',
       details: '[itemtype="https://schema.org/RealEstateListing"], main',
       fields: {
         availability: '[itemprop="availability"]',
@@ -524,6 +525,7 @@ export const BROWSER_SOURCE_ADAPTERS = Object.freeze({
     {
       availabilityFallback: 'not stated on source card',
       cards: '.product-item',
+      paginationContainer: '.page-nav',
       fields: {
         area: '.product-unit .acreage',
         contact: 'a[href^="tel:"], a[href^="mailto:"]',

@@ -13,7 +13,7 @@ try {
   browser = await chromium.launch();
   for (const callerAbort of [false, true]) {
     const page = await browser.newPage();
-    const commander = makeBrowserCommander({ page });
+    const commander = makeBrowserCommander({ page, debug: false });
     const controller = new AbortController();
     const reason = new Error('Self-authored caller abort');
     const timer = callerAbort

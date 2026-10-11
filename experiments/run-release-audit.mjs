@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { durableWrite } from '../src/link-cli-mirror.js';
+import { resolveTelegramSecrets } from '../src/telegram-auth.js';
 import {
   compareReleaseAudit,
   createReleaseAudit,
@@ -64,13 +65,15 @@ export async function runReleaseAudit(values, environment = process.env) {
   }
   const evidence = await json(options.evidence);
   const release = await json(options.release);
+  const credentials =
+    options.mode === 'live' ? await resolveTelegramSecrets(environment) : {};
   const report = createReleaseAudit({
     competingPoller: environment.TELEGRAM_BOT_POLLER_ACTIVE === '1',
     credentials: Boolean(
-      environment.TELEGRAM_API_ID &&
-      environment.TELEGRAM_API_HASH &&
-      environment.TELEGRAM_BOT_TOKEN &&
-      environment.TELEGRAM_USER_SESSION
+      credentials.apiId &&
+      credentials.apiHash &&
+      credentials.botToken &&
+      credentials.session
     ),
     gates: evidence.gates,
     mode: options.mode,

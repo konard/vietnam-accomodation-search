@@ -18,11 +18,13 @@ await withQaCleanup(async (scope) => {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const { browser, page } = await launchBrowser({
+    debug: false,
     engine: 'playwright',
     headless: true,
   });
   scope.defer('browser', () => browser.close());
   const commander = makeBrowserCommander({
+    debug: false,
     enableNetworkTracking: process.env.NETWORK_TRACKING === '1',
     page,
     verbose: process.env.VERBOSE === '1',

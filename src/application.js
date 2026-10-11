@@ -24,6 +24,7 @@ import {
 } from './telegram-mtcute.js';
 import { UpdateDeduplicator } from './telegram-runtime.js';
 import { TelegramAvailabilityService } from './telegram-user.js';
+import { inlineTelegramCredentials } from './telegram-secrets.js';
 import { TraceRecorder } from './trace.js';
 import {
   BotApiTelegramDiscoveryProvider,
@@ -50,12 +51,8 @@ export function createApplication(options = {}) {
     (typeof globalThis.Deno === 'undefined'
       ? globalThis.process?.env || {}
       : {});
-  const telegramCredentials = options.telegramCredentials || {
-    apiHash: environment.TELEGRAM_API_HASH,
-    apiId: environment.TELEGRAM_API_ID,
-    session: environment.TELEGRAM_USER_SESSION,
-    sessionFormat: environment.TELEGRAM_USER_SESSION_FORMAT,
-  };
+  const telegramCredentials =
+    options.telegramCredentials || inlineTelegramCredentials(environment);
   const directory =
     options.directory ||
     environment.DATA_DIRECTORY ||

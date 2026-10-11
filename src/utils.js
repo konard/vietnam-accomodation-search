@@ -65,10 +65,11 @@ export function canonicalizeUrl(value) {
   }
 }
 
-// Published 0.27 honors per-call readiness and shared deadlines. Keep its
-// tracker available; each collection selects the DOM readiness it needs.
+// Keep the network tracker available for per-call readiness. Automatic raw
+// session recording is disabled even if the host environment enables debug:
+// public collection must work in read-only /app without captures outside data.
 export function openCommander(runtime, page) {
-  return runtime.makeBrowserCommander({ page });
+  return runtime.makeBrowserCommander({ page, debug: false });
 }
 
 // Application policy bounds each navigation on top of the dependency API.
@@ -128,6 +129,7 @@ export function launchSettings(options = {}) {
     engine: 'playwright',
     headless: true,
     ...options,
+    debug: false,
     args: [...new Set(args)],
   };
 }

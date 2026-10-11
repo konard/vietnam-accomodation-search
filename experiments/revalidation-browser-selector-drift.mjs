@@ -10,7 +10,7 @@ let commander;
 try {
   const page = await browser.newPage();
   await page.route('**/*', (route) => route.abort());
-  commander = makeBrowserCommander({ page });
+  commander = makeBrowserCommander({ page, debug: false });
   const selectors = browserAdapterFor(
     'https://vietnam-real.estate/ru/rent/'
   ).selectors;

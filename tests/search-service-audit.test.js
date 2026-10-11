@@ -53,6 +53,36 @@ describe('search service field accuracy on the reviewed web sample', () => {
 });
 
 describe('search service field accuracy on live results', () => {
+  it('stops before browser acquisition when capacity has already aborted', async () => {
+    if (typeof Deno !== 'undefined') {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), 'vac-search-abort-'));
+    const controller = new AbortController();
+    const reason = new Error('QA_DISK_FLOOR');
+    controller.abort(reason);
+    let failure;
+    try {
+      await auditLive({
+        browserRuntime: {
+          launchBrowser: () => {
+            throw new Error('Unexpected browser acquisition');
+          },
+        },
+        corpus: { cases: [], rates: {} },
+        directory,
+        environment: {},
+        rateProvider: { getRates: () => Promise.resolve({}) },
+        signal: controller.signal,
+        sources: [],
+      }).catch((error) => {
+        failure = error;
+      });
+      expect(failure).toBe(reason);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
   it('scores the stored offers that match a reviewed card', async () => {
     if (typeof Deno !== 'undefined') {
       return;

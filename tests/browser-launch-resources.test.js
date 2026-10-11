@@ -25,17 +25,20 @@ describe('browser launch resources', () => {
       args: ['--disable-dev-shm-usage'],
       engine: 'playwright',
       headless: true,
+      debug: false,
     });
     expect(launchSettings({ args: ['--no-sandbox'], headless: false })).toEqual(
       {
         args: ['--disable-dev-shm-usage', '--no-sandbox'],
         engine: 'playwright',
         headless: false,
+        debug: false,
       }
     );
     expect(launchSettings({ args: ['--disable-dev-shm-usage'] }).args).toEqual([
       '--disable-dev-shm-usage',
     ]);
+    expect(launchSettings({ debug: true }).debug).toBe(false);
   });
 
   it('launches the collector and discovery browsers with those settings', async () => {

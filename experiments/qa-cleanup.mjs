@@ -15,8 +15,13 @@ export class QaCleanup {
   #actions = [];
   #closing;
   #started = false;
+  #cleanupFailed = false;
   constructor({ timeoutMs = 10_000 } = {}) {
     this.timeoutMs = timeoutMs;
+  }
+
+  get cleanupFailed() {
+    return this.#cleanupFailed;
   }
 
   defer(name, action) {
@@ -49,6 +54,7 @@ export class QaCleanup {
           }),
         ]);
       } catch {
+        this.#cleanupFailed = true;
         // Never expose credential-bearing SDK errors in a public report.
         failures.push(name);
       } finally {

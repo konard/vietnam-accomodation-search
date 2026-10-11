@@ -32,6 +32,41 @@ import {
 import { staleLock } from '../src/links-store.js';
 
 describe('canonical associative storage', () => {
+  it('stops an owned projection before rejecting a capacity abort', async () => {
+    if (typeof globalThis.Deno !== 'undefined') {
+      return;
+    }
+    const controller = new AbortController();
+    const reason = Object.assign(new Error('QA_DISK_FLOOR'), {
+      code: 'QA_DISK_FLOOR',
+    });
+    let failure;
+    try {
+      await runClink(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+        signal: controller.signal,
+        heartbeatMs: 20,
+        killGraceMs: 40,
+        timeoutMs: 1000,
+        onProgress: ({ status }) => {
+          if (status === 'running') {
+            controller.abort(reason);
+          }
+        },
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBe(reason);
+    let preAborted;
+    try {
+      await runClink('self-authored-command-that-does-not-exist', [], {
+        signal: controller.signal,
+      });
+    } catch (error) {
+      preAborted = error;
+    }
+    expect(preAborted).toBe(reason);
+  });
   it('bounds a stalled binary projection and reports redacted progress', async () => {
     if (typeof globalThis.Deno !== 'undefined') {
       return;

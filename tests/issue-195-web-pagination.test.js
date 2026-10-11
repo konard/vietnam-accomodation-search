@@ -52,6 +52,30 @@ const row = (id) => ({
 });
 
 describe('explicit resumable web pagination', () => {
+  it('follows consecutive numbered links and preserves gaps as incomplete', () => {
+    const previous = globalThis.document;
+    let numbers = ['1', '2', '3'];
+    globalThis.document = {
+      location: { href: first, pathname: '/search' },
+      querySelectorAll: () => [],
+      querySelector: () => ({
+        querySelector: () => ({ textContent: '1' }),
+        querySelectorAll: () =>
+          numbers.map((textContent) => ({
+            textContent,
+            getAttribute: () => `?page=${textContent}`,
+          })),
+      }),
+    };
+    try {
+      assert.equal(extractWebPagination().nextUrl, second);
+      numbers = ['1', '3'];
+      assert.equal(extractWebPagination().complete, false);
+      assert.equal(extractWebPagination().nextUrl, undefined);
+    } finally {
+      globalThis.document = previous;
+    }
+  });
   it('restores a source through indexed storage while bounding the raw-row cache', async () => {
     const records = new Map();
     const store = {
@@ -114,6 +138,9 @@ describe('explicit resumable web pagination', () => {
           ['1', '2', 'bad', '0'].map((textContent) => ({ textContent })),
       };
       assert.equal(extractWebPagination().evidence, 'last-numbered-page');
+      controls = [control({})];
+      assert.equal(extractWebPagination().complete, false);
+      controls = [];
       pager = undefined;
       assert.equal(extractWebPagination().complete, false);
       assert.equal(

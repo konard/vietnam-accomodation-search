@@ -1,6 +1,7 @@
 import { FLOOR_PATTERN } from '../src/listing-fields.js';
 import { rentalPriceOptions } from '../src/pricing.js';
 import { readFile } from 'node:fs/promises';
+import { inlineTelegramCredentials } from '../src/telegram-secrets.js';
 
 export function errorSummary(error) {
   return {
@@ -151,15 +152,11 @@ export async function loadCredentialEnvironment(paths = []) {
 }
 
 export function telegramCredentials(environment) {
+  const credentials = inlineTelegramCredentials(environment);
   return {
-    apiHash:
-      environment.TELEGRAM_API_HASH || environment.TELEGRAM_USER_BOT_API_HASH,
-    apiId: Number(
-      environment.TELEGRAM_API_ID || environment.TELEGRAM_USER_BOT_API_ID
-    ),
+    ...credentials,
+    apiId: Number(credentials.apiId),
     botToken: environment.TELEGRAM_BOT_TOKEN,
-    session: environment.TELEGRAM_USER_SESSION,
-    sessionFormat: environment.TELEGRAM_USER_SESSION_FORMAT,
   };
 }
 
