@@ -415,7 +415,7 @@ describe('bounded offer persistence', () => {
       expect(
         compareFingerprints(before, await stateFingerprint(directory))
           .changedCollections
-      ).toEqual(['offers']);
+      ).toEqual([]);
     } finally {
       await rm(root, { force: true, recursive: true });
     }

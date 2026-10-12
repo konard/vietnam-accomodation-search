@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { access, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { setInterval } from 'node:timers';
+import { setInterval, clearInterval } from 'node:timers';
 import { fileURLToPath, URL } from 'node:url';
 import { mock } from 'node:test';
 import { qaTemporaryDirectory, withQaCleanup } from './qa-cleanup.mjs';
@@ -27,7 +27,7 @@ if (process.argv[2] === '--worker') {
     allowSharedToken: false,
   };
   const fakeCommand =
-    () =>
+    (options = {}) =>
     (strings, ...values) => {
       const command = String.raw({ raw: strings }, ...values);
       if (command.startsWith('git ')) {
@@ -45,8 +45,18 @@ if (process.argv[2] === '--worker') {
         assert(acquired, 'The real CLI must acquire its operation lock.');
         process.send({ operationLockAcquired: true });
         // A real command producer keeps the process alive at the same boundary.
-        setInterval(() => {}, 1000);
-        return new Promise(() => {});
+        const producer = setInterval(() => {}, 1000);
+        return new Promise((_resolve, reject) => {
+          const stop = () => {
+            clearInterval(producer);
+            process.send({ producerStopped: true });
+            reject(options.signal.reason);
+          };
+          options.signal.addEventListener('abort', stop, { once: true });
+          if (options.signal.aborted) {
+            stop();
+          }
+        });
       });
     };
   const dependencyUrl = new URL('../scripts/use-module.mjs', import.meta.url);
@@ -59,8 +69,9 @@ if (process.argv[2] === '--worker') {
         Promise.resolve({ makeConfig: () => configuration }),
     },
   });
-  const { runDeployCli } = await import('../scripts/deploy.mjs');
-  await runDeployCli(['deploy']);
+  const { main } = await import('../scripts/deploy.mjs');
+  process.exitCode = await main(['deploy']);
+  process.disconnect();
 } else {
   await withQaCleanup(async (scope, signal) => {
     const directory = await realpath(
@@ -70,61 +81,75 @@ if (process.argv[2] === '--worker') {
       join(directory, 'package.json'),
       '{"name":"self-authored-qa","version":"0.0.0"}'
     );
-    const child = spawn(
-      process.execPath,
-      [
-        '--experimental-test-module-mocks',
-        fileURLToPath(import.meta.url),
-        '--worker',
-        directory,
-      ],
-      { cwd: directory, signal, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] }
-    );
-    const stopped = new Promise((done) => {
-      child.once('error', () => {});
-      child.once('close', (code, receivedSignal) =>
-        done({ code, signal: receivedSignal })
+    for (const sentSignal of ['SIGINT', 'SIGTERM']) {
+      const child = spawn(
+        process.execPath,
+        [
+          '--experimental-test-module-mocks',
+          fileURLToPath(import.meta.url),
+          '--worker',
+          directory,
+        ],
+        {
+          cwd: directory,
+          signal,
+          stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+        }
       );
-    });
-    scope.defer('owned signal worker', async () => {
-      if (child.exitCode === null && child.signalCode === null) {
+      const stopped = new Promise((done) => {
+        child.once('error', () => {});
+        child.once('close', (code, receivedSignal) =>
+          done({ code, signal: receivedSignal })
+        );
+      });
+      scope.defer('owned signal worker', async () => {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill('SIGKILL');
+          await stopped;
+        }
+      });
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('Controlled deploy did not reach its lock.')),
+          10_000
+        );
+        child.once('message', (message) => {
+          clearTimeout(timer);
+          assert.equal(message.operationLockAcquired, true);
+          resolve();
+        });
+        child.once('close', () => {
+          clearTimeout(timer);
+          reject(
+            new Error('Controlled deploy exited before lock acquisition.')
+          );
+        });
+      });
+      if (process.platform === 'win32') {
         child.kill('SIGKILL');
         await stopped;
+        continue;
       }
-    });
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error('Controlled deploy did not reach its lock.')),
-        10_000
+      child.kill(sentSignal);
+      const closed = await stopped;
+      assert.equal(closed.signal, null);
+      assert.equal(closed.code, sentSignal === 'SIGINT' ? 130 : 143);
+      const operationLockReleased = !(await exists(
+        join(directory, '.deploy', 'operation.lock')
+      ));
+      console.log(
+        JSON.stringify({
+          selfAuthoredOnly: true,
+          actualDeployCliInvoked: true,
+          workerStopped: true,
+          operationLockReleased,
+          noNetworkOrDocker: true,
+        })
       );
-      child.once('message', (message) => {
-        clearTimeout(timer);
-        assert.equal(message.operationLockAcquired, true);
-        resolve();
-      });
-      child.once('close', () => {
-        clearTimeout(timer);
-        reject(new Error('Controlled deploy exited before lock acquisition.'));
-      });
-    });
-    child.kill('SIGTERM');
-    const closed = await stopped;
-    assert.equal(closed.signal, 'SIGTERM');
-    const operationLockReleased = !(await exists(
-      join(directory, '.deploy', 'operation.lock')
-    ));
-    console.log(
-      JSON.stringify({
-        selfAuthoredOnly: true,
-        actualDeployCliInvoked: true,
-        workerStopped: true,
+      assert(
         operationLockReleased,
-        noNetworkOrDocker: true,
-      })
-    );
-    assert(
-      operationLockReleased,
-      'Interrupted controlled deploy with no external resources must release its owned operation lock.'
-    );
+        'Interrupted controlled deploy with no external resources must release its owned operation lock.'
+      );
+    }
   });
 }

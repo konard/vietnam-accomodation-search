@@ -16,18 +16,33 @@ export function isKnownQaMessage(text = '') {
     /(?:^|\n)qa-(?:cleanup|conversation|real-source|native|drill|capability)-[0-9a-f]{8,16}(?:-|\n|$)/u.test(
       text
     ) ||
-    /(?:real-source|native)-e2e-[0-9a-f]{16}|Self-authored QA rental|E2E synthetic offer [0-9a-f]{10}|cutover-[0-9a-f]{12}/u.test(
+    /(?:real-source|native)-e2e-[0-9a-f]{16}|Self-authored QA rental|E2E synthetic offer [0-9a-f]{10}|cutover-[0-9a-f]{12}|^Preset drill-[0-9a-f]{8}-\d+ does not exist\.\nUsage: \/preset /u.test(
       text
     )
   );
 }
 
 export class QaOwnedMessages {
-  constructor({ marker, baseline = 0, journal }) {
+  constructor({ marker, baseline = 0, journal, replyProof }) {
     assert(/^qa-[a-z0-9-]{8,100}$/u.test(marker), 'Unique QA marker required.');
     this.marker = marker;
     this.baseline = baseline;
     this.journal = journal;
+    if (replyProof) {
+      assert(
+        /^[a-f0-9]{8}$/u.test(replyProof.run) &&
+          /^\d+$/u.test(String(replyProof.senderId)) &&
+          Number.isSafeInteger(replyProof.startedAt) &&
+          Number.isSafeInteger(replyProof.endedAt) &&
+          replyProof.endedAt >= replyProof.startedAt &&
+          Array.isArray(replyProof.sequences) &&
+          replyProof.sequences.every(
+            (value) => Number.isSafeInteger(value) && value > 0
+          ),
+        'Exact private reply evidence required.'
+      );
+    }
+    this.replyProof = replyProof;
     this.ids = new Set();
     // Bot API chat-local IDs and the MTProto driver's account-global IDs
     // are different namespaces. Never use Bot API IDs for driver deletion.
@@ -42,6 +57,7 @@ export class QaOwnedMessages {
         baseline: this.baseline,
         ids: [...this.ids],
         botIds: [...this.botIds],
+        replyProof: this.replyProof,
       });
       this.writes = this.writes
         .catch(() => {})
@@ -66,7 +82,28 @@ export class QaOwnedMessages {
     return (
       exists(message) &&
       idOf(message) > this.baseline &&
-      (this.ids.has(idOf(message)) || textOf(message).includes(this.marker))
+      (this.ids.has(idOf(message)) ||
+        textOf(message).includes(this.marker) ||
+        this.provesReply(message))
+    );
+  }
+
+  provesReply(message) {
+    const match =
+      /^Preset drill-([0-9a-f]{8})-(\d+) does not exist\.\nUsage: \/preset /u.exec(
+        textOf(message)
+      );
+    const proof = this.replyProof;
+    const sender = String(message?.fromId?.userId ?? message?.from?.id ?? '');
+    const date = Number(message?.date);
+    return Boolean(
+      match &&
+      proof &&
+      match[1] === proof.run &&
+      String(proof.senderId) === sender &&
+      date >= proof.startedAt &&
+      date <= proof.endedAt &&
+      proof.sequences.includes(Number(match[2]))
     );
   }
 
@@ -121,7 +158,13 @@ export class QaOwnedMessages {
       if (!found.length) {
         // A successful send can be absent from history only if already deleted;
         // the independent, fully paged reader is the acceptance oracle.
-        return { pass: true, deleted, leftovers: 0 };
+        const ambiguous = (await read()).filter(
+          (message) =>
+            idOf(message) > this.baseline &&
+            isKnownQaMessage(textOf(message)) &&
+            !this.owns(message)
+        ).length;
+        return { pass: ambiguous === 0, deleted, leftovers: ambiguous };
       }
       await this.record(found);
       for (let index = 0; index < found.length; index += 100) {
@@ -134,9 +177,14 @@ export class QaOwnedMessages {
         }
       }
     }
-    const leftovers = (await read()).filter((message) =>
-      this.owns(message)
-    ).length;
+    const leftovers =
+      (await read()).filter((message) => this.owns(message)).length +
+      (await read()).filter(
+        (message) =>
+          idOf(message) > this.baseline &&
+          isKnownQaMessage(textOf(message)) &&
+          !this.owns(message)
+      ).length;
     return { pass: leftovers === 0, deleted, leftovers };
   }
 

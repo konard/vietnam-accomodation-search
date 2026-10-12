@@ -40,15 +40,26 @@ import {
 } from './deploy-state.mjs';
 import { loadCommandStream, loadLinoArguments } from './use-module.mjs';
 import { waitForReadiness } from './deploy-readiness.mjs';
+import {
+  acquireOperationLock,
+  recoverOperationLock,
+} from './owned-operation-lock.mjs';
 export { waitForReadiness } from './deploy-readiness.mjs';
 
 let command;
 let makeConfig;
 // The step and command in progress, reported when a deploy fails.
 const progress = {};
-const ACTIONS = new Set(['deploy', 'logs', 'rollback', 'status', 'stop']);
+const ACTIONS = new Set([
+  'deploy',
+  'logs',
+  'rollback',
+  'status',
+  'stop',
+  'recover-lock',
+]);
 const USAGE =
-  'Usage: deploy.mjs deploy|status|logs|stop|rollback [--restore-snapshot] [options]';
+  'Usage: deploy.mjs deploy|status|logs|stop|rollback|recover-lock [--restore-snapshot] [options]';
 const STATE_ROOT = '.deploy';
 
 async function loadDependencies() {
@@ -81,6 +92,7 @@ function configuration(argv) {
           default: getenv('COMPOSE_FILE', 'compose.yaml'),
           type: 'string',
         })
+        .option('recovery-compose-file', { type: 'string' })
         .option('image', { type: 'string' })
         .option('move-data-directory', { default: false, type: 'boolean' })
         .option('allow-empty-data-directory', {
@@ -91,6 +103,8 @@ function configuration(argv) {
         .option('settle-seconds', { default: 30, type: 'number' })
         .option('ready-timeout', { default: 300, type: 'number' })
         .option('restore-snapshot', { default: false, type: 'boolean' })
+        .option('recovery-file', { type: 'string' })
+        .option('producers-stopped', { default: false, type: 'boolean' })
         .option('project-name', {
           default: getenv('COMPOSE_PROJECT_NAME', DEFAULT_PROJECT),
           type: 'string',
@@ -140,7 +154,11 @@ function runner(config, image, { capture = false } = {}) {
   if (image) {
     env.APP_IMAGE = image;
   }
-  return command(commandOptions({ env, quiet: capture }));
+  return command(
+    Object.assign(commandOptions({ env, quiet: capture }), {
+      signal: progress.signal,
+    })
+  );
 }
 
 export function assertImageIdentity(labels, { buildDate, revision, version }) {
@@ -220,7 +238,10 @@ async function waitHealthy(config, image) {
   }
   const run = runner(config, image, { capture: true });
   const result = await waitForReadiness({
+    signal: progress.signal,
     timeoutSeconds: config.readyTimeout,
+    observe: (observation) =>
+      appendDeployLog(progress.logPath, { phase: 'readiness', ...observation }),
     inspect: async () => {
       const state = JSON.parse(
         await text(
@@ -330,6 +351,7 @@ async function settleCandidate(config, image, since) {
   const container = await currentContainer(config, image);
   const inspect = command(commandOptions({ quiet: true }));
   await observeSettle({
+    signal: progress.signal,
     durationMs: config.settleSeconds * 1000,
     sample: async () =>
       parseSettleSample(
@@ -351,16 +373,21 @@ async function rollbackTo(
   snapshot,
   dataDirectory = config.dataDirectory
 ) {
+  const recoveryConfig = {
+    ...config,
+    dataDirectory,
+    composeFile: config.recoveryComposeFile || config.composeFile,
+  };
   const run = runner(config, image);
   await run`docker compose -f ${config.composeFile} -p ${config.projectName} stop -t 30 app`;
   if (snapshot) {
     await restoreState(dataDirectory, snapshot);
   }
   await runner(
-    { ...config, dataDirectory },
+    recoveryConfig,
     image
-  )`docker compose -f ${config.composeFile} -p ${config.projectName} up -d --no-build --pull never app`;
-  await waitHealthy(config, image);
+  )`docker compose -f ${recoveryConfig.composeFile} -p ${config.projectName} up -d --no-build --pull never app`;
+  await waitHealthy(recoveryConfig, image);
 }
 
 // A recovery runs under its own step name. When it succeeds, the failure is
@@ -368,7 +395,21 @@ async function rollbackTo(
 async function recover(error, { action, prefix, recovery, step }) {
   const failedStep = progress.step;
   progress.step = step;
-  await action();
+  // Join cancelled producers before starting recovery under the same lock.
+  await Promise.allSettled([...(progress.commands || [])]);
+  const interrupted = progress.signal;
+  if (interrupted?.aborted) {
+    progress.signal = undefined;
+  }
+  try {
+    await action();
+  } catch (failure) {
+    throw new AggregateError([error, failure], failure.message, {
+      cause: failure,
+    });
+  } finally {
+    progress.signal = interrupted;
+  }
   return recoveredFailure(error, { prefix, recovery, step: failedStep });
 }
 
@@ -574,6 +615,32 @@ function createdStateDirectories(projectDirectory, firstCreated) {
 }
 
 export async function runDeployCli(argv = process.argv.slice(2)) {
+  const controller = new AbortController();
+  const interrupt = (name) => {
+    process.exitCode = name === 'SIGINT' ? 130 : 143;
+    controller.abort(
+      Object.assign(new Error('Deployment interrupted.'), {
+        name: 'AbortError',
+      })
+    );
+  };
+  const onInt = () => interrupt('SIGINT');
+  const onTerm = () => interrupt('SIGTERM');
+  process.on('SIGINT', onInt);
+  process.on('SIGTERM', onTerm);
+  progress.signal = controller.signal;
+  progress.commands = new Set();
+  try {
+    return await runDeployOperation(argv);
+  } finally {
+    await Promise.allSettled([...progress.commands]);
+    process.removeListener('SIGINT', onInt);
+    process.removeListener('SIGTERM', onTerm);
+    progress.signal = undefined;
+  }
+}
+
+async function runDeployOperation(argv) {
   progress.step = 'reading options';
   progress.removed = [];
   const [action = 'status'] = argv;
@@ -582,6 +649,13 @@ export async function runDeployCli(argv = process.argv.slice(2)) {
   }
   await loadDependencies();
   const config = configuration(argv.slice(1));
+  if (action === 'recover-lock') {
+    return recoverOperationLock(
+      join(STATE_ROOT, 'operation.lock'),
+      config.recoveryFile,
+      { producersStopped: config.producersStopped }
+    );
+  }
   if (!Number.isFinite(config.readyTimeout) || config.readyTimeout <= 0) {
     throw new RangeError(
       '--ready-timeout must be a positive number of seconds.'
@@ -645,16 +719,11 @@ async function runAction(action, config, statePath, lockPath, residue) {
     return;
   }
 
-  try {
-    await mkdir(lockPath);
-  } catch (error) {
-    if (error.code === 'EEXIST') {
-      throw new Error('Another deployment operation is already running.', {
-        cause: error,
-      });
-    }
-    throw error;
-  }
+  progress.signal?.throwIfAborted();
+  const lock = await acquireOperationLock(lockPath, {
+    projectName: config.projectName,
+    action,
+  });
   try {
     if (action === 'deploy') {
       await deploy(config, statePath);
@@ -681,7 +750,8 @@ async function runAction(action, config, statePath, lockPath, residue) {
       await run`docker compose -f ${config.composeFile} -p ${config.projectName} stop -t 30 app`;
     }
   } finally {
-    await rm(lockPath, { force: true, recursive: true });
+    await Promise.allSettled([...progress.commands]);
+    await lock.release();
   }
 }
 
@@ -716,7 +786,9 @@ export async function main(
     } catch (logError) {
       log(`The deploy log ${path} could not be written: ${logError.message}`);
     }
-    return 1;
+    return process.exitCode === 130 || process.exitCode === 143
+      ? process.exitCode
+      : 1;
   }
 }
 

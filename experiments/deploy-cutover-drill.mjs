@@ -200,6 +200,9 @@ function deployArguments(options, transition) {
     transition === 'unhealthy-candidate'
       ? options.unhealthyCompose
       : options.composeFile,
+    ...(transition === 'unhealthy-candidate'
+      ? ['--recovery-compose-file', options.composeFile]
+      : []),
     ...(image ? ['--image', image] : []),
   ];
 }
@@ -270,6 +273,8 @@ async function sendMarkers(state, sent, stop) {
     await state.ledger.save();
     const sequence = state.nextSequence;
     state.nextSequence += 1;
+    state.ledger.replyProof.sequences.push(sequence);
+    await state.ledger.save();
     const message = await withDeadline(
       () =>
         state.client.sendMessage(state.target, {
@@ -452,6 +457,8 @@ async function cleanup(state, options) {
     const rescued = await options.owned.cleanup();
     result.project = rescued.pass;
   }
+  state.ledger.replyProof.endedAt = Math.floor(Date.now() / 1000);
+  await state.ledger.save();
   try {
     const verified = await state.ledger.cleanup({
       read: () => messagesSince(state, state.ledger.baseline),
@@ -616,6 +623,13 @@ async function runOwnedDrill(options, environment, scope, signal) {
     marker,
     baseline: state.baselineMessageId,
     journal: join(projectDirectory, 'driver-ownership.json'),
+    replyProof: {
+      run,
+      senderId: botIdentity.id,
+      startedAt: Math.floor(Date.now() / 1000),
+      endedAt: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
+      sequences: [],
+    },
   });
   await state.ledger.save();
   state.cleanup = onceQaCleanup(() => cleanup(state, drill));

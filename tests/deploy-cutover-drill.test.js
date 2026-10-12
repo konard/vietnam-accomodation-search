@@ -217,13 +217,11 @@ describe('deploy cutover drill (#57)', () => {
     expect(countDuplicateDeliveries(['offer a', 'offer b', 'offer a'])).toBe(1);
   });
 
-  it('extends the production service with a check only the prior image passes', () => {
+  it('extends the production service with a candidate-only failure fixture', () => {
     const text = unhealthyComposeFile('../../compose.yaml');
     expect(text).toContain('file: "../../compose.yaml"');
     expect(text).toContain('service: app');
-    expect(text).toContain(
-      "if(!'${APP_IMAGE}'.includes(':rollback-'))process.exit(1);"
-    );
+    expect(text).toContain('process.exit(1)');
     expect(text).toContain('retries: 2');
   });
 

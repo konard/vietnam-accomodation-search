@@ -4,6 +4,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 
@@ -246,6 +247,40 @@ function digest(value) {
     .digest('hex');
 }
 
+function recordProof(records) {
+  return Object.fromEntries(
+    records.map((record) => [digest(record.id), digest(record)])
+  );
+}
+
+async function mediaProof(directory, prefix = '') {
+  const result = {};
+  const entries = await readdir(directory, { withFileTypes: true }).catch(
+    (error) => {
+      if (error.code === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+  );
+  for (const entry of entries) {
+    const name = `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      Object.assign(
+        result,
+        await mediaProof(join(directory, entry.name), name)
+      );
+    } else {
+      const hash = createHash('sha256');
+      for await (const bytes of createReadStream(join(directory, entry.name))) {
+        hash.update(bytes);
+      }
+      result[digest(name)] = hash.digest('hex');
+    }
+  }
+  return result;
+}
+
 async function countFiles(directory) {
   let entries;
   try {
@@ -278,6 +313,41 @@ async function countChunkProjectionFiles(dataDirectory) {
   return count;
 }
 
+async function collectionBinaryFiles(directory, kind) {
+  const countRoot = async (root) => {
+    const entries = await readdir(root).catch((error) => {
+      if (error.code === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    });
+    let total = 0;
+    for (const name of entries.filter(
+      (name) => name.startsWith(`${kind}-`) || name === `${kind}.shards`
+    )) {
+      total += await countFiles(join(root, name)).catch((error) => {
+        if (error.code === 'ENOTDIR') {
+          return 1;
+        }
+        throw error;
+      });
+    }
+    return total;
+  };
+  let count = await countRoot(join(directory, '.binary'));
+  const chunks = join(directory, `${kind}.chunks`);
+  const entries = await readdir(chunks).catch((error) => {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  });
+  for (const name of entries) {
+    count += await countRoot(join(chunks, name, '.binary'));
+  }
+  return count;
+}
+
 /**
  * Digest the decoded records of every canonical collection, so a text
  * migration that preserves the records keeps the fingerprint.
@@ -305,6 +375,8 @@ export async function stateFingerprint(dataDirectory) {
           )
         ),
         records: offers.length,
+        protectedRecords: recordProof(offers),
+        binaryPresent: (await collectionBinaryFiles(dataDirectory, kind)) > 0,
       };
       continue;
     }
@@ -326,6 +398,8 @@ export async function stateFingerprint(dataDirectory) {
         )
       ),
       records: records.length,
+      protectedRecords: recordProof(records),
+      binaryPresent: (await collectionBinaryFiles(dataDirectory, kind)) > 0,
     };
   }
   return {
@@ -335,6 +409,7 @@ export async function stateFingerprint(dataDirectory) {
     collections,
     dataSchema: await readDataSchemaVersion(dataDirectory),
     mediaFiles: await countFiles(join(dataDirectory, 'media')),
+    mediaProof: await mediaProof(join(dataDirectory, 'media')),
   };
 }
 
@@ -343,32 +418,49 @@ export async function stateFingerprint(dataDirectory) {
  * projection that did not come back.
  */
 export function compareFingerprints(before, after) {
-  const names = new Set([
-    ...Object.keys(before.collections),
-    ...Object.keys(after.collections),
+  const names = Object.keys(before.collections);
+  // Progress is mutable during a live handoff. Protected user/cache records
+  // use subset preservation: additions cannot hide a deletion or mutation.
+  const progress = new Set([
+    'telegram-ingestion-checkpoints',
+    'traces',
+    'search-traces',
+    'browser-domain-cooldowns',
   ]);
   return {
-    binaryMirrorMissing: before.binaryFiles > 0 && after.binaryFiles === 0,
-    changedCollections: [...names]
-      .filter(
+    binaryMirrorMissing:
+      (before.binaryFiles > 0 && after.binaryFiles === 0) ||
+      names.some(
         (name) =>
-          before.collections[name]?.digest !== after.collections[name]?.digest
-      )
+          before.collections[name].binaryPresent &&
+          !after.collections[name]?.binaryPresent
+      ),
+    changedCollections: names
+      .filter((name) => {
+        if (progress.has(name)) {
+          return false;
+        }
+        const old = before.collections[name];
+        const current = after.collections[name];
+        if (old.protectedRecords) {
+          return Object.entries(old.protectedRecords).some(
+            ([id, hash]) => current?.protectedRecords?.[id] !== hash
+          );
+        }
+        return old.digest !== current?.digest;
+      })
       .sort(),
-    mediaFilesLost: Math.max(0, before.mediaFiles - after.mediaFiles),
+    mediaFilesLost: before.mediaProof
+      ? Object.entries(before.mediaProof).filter(
+          ([id, hash]) => after.mediaProof?.[id] !== hash
+        ).length
+      : Math.max(0, before.mediaFiles - after.mediaFiles),
   };
 }
 
-/**
- * The unhealthy-candidate transition deploys with a Compose file that extends
- * the production service and replaces its health check. Compose interpolates
- * APP_IMAGE, which the deploy helper sets per container: every image fails
- * except the helper's `:rollback-` tag of the prior image, so the candidate is
- * rejected and the restored prior image becomes healthy.
- */
+/** The deliberately failing candidate uses a separate normal recovery file. */
 export function unhealthyComposeFile(baseComposeFile) {
-  const check =
-    "if(!'${APP_IMAGE}'.includes(':rollback-'))process.exit(1);fetch('http://127.0.0.1:8080/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))";
+  const check = 'process.exit(1)';
   return [
     'services:',
     '  app:',
