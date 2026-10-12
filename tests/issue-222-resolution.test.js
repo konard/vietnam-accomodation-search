@@ -179,3 +179,49 @@ it('keeps live resolution failures primary when their incomplete checkpoint cann
     ]
   );
 });
+
+it('persists live resolution evidence when no checkpoint collection remains', async () => {
+  const failure = Object.assign(new Error('private live source'), {
+    code: 'ECONNRESET',
+    qaSourceId: 'synthetic',
+    qaPhase: 'source-resolution',
+  });
+  const collections = new Map();
+  let resolutionFailed = false;
+  let destroyed = false;
+  const service = new TelegramIngestionService({
+    store: {
+      loadRecords: async (kind) =>
+        kind === 'telegram-ingestion-checkpoints' && resolutionFailed
+          ? collections.get(kind)
+          : collections.get(kind) || [],
+      deleteOffersByMessages: async () => {},
+      saveOffers: async () => {},
+      saveRecords: async (kind, records) => collections.set(kind, records),
+    },
+    provider: {
+      async *history() {},
+      liveUpdates: async () => {
+        resolutionFailed = true;
+        collections.delete('telegram-ingestion-checkpoints');
+        throw failure;
+      },
+      destroy: async () => {
+        destroyed = true;
+      },
+    },
+  });
+  await assert.rejects(service.start([{ id: 'synthetic' }]), (error) => {
+    assert.equal(error, failure);
+    return true;
+  });
+  assert.equal(destroyed, true);
+  const [checkpoint] = collections.get('telegram-ingestion-checkpoints');
+  assert.equal(checkpoint.id, 'synthetic');
+  assert.equal(checkpoint.complete, false);
+  assert.equal(checkpoint.state, 'degraded');
+  assert.deepEqual(checkpoint.failure, {
+    phase: 'source-resolution',
+    category: 'transport',
+  });
+});

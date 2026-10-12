@@ -227,14 +227,21 @@ Options: longer test timeouts, polling forever, or a bounded helper plus a suite
 
 The initial Checks and release run `38289786339` was created after initial commit `8bc6339` and failed its changeset requirement; the initial Security run `38289786227` passed. The full failed log was retained locally in `ci-logs/checks-38289786339.log`: line 5778 reports “No changeset found in this PR”; line 15155 identifies `changeset-check` as the failed job. A patch changeset is included. Latest-head checks must be verified after pushing; old green checks cannot validate later commits.
 
+The next Checks and release run [38302963384](https://github.com/konard/vietnam-accomodation-search/actions/runs/38302963384), created at 2026-10-12T20:14:58Z for `8f835b8`, reproduced two platform-specific gaps. Its full 38,454-line log is retained in `ci-logs/checks-38302963384.log`, with separate failed-job logs for focused review.
+
+- Windows Bun failed its lifecycle cleanup probe before starting the suite: `ci-logs/bun-windows-38302963384.log` lines 266–268 show the valid 15-digit `.6e415a4c2f3d8da-1.node-gyp` cache rejected as residue. Bun's own lifecycle tests specify bounded variable-width hexadecimal components, rather than a fixed 16-digit prefix. The cleanup matcher now follows that format only within the suite-owned temporary directory; regression cases retain rejection of malformed, excessive-width and unrelated fixture names. [Bun maintainer lifecycle tests](https://github.com/oven-sh/bun/blob/7583003d82122bbfa5e06dcd688d8c2d1533fa22/test/cli/install/bun-install-lifecycle-scripts.test.ts#L295)
+- Ubuntu Node passed all 1,568 tests but its exact coverage gate reported the missing-checkpoint fallback at `src/telegram-ingestion.js:1065`: `ci-logs/node-ubuntu-38302963384.log` lines 4823 and 4878. A deterministic live-resolution test removes the checkpoint collection before failure, verifies durable incomplete phase/category evidence, and checks that the provider's original error and cleanup are preserved. It passes on Node, Bun and Deno. Product behavior and the 100% coverage threshold are unchanged.
+
+The same run's required real-clink 1.0.0 job passed both its 1,570-test suite and 100% coverage run; no local Rust build was necessary. Latest-head CI must repeat that validation after the two fixes.
+
 ## Local verification
 
-- Final `npm run test:coverage`: 1,568 tests passed, zero failed, 100% product line coverage. The owned temporary and recovery audits were clean.
+- Full `npm run test:coverage` at `8f835b8`: 1,568 tests passed, zero failed, 100% product line coverage. The owned temporary and recovery audits were clean. The subsequent CI portability regressions also passed in focused Node, Bun and Deno runs.
 - Full `npm run test:cleanup`: 1,551 tests passed before the final boundary controls. Full Bun: 1,552 passed, zero failed, with clean owned cleanup. Full Deno: 1,437 passed, zero failed, 11 permission-specific cases ignored by its read-only invocation. All subsequent boundary/context/concurrency regressions passed in focused Node, Bun and Deno runs; the final full Node coverage run includes them.
 - `npm run check`, JavaScript syntax checks, file line limits and `GITHUB_BASE_REF=main node scripts/validate-changeset.mjs` passed. Duplication remained 4.89%, within the existing gate.
 - The offline Chromium probe passed active, expired, rented and unknown fixtures with publication/expiry evidence and misleading recommendations. Its network was blocked and the browser closed.
 - The finite import scaling probe passed 40 and 400 synthetic records at the same 128 MiB heap limit; no production workload or private count is disclosed. Actual CLI subprocess probes passed SIGINT and SIGTERM exit/lock-release checks, and owned-process watchdog probes passed.
-- No local `clink` executable was available. Required production-clink and multi-platform/runtime validation remain the latest-head CI jobs; no memory-heavy local Rust build was attempted in the 2.92 GiB container.
+- No local `clink` executable was available. Required production-clink passed at `8f835b8`; the latest-head CI jobs remain authoritative for subsequent changes and multi-platform validation. No memory-heavy local Rust build was attempted in the 2.92 GiB container.
 
 The originally reproduced failing tests were kept as regressions, including rental quote/context controls, additive-state preservation, actual bot API attachment, index-order integrity, consent-wall rejection and concurrent terminal-status publication. Recovery and account-dependent claims remain limited as stated below.
 
