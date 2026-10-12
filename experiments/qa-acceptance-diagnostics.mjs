@@ -1,4 +1,9 @@
 // Only finite metadata crosses the public/private diagnostic boundary.
+import {
+  telegramErrorField as field,
+  sdkFloodWaitSeconds,
+} from '../src/telegram-error-fields.js';
+
 const PHASES = new Set([
   'setup',
   'source-selection',
@@ -70,7 +75,7 @@ const CODE_CATEGORIES = new Map([
 ]);
 
 function category(error, code) {
-  if (error?.name === 'AggregateError') {
+  if (field(error, 'name') === 'AggregateError') {
     return 'cleanup-failure';
   }
   if (code?.startsWith('QA_')) {
@@ -85,13 +90,14 @@ function category(error, code) {
   if (code?.startsWith('HISTORY_')) {
     return 'evidence-invalid';
   }
-  if (error?.name === 'AbortError') {
+  if (field(error, 'name') === 'AbortError') {
     return 'interrupted';
   }
   // Read bounded text only to classify; never retain or print it.
+  const message = field(error, 'message');
   if (
     /ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|timeout|timed out|disconnect|connection closed/iu.test(
-      `${String(code)} ${String(error?.message || '').slice(0, 2048)}`
+      `${code || ''} ${typeof message === 'string' ? message.slice(0, 2048) : ''}`
     )
   ) {
     return 'transport-failure';
@@ -100,24 +106,41 @@ function category(error, code) {
 }
 
 function safeCode(error) {
-  const candidate = error.code ?? error.errorMessage;
-  return CODES.has(candidate)
-    ? candidate
-    : /^FLOOD_WAIT(?:_\d{1,6})?$/u.test(String(candidate || ''))
-      ? 'FLOOD_WAIT'
-      : undefined;
+  if (sdkFloodWaitSeconds(error) !== undefined) {
+    return 'FLOOD_WAIT';
+  }
+  for (const candidate of [
+    field(error, 'code'),
+    field(error, 'errorMessage'),
+  ]) {
+    if (typeof candidate !== 'string') {
+      continue;
+    }
+    if (CODES.has(candidate)) {
+      return candidate;
+    }
+    if (/^FLOOD_WAIT(?:_\d{1,6})?$/u.test(candidate)) {
+      return 'FLOOD_WAIT';
+    }
+  }
+  return undefined;
 }
 
 function nestedCauses(error) {
-  if (Array.isArray(error.errors)) {
-    return error.errors;
+  const errors = field(error, 'errors');
+  if (Array.isArray(errors)) {
+    return Array.from(
+      { length: Math.min(field(errors, 'length'), 4) },
+      (_, index) => field(errors, index)
+    );
   }
-  return error.cause ? [error.cause] : [];
+  const cause = field(error, 'cause');
+  return cause ? [cause] : [];
 }
 
 export function safeAcceptanceFailure(
   error,
-  phase = error?.qaPhase,
+  phase = field(error, 'qaPhase'),
   depth = 0,
   seen = new Set()
 ) {
@@ -126,7 +149,8 @@ export function safeAcceptanceFailure(
   }
   seen.add(error);
   const code = safeCode(error);
-  const type = error.constructor?.name || error.name;
+  const type =
+    field(field(error, 'constructor'), 'name') || field(error, 'name');
   const summary = {
     type: TYPES.has(type) ? type : 'Error',
     phase: PHASES.has(phase) ? phase : 'unknown',
@@ -138,7 +162,12 @@ export function safeAcceptanceFailure(
     summary.causes = causes
       .slice(0, 4)
       .map((cause) =>
-        safeAcceptanceFailure(cause, cause?.qaPhase || phase, depth + 1, seen)
+        safeAcceptanceFailure(
+          cause,
+          field(cause, 'qaPhase') || phase,
+          depth + 1,
+          seen
+        )
       );
   }
   return summary;
