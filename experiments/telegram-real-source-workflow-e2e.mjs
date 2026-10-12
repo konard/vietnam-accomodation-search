@@ -26,7 +26,7 @@ import { runClink } from '../src/link-cli-mirror.js';
 import { createMtcuteClient } from '../src/telegram-user.js';
 import { assertManualLocalRun } from './telegram-accommodation-audit-lib.mjs';
 
-import { withQaCleanup } from './qa-cleanup.mjs';
+import { qaRecoveryDirectory, withQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages } from './qa-owned-messages.mjs';
 import {
   getBotIdentity,
@@ -443,6 +443,10 @@ async function runOwned(paths, scope, signal) {
   let observer;
   let peer;
   let ledger;
+  const recoveryDirectory = await qaRecoveryDirectory(
+    scope,
+    'vac-real-source-message-recovery-'
+  );
   scope.defer('real-source resources and conversation', () =>
     cleanup({ ingestion, observer, peer, ledger, bots, result })
   );
@@ -464,7 +468,7 @@ async function runOwned(paths, scope, signal) {
     ledger = new QaOwnedMessages({
       marker,
       baseline: latest[0]?.id || 0,
-      journal: resolve(paths.dataDirectory, 'message-ownership.json'),
+      journal: resolve(recoveryDirectory, 'message-ownership.json'),
     });
     await ledger.save();
     result.phase = 'native-ingestion';

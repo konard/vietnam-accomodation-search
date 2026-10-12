@@ -69,7 +69,10 @@ export function capacityBootstrapDaemon(
       return `Filesystem 1024-blocks Used Available Capacity Mounted on\noverlay 50000000 1000000 ${available} 2% /\n`;
     }
     if (operation === 'ps') {
-      return owned && args.includes(`label=${token}`) ? 'owned-fixture' : '';
+      return owned &&
+        (!args.includes('--filter') || args.includes(`label=${token}`))
+        ? 'owned-fixture'
+        : '';
     }
     if (operation === 'rm') {
       owned = false;

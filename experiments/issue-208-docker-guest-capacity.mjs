@@ -2,10 +2,9 @@
 // Any newly acquired tiny image is journalled and removed by the existing
 // exact-ownership ledger. This is not macOS Desktop or cutover acceptance.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { withQaCleanup } from './qa-cleanup.mjs';
+import { qaRecoveryDirectory, withQaCleanup } from './qa-cleanup.mjs';
 import { dockerCommand, dockerInventory } from './qa-docker-cleanup.mjs';
 import { prepareDockerCapacityProbe } from './qa-docker-capacity.mjs';
 import {
@@ -19,10 +18,7 @@ const baseline = await dockerInventory();
 let failure;
 for (let attempt = 0; attempt < 2 && !failure; attempt += 1) {
   await withQaCleanup(async (scope, signal) => {
-    const directory = await mkdtemp(join(tmpdir(), 'vac-guest-capacity-'));
-    scope.defer('capacity acceptance directory', () =>
-      scope.cleanupFailed ? undefined : rm(directory, { recursive: true })
-    );
+    const directory = await qaRecoveryDirectory(scope, 'vac-guest-capacity-');
     const lockDirectory = join(directory, 'heavy.lock');
     const paths = await qaDockerStoragePaths(dockerCommand);
     // Desktop supplies this hook itself. Linux explicitly exercises the same

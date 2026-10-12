@@ -1,10 +1,8 @@
 // Disposable audit profiles have a different lifetime from retained evidence.
-import { access, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { access, readdir, readFile, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { onceQaCleanup } from './qa-cleanup.mjs';
+import { onceQaCleanup, qaRecoveryDirectory } from './qa-cleanup.mjs';
 
 const execute = promisify(execFile);
 
@@ -82,10 +80,16 @@ export async function launchQaBrowser(options) {
 export async function acquireQaBrowser(
   scope,
   launch,
-  { signal, temporaryRoot = tmpdir() } = {}
+  { signal, temporaryRoot } = {}
 ) {
   signal?.throwIfAborted();
-  const profile = await mkdtemp(join(temporaryRoot, 'vac-audit-profile-'));
+  // A failed browser close leaves an external producer that can still write
+  // here. Keep its exact profile outside an enclosing runner's disposable root.
+  const profile = await qaRecoveryDirectory(scope, 'vac-audit-profile-', {
+    environment: temporaryRoot
+      ? { ...process.env, VAC_QA_RECOVERY_DIRECTORY: temporaryRoot }
+      : process.env,
+  });
   const resource = {};
   let commander;
   let trace;

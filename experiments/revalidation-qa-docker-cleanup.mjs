@@ -4,10 +4,9 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { withQaCleanup } from './qa-cleanup.mjs';
+import { qaRecoveryDirectory, withQaCleanup } from './qa-cleanup.mjs';
 import {
   dockerCommand as executeDocker,
   dockerInventory,
@@ -110,7 +109,6 @@ if (process.argv[2] === '--hard-kill-worker') {
     'SIGKILL-recovery',
   ]) {
     const modeBaseline = await dockerInventory();
-    const directory = await mkdtemp(join(tmpdir(), 'vac-docker-controls-'));
     const runId = `vac-qa-cleanup-${randomBytes(8).toString('hex')}`;
     let owned;
     const report = { mode };
@@ -118,6 +116,10 @@ if (process.argv[2] === '--hard-kill-worker') {
     try {
       await withQaCleanup(
         async (scope, signal) => {
+          const directory = await qaRecoveryDirectory(
+            scope,
+            'vac-docker-controls-'
+          );
           const guard = await acquireQaStorageGuard(scope, {
             signal,
             paths: await qaDockerStoragePaths(dockerCommand),
@@ -236,10 +238,6 @@ if (process.argv[2] === '--hard-kill-worker') {
         (mode === 'assertion-failure' &&
           error.message === 'QA_INJECTED_ASSERTION_FAILURE') ||
         error.message === `QA interrupted by ${mode}.`;
-    } finally {
-      if (!owned || report.cleanup?.pass) {
-        await rm(directory, { recursive: true, force: true });
-      }
     }
     // The resource ledger's inner baseline includes the capacity helper.
     // Independently verify the complete pre-test inventory after the outer
