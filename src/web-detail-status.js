@@ -102,12 +102,16 @@ export class WebDetailStatusCache {
     const evidence = await fetch();
     signal?.throwIfAborted();
     const record = { id, url, ...detailStatus(evidence, this.now()) };
-    const next = [...records.filter((item) => item.id !== id), record].slice(
-      -1000
-    );
+    const update = (current) =>
+      [...current.filter((item) => item.id !== id), record].slice(-1000);
     if (this.store) {
-      await this.store.saveRecords('web-detail-statuses', next);
+      if (this.store.updateRecords) {
+        await this.store.updateRecords('web-detail-statuses', update);
+      } else {
+        await this.store.saveRecords('web-detail-statuses', update(records));
+      }
     } else {
+      const next = update([...this.memory.values()]);
       this.memory = new Map(next.map((item) => [item.id, item]));
     }
     return record;

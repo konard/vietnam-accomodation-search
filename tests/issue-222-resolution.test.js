@@ -132,3 +132,50 @@ it('retains source resolution evidence from public chat and live subscription fa
     await provider.destroy();
   }
 });
+
+it('keeps live resolution failures primary when their incomplete checkpoint cannot be saved', async () => {
+  const failure = Object.assign(new Error('private live source'), {
+    code: 'CHANNEL_PRIVATE',
+    qaSourceId: 'synthetic',
+    qaPhase: 'source-resolution',
+  });
+  const messages = [];
+  let destroyed = false;
+  const service = new TelegramIngestionService({
+    store: {
+      loadRecords: async () => [],
+      deleteOffersByMessages: async () => {},
+      saveOffers: async () => {},
+      saveRecords: async (kind, records) => {
+        if (
+          kind === 'telegram-ingestion-checkpoints' &&
+          records.some((record) => record.failure)
+        ) {
+          throw new Error('synthetic checkpoint disk failure');
+        }
+      },
+    },
+    provider: {
+      async *history() {},
+      liveUpdates: async () => {
+        throw failure;
+      },
+      destroy: async () => {
+        destroyed = true;
+      },
+    },
+    logger: { debug: (...args) => messages.push(args) },
+  });
+  await assert.rejects(service.start([{ id: 'synthetic' }]), (error) => {
+    assert.equal(error, failure);
+    return true;
+  });
+  assert.equal(destroyed, true);
+  assert.deepEqual(
+    messages.find(([message]) => message.includes('checkpoint')),
+    [
+      'Incomplete source checkpoint could not be persisted',
+      { category: 'checkpoint-persistence-failed' },
+    ]
+  );
+});

@@ -242,3 +242,47 @@ it('retains unknown status at a detail deadline and propagates caller cancellati
     name: 'AbortError',
   });
 });
+
+it('preserves status evidence when different detail requests complete concurrently', async () => {
+  let records = [];
+  const store = {
+    loadRecords: async () => records,
+    saveRecords: async (_kind, next) => {
+      records = next;
+    },
+    updateRecords: async (_kind, update) => {
+      records = update(records);
+    },
+  };
+  for (const persistent of [true, false]) {
+    const cache = new WebDetailStatusCache({
+      store: persistent ? store : undefined,
+    });
+    const releases = [];
+    const operations = ['one', 'two'].map((id) =>
+      cache.inspect(
+        `https://homedy.com/${id}`,
+        () =>
+          new Promise((resolve) =>
+            releases.push(() => resolve({ text: 'Tin đăng đã hết hạn' }))
+          )
+      )
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    releases[0]();
+    await operations[0];
+    releases[1]();
+    await operations[1];
+    assert.equal(persistent ? records.length : cache.memory.size, 2);
+    for (const id of ['one', 'two']) {
+      assert.equal(
+        (
+          await cache.inspect(`https://homedy.com/${id}`, async () => {
+            throw new Error('Cached terminal evidence was lost.');
+          })
+        ).status,
+        'expired'
+      );
+    }
+  }
+});
