@@ -30,9 +30,13 @@ export function parseTelegramOffer(message, options = {}) {
   }
 
   const text = firstPresent(message.text, message.caption, '');
+  const classification = classifyTelegramPost(text, { targetLocation: null });
   if (
-    classifyTelegramPost(text, { targetLocation: null }).reason ===
-    'non-housing-rental'
+    [
+      'non-housing-rental',
+      'informational-market-content',
+      'service-advertisement',
+    ].includes(classification.reason)
   ) {
     return null;
   }

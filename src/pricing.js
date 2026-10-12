@@ -65,7 +65,7 @@ const ADDITIVE_AMOUNT = /(?:[+＋]|(?<!\p{L})plus)\s*$/iu;
 // deposits, extras, vehicle rental offered next to the apartment, and sale
 // prices.
 const FEE_LABEL =
-  /receipt|invoice|total|balance|phone|продаж\p{L}*|for\s+sale|sale\s+price|(?<!\p{L})giá\s+bán|электр\p{L}*|свет(?!\p{L})|вод[аыуе](?!\p{L})|интернет|wi-?fi|вай-?фай|управлен\p{L}*|обслужив\p{L}*|охран\p{L}*|услуг\p{L}*|сервис\p{L}*|депозит|залог|комисси\p{L}*|уборк\p{L}*|клининг|стирк\p{L}*|парков\p{L}*|питом\p{L}*|животн\p{L}*|доплат\p{L}*|газ(?!\p{L})|мусор|коммунал\p{L}*|байк\p{L}*|скутер\p{L}*|автомоб\p{L}*|трансфер|electric\p{L}*|water|internet|management|service|deposit|cleaning|laundry|parking|(?<!\p{L})pets?(?!\p{L})|commission|agency|utilit\p{L}*|motorbike|scooter|(?<!\p{L})bike|transfer|điện|nước|phí|cọc|dọn|giặt|gửi\s*xe|xe\s*máy|押金|管理[費费]|水[電电]/iu;
+  /менеджмент\p{L}*|\bfees?\b|receipt|invoice|total|balance|phone|продаж\p{L}*|for\s+sale|sale\s+price|(?<!\p{L})giá\s+bán|электр\p{L}*|свет(?!\p{L})|вод[аыуе](?!\p{L})|интернет|wi-?fi|вай-?фай|управлен\p{L}*|обслужив\p{L}*|охран\p{L}*|услуг\p{L}*|сервис\p{L}*|депозит|залог|комисси\p{L}*|уборк\p{L}*|клининг|стирк\p{L}*|парков\p{L}*|питом\p{L}*|животн\p{L}*|доплат\p{L}*|газ(?!\p{L})|мусор|коммунал\p{L}*|байк\p{L}*|скутер\p{L}*|автомоб\p{L}*|трансфер|electric\p{L}*|water|internet|management|service|deposit|cleaning|laundry|parking|(?<!\p{L})pets?(?!\p{L})|commission|agency|utilit\p{L}*|motorbike|scooter|(?<!\p{L})bike|transfer|điện|nước|phí|cọc|dọn|giặt|gửi\s*xe|xe\s*máy|押金|管理[費费]|水[電电]/iu;
 // Unit rates such as "4.500 VND / кВт⋅ч" or "100.000 VND / человек".
 const PER_UNIT =
   /^\s?(?:\/|за|per|mỗi|một)?\s?(?:кв?т|kwh|kw(?!\p{L})|số(?!\p{L})|человек\p{L}*|чел(?!\p{L})|person|pax|người|minutes?|mins?|phút|минут\p{L}*|km|км|м³|m³|m3|куб\p{L}*|khối|кг|kg|ký(?!\p{L})|m²|m2|м²|м2)/iu;
@@ -228,6 +228,7 @@ function moneyTokens(clause) {
 function classifyTokens(clause, tokens, section) {
   let previous = section;
   let cursor = 0;
+  // eslint-disable-next-line complexity -- Fee, utility unit and rental scope evidence are independent checks.
   return tokens.map((token, index) => {
     const before = clause.slice(cursor, token.start);
     const label = nearestLabel(before);
@@ -257,7 +258,10 @@ function classifyTokens(clause, tokens, section) {
     return {
       ...token,
       ceiling: CEILING.test(before),
-      fee: fee || PER_UNIT.test(after),
+      fee:
+        fee ||
+        (PER_UNIT.test(after) &&
+          (!rent || /m[²2]|м[²2]|kwh|кв?т|m[³3]/iu.test(after))),
       period: periodIn(after.slice(0, 24)) || periodIn(label),
       rent,
     };
@@ -352,6 +356,9 @@ export function rentalPriceOptions(
   { includeUnlabeled = false } = {}
 ) {
   const lexemes = listingLexemes(text);
+  if (wrappedRentToken(lexemes.text)) {
+    return [];
+  }
   const all = candidates(lexemes.text)
     .filter(({ ceiling, fee }) => !fee && !ceiling)
     .map((option) => ({
@@ -374,6 +381,33 @@ export function rentalPriceOptions(
 export function parsePrice(text = '') {
   const options = rentalPriceOptions(text);
   return options.length ? preferred(options) : null;
+}
+
+// A standalone digit directly before a currency-bearing numeric continuation
+// is ambiguous. Keep it for review; room/floor labels cannot match this shape.
+function wrappedRentToken(text) {
+  return /(?:^|\n)[ \t]*[^\p{L}\p{N}\n]*\d{1,2}[ \t]*\r?\n[ \t]*\d[\d., \t]*[ \t]*(?:VND|VNĐ|USD|EUR|₫)/iu.test(
+    text
+  );
+}
+
+export function rentalQuoteIssues(text, price = parsePrice(text)) {
+  const reasons = [];
+  if (wrappedRentToken(String(text).normalize('NFKC'))) {
+    reasons.push('ambiguous-wrapped-money-token');
+  }
+  if (
+    price?.currency === 'VND' &&
+    price.period === 'month' &&
+    price.amount < 50_000
+  ) {
+    reasons.push('implausible-literal-monthly-VND');
+    const amounts = rentalPriceOptions(text, { includeUnlabeled: true });
+    if (amounts.some((option) => option.amount >= price.amount * 1000)) {
+      reasons.push('contradictory-rent-scales');
+    }
+  }
+  return reasons;
 }
 
 export function convertToVnd(price, rates = {}) {

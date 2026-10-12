@@ -25,7 +25,7 @@ function webOffer(overrides = {}) {
     raw: { text: 'original website record' },
     sourceId: 'booking',
     sourceType: 'web',
-    title: 'Ocean Home',
+    title: 'Ocean Home Studio',
     url: 'https://www.booking.com/hotel/vn/ocean-home.html?aid=123',
     ...overrides,
   };
