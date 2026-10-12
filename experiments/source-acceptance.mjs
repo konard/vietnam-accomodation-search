@@ -6,7 +6,6 @@ import { join, resolve, dirname } from 'node:path';
 import { parseEnv } from 'node:util';
 import { createApplication } from '../src/application.js';
 import { assembleTelegramAlbums } from '../src/telegram-pipeline.js';
-import { quoteBasis } from '../src/value-pricing.js';
 import { buildSearchUrl } from '../src/browser-collector.js';
 import { stableHash } from '../src/utils.js';
 import { durableWrite } from '../src/link-cli-mirror.js';
@@ -23,6 +22,7 @@ import {
   findMaterialOffer,
   nativeParseComplete,
   reviewTemplate,
+  sourcePrediction,
 } from './source-acceptance-lib.mjs';
 
 const args = process.argv.slice(2);
@@ -34,22 +34,6 @@ const option = (name) => {
 const load = async (path) => JSON.parse(await readFile(path, 'utf8'));
 const save = (path, value) =>
   durableWrite(path, `${JSON.stringify(value, null, 2)}\n`);
-
-// eslint-disable-next-line complexity -- Preserve independent unknown values for every reviewed field.
-function prediction(offer) {
-  return {
-    offer: Boolean(offer),
-    bedrooms: offer?.attributes?.bedrooms ?? null,
-    rooms: offer?.attributes?.rooms ?? null,
-    beds: offer?.attributes?.beds ?? null,
-    quoteBasis: offer
-      ? offer.price?.basis ||
-        offer.priceBasis ||
-        quoteBasis(offer.raw?.text || offer.title)
-      : null,
-    period: offer?.price?.period ?? null,
-  };
-}
 
 // eslint-disable-next-line complexity -- Native and browser evidence retain their independent completion flags.
 async function collectObservation(
@@ -152,7 +136,7 @@ async function collectObservation(
   }));
   observation.materials = reviewPack.map(({ material, ...metadata }) => {
     const offer = findMaterialOffer(offers, material, source);
-    return { ...metadata, prediction: prediction(offer) };
+    return { ...metadata, prediction: sourcePrediction(offer) };
   });
   return { ...observation, reviewPack };
 }

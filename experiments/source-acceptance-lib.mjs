@@ -1,6 +1,17 @@
 // QA-only gate. Reviewer independence is an explicit human attestation, not
 // something a program can establish. No parser-generated ground truth.
-const FIELDS = ['offer', 'bedrooms', 'rooms', 'beds', 'quoteBasis', 'period'];
+import { quoteBasis } from '../src/value-pricing.js';
+
+const FIELDS = [
+  'offer',
+  'bedrooms',
+  'rooms',
+  'beds',
+  'billingScope',
+  'quoteBasis',
+  'period',
+  'currency',
+];
 const THRESHOLDS = {
   offer: [0.95, 0.95],
   bedrooms: [0.95, 0.9],
@@ -8,9 +19,39 @@ const THRESHOLDS = {
   beds: [0.95, 0.9],
   quoteBasis: [0.98, 0.9],
   period: [0.98, 0.9],
+  billingScope: [0.98, 0.9],
+  currency: [0.98, 0.9],
 };
 const present = (value) =>
   value !== null && value !== undefined && value !== false;
+
+export function sourcePrediction(offer) {
+  const value = offer || {};
+  const price = value.price || {};
+  const attributes = value.attributes || {};
+  const basis = offer
+    ? price.basis ||
+      value.priceBasis ||
+      quoteBasis(value.raw?.text || value.title)
+    : null;
+  const scope = {
+    property: 'whole-property',
+    bedroom: 'unit',
+    bed: 'unit',
+    room: 'unit',
+    person: 'person',
+  };
+  return {
+    offer: Boolean(offer),
+    bedrooms: attributes.bedrooms ?? null,
+    rooms: attributes.rooms ?? null,
+    beds: attributes.beds ?? null,
+    billingScope: Object.hasOwn(scope, basis) ? scope[basis] : null,
+    quoteBasis: basis,
+    period: price.period ?? null,
+    currency: price.currency ?? null,
+  };
+}
 
 export function nativeParseComplete(checkpoint, reviews) {
   if (checkpoint?.historyComplete !== true || checkpoint.retentionLoss) {
@@ -75,9 +116,16 @@ function fieldMetrics(materials, labels, field) {
   let falsePositive = 0;
   let falseNegative = 0;
   let trueNegative = 0;
+  let positiveLabels = 0;
+  let negativeLabels = 0;
   for (const material of materials) {
     const actual = material.prediction?.[field] ?? null;
     const expected = labels.get(material.id)?.expected?.[field] ?? null;
+    if (present(expected)) {
+      positiveLabels += 1;
+    } else {
+      negativeLabels += 1;
+    }
     if (present(actual) && actual === expected) {
       truePositive += 1;
     } else {
@@ -106,6 +154,8 @@ function fieldMetrics(materials, labels, field) {
     falsePositive,
     falseNegative,
     trueNegative,
+    positiveLabels,
+    negativeLabels,
     precision,
     recall,
     minimumPrecision,
@@ -114,6 +164,8 @@ function fieldMetrics(materials, labels, field) {
     pass:
       precision !== null &&
       recall !== null &&
+      positiveLabels > 0 &&
+      negativeLabels > 0 &&
       precision >= minimumPrecision &&
       recall >= minimumRecall,
   };
