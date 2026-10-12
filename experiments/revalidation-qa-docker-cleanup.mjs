@@ -109,6 +109,7 @@ if (process.argv[2] === '--hard-kill-worker') {
     'SIGINT',
     'SIGKILL-recovery',
   ]) {
+    const modeBaseline = await dockerInventory();
     const directory = await mkdtemp(join(tmpdir(), 'vac-docker-controls-'));
     const runId = `vac-qa-cleanup-${randomBytes(8).toString('hex')}`;
     let owned;
@@ -240,7 +241,23 @@ if (process.argv[2] === '--hard-kill-worker') {
         await rm(directory, { recursive: true, force: true });
       }
     }
-    report.pass = report.expectedOutcome && report.cleanup?.pass;
+    // The resource ledger's inner baseline includes the capacity helper.
+    // Independently verify the complete pre-test inventory after the outer
+    // guard/helper teardown, before acquiring the next mode's resources.
+    report.postGuardBaselineRestored =
+      JSON.stringify(await dockerInventory()) === JSON.stringify(modeBaseline);
+    report.pass =
+      report.expectedOutcome &&
+      report.cleanup?.pass &&
+      report.postGuardBaselineRestored;
+    console.log(
+      JSON.stringify({
+        mode,
+        testResourcesReleased: report.postGuardBaselineRestored,
+        ownedCleanupPass: report.cleanup?.pass,
+        pass: report.pass,
+      })
+    );
     results.push(report);
   }
   console.log(JSON.stringify(results));

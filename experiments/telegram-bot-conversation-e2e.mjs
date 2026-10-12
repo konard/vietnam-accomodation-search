@@ -29,6 +29,7 @@ import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import { withQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
+import { resolveVerifiedQaBotPeer } from './qa-telegram-peer.mjs';
 
 import {
   DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
@@ -795,7 +796,7 @@ async function runOwnedConversation(options, environment, signal) {
   try {
     if (options.cleanupOnly) {
       const target = await withDeadline(
-        () => driver.client.getEntity(`@${botIdentity.username}`),
+        () => resolveVerifiedQaBotPeer(driver.client, botIdentity, pins.bot),
         driverDeadline(options.timeoutMs),
         'bot entity resolution'
       );
@@ -851,7 +852,7 @@ async function runOwnedConversation(options, environment, signal) {
     const offerTitle = await seedSyntheticCache(dataDirectory, marker);
     progress('synthetic-cache-ready');
     const target = await withDeadline(
-      () => driver.client.getEntity(`@${botIdentity.username}`),
+      () => resolveVerifiedQaBotPeer(driver.client, botIdentity, pins.bot),
       driverDeadline(options.timeoutMs),
       'bot entity resolution'
     );

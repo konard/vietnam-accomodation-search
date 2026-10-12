@@ -20,6 +20,7 @@ import {
   withDeadline,
 } from './telegram-bot-conversation-e2e.mjs';
 import { qaTemporaryDirectory, withQaCleanup } from './qa-cleanup.mjs';
+import { resolveVerifiedQaBotPeer } from './qa-telegram-peer.mjs';
 import {
   QaOwnedMessages,
   readQaHistory,
@@ -101,7 +102,11 @@ try {
     assert(await client.checkAuthorization());
     const owner = String((await client.getMe()).id);
     assert.notEqual(owner, identity.id);
-    const target = await client.getEntity(`@${identity.username}`);
+    const target = await withDeadline(
+      () => resolveVerifiedQaBotPeer(client, identity, identity.id),
+      30_000,
+      'verified owner bot peer'
+    );
     const read = () =>
       withDeadline(() => readQaHistory(client, target), 20_000, 'history');
     if (paths.recover) {

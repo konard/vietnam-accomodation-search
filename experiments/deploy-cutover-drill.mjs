@@ -50,7 +50,10 @@ import { requireIdentityPins } from './telegram-e2e-identities.mjs';
 
 import { withQaCleanup, onceQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
-import { assertQaDriverAccess } from './qa-telegram-peer.mjs';
+import {
+  assertQaDriverAccess,
+  resolveVerifiedQaBotPeer,
+} from './qa-telegram-peer.mjs';
 import {
   QaDockerCleanup,
   dockerInventory,
@@ -602,7 +605,7 @@ async function runOwnedDrill(options, environment, scope, signal) {
     ownedDataDirectory = drill.dataDirectory;
   }
   const target = await withDeadline(
-    () => driver.client.getEntity(`@${botIdentity.username}`),
+    () => resolveVerifiedQaBotPeer(driver.client, botIdentity, pins.bot),
     driverDeadline(TIMEOUT_MS),
     'bot entity resolution'
   );

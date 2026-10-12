@@ -11,6 +11,8 @@ import { MtcuteTelegramProvider, TelegramAuthService } from '../src/index.js';
 import { createMtcuteClient } from '../src/telegram-user.js';
 import { qaTemporaryDirectory, withQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages } from './qa-owned-messages.mjs';
+import { safeAcceptanceFailure } from './qa-acceptance-diagnostics.mjs';
+import { resolveVerifiedNativeQaBotPeer } from './qa-telegram-peer.mjs';
 import {
   botCredentials,
   environmentFile,
@@ -178,7 +180,13 @@ async function run(scope, signal, result) {
     assert(result.validationFirstTransportShared);
   }
   assert.notEqual(owner, identity.id);
-  const target = await primary.resolveEntity(`@${identity.username}`);
+  result.phase = 'source-resolution';
+  const target = await withDeadline(
+    () => resolveVerifiedNativeQaBotPeer(primary.client, identity, identity.id),
+    20_000,
+    'verified native owner bot peer'
+  );
+  result.phase = 'collection';
   let lastRead;
   const read = () =>
     withDeadline(
@@ -227,9 +235,7 @@ async function run(scope, signal, result) {
   const subscription = await primary.liveUpdates(
     (event) => receive(event.message),
     {
-      sources: [
-        { id: 'qa-owner-bot', username: identity.username, type: 'telegram' },
-      ],
+      sources: [{ id: 'qa-owner-bot', peerId: target, type: 'telegram' }],
     }
   );
   scope.defer('primary live subscription', () => subscription.stop());
@@ -269,6 +275,7 @@ const result = { ownerOnly: true, publicSourcesWritten: false, pass: false };
 try {
   await withQaCleanup((scope, signal) => run(scope, signal, result));
 } catch (error) {
+  result.failure = safeAcceptanceFailure(error, result.phase || 'setup');
   result.failureCategory = String(error.message).startsWith(
     'QA cleanup failed:'
   )
