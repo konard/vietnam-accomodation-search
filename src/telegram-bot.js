@@ -558,8 +558,17 @@ export async function createTelegramBot(token, dependencies) {
   }
   const { Bot } = await import('grammy');
   const bot = new Bot(token);
+  const qaBoundary = globalThis[Symbol.for('vac.qa.botBoundary')];
+  if (qaBoundary) {
+    qaBoundary(bot);
+  }
+  if (globalThis.process?.env?.VAC_QA_MARKER && !bot.qaBoundaryInstalled) {
+    throw new Error(
+      'QA bot API boundary was not installed; refusing unowned conversation sends.'
+    );
+  }
   const availabilityService =
-    dependencies.createAvailabilityService?.(bot.api) ||
+    dependencies.createAvailabilityService?.(bot.api, bot) ||
     dependencies.availabilityService;
   bot.resources = availabilityService ? [availabilityService] : [];
   if (dependencies.service?.waitForRefresh) {

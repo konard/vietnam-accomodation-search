@@ -17,6 +17,7 @@ import {
   validateTelegramConfiguration,
 } from '../src/index.js';
 import { runCli } from '../bin/vietnam-accomodation-search.js';
+import { waitForRuntimeReadiness } from '../experiments/qa-runtime-readiness.mjs';
 
 async function capturedFailure(operation) {
   try {
@@ -1195,10 +1196,12 @@ describe('Telegram user authentication', () => {
       },
       stderr: (line) => errors.push(line),
     });
-    while (!bot.runtime || bot.runtime.health().status !== 'ready') {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      await waitForRuntimeReadiness({ runtime: () => bot.runtime, running });
+    } finally {
+      await bot.runtime?.stop('test');
+      await running;
     }
-    await bot.runtime.stop('test');
 
     expect(await running).toBe(0);
     expect(destroyed).toBe(1);

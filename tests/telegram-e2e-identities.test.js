@@ -23,6 +23,37 @@ const driver = { TELEGRAM_E2E_EXPECTED_USER_ID: '2000002' };
 const runtimeUser = { TELEGRAM_EXPECTED_USER_ID: '3000003' };
 
 describe('manual Telegram E2E identity pins', () => {
+  it('permits two verified identities only in the explicit scoped owner mode', () => {
+    const owner = { TELEGRAM_EXPECTED_USER_ID: '2000002' };
+    expect(
+      requireIdentityPins({
+        bot,
+        driver: owner,
+        runtimeUser: owner,
+        mode: 'both-owner',
+      })
+    ).toEqual({ bot: '1000001', driver: '2000002', 'runtime user': '2000002' });
+    expect(
+      message(() =>
+        requireIdentityPins({
+          bot,
+          driver: owner,
+          runtimeUser: owner,
+          mode: 'both',
+        })
+      )
+    ).toContain('different accounts');
+    expect(
+      message(() =>
+        requireIdentityPins({
+          bot,
+          driver: owner,
+          runtimeUser,
+          mode: 'both-owner',
+        })
+      )
+    ).toContain('same verified owner');
+  });
   it('requires a distinct numeric pin for every role in the mode', () => {
     expect(requireIdentityPins({ bot, driver, mode: 'bot-only' })).toEqual({
       bot: '1000001',

@@ -11,7 +11,20 @@ import {
   withQaCleanup,
 } from '../experiments/qa-cleanup.mjs';
 
-export function runCleanTests(args = process.argv.slice(2)) {
+// eslint-disable-next-line max-lines-per-function -- The wrapper keeps process-tree teardown and its independent audits in one scope.
+export function runCleanTests(
+  args = process.argv.slice(2),
+  { idleTimeoutMs = 120_000, terminateGraceMs = 5_000 } = {}
+) {
+  if (
+    !Number.isFinite(idleTimeoutMs) ||
+    idleTimeoutMs <= 0 ||
+    !Number.isFinite(terminateGraceMs) ||
+    terminateGraceMs <= 0
+  ) {
+    throw new RangeError('Suite watchdog bounds must be positive.');
+  }
+  // eslint-disable-next-line max-lines-per-function, complexity -- Process ownership, watchdog and cleanup audits share one lifetime.
   return withQaCleanup(async (scope, signal) => {
     if (Number(process.versions.node.split('.')[0]) < 22) {
       throw new Error('The QA runner requires supported Node.js 22 or newer.');
@@ -48,7 +61,8 @@ export function runCleanTests(args = process.argv.slice(2)) {
         TEMP: directory,
         VAC_QA_RECOVERY_DIRECTORY: recovery,
       },
-      stdio: 'inherit',
+      stdio: ['inherit', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
       signal,
     });
     const closed = new Promise((done) => {
@@ -56,23 +70,76 @@ export function runCleanTests(args = process.argv.slice(2)) {
       child.once('close', (code) => done(code ?? 1));
     });
     let escalation;
-    const abort = () => {
-      escalation = setTimeout(() => child.kill('SIGKILL'), 5_000);
+    let watchdog;
+    let timedOut = false;
+    const treeCleanup = new Set();
+    const killTree = (name) => {
+      if (process.platform === 'win32') {
+        if (child.pid && child.exitCode === null && child.signalCode === null) {
+          const cleanup = spawn(
+            'taskkill',
+            ['/PID', String(child.pid), '/T', '/F'],
+            { stdio: 'ignore' }
+          );
+          cleanup.on('error', () => {});
+          const completed = new Promise((done) => cleanup.once('close', done));
+          treeCleanup.add(completed);
+        }
+      } else if (child.pid) {
+        try {
+          process.kill(-child.pid, name);
+        } catch (error) {
+          if (error.code !== 'ESRCH') {
+            throw error;
+          }
+        }
+      }
     };
-    signal.addEventListener('abort', abort, { once: true });
-    closed.then(() => {
-      clearTimeout(escalation);
-      signal.removeEventListener('abort', abort);
+    const abort = () => {
+      clearTimeout(watchdog);
+      killTree('SIGTERM');
+      escalation ||= setTimeout(() => killTree('SIGKILL'), terminateGraceMs);
+    };
+    const heartbeat = () => {
+      clearTimeout(watchdog);
+      if (timedOut) {
+        return;
+      }
+      watchdog = setTimeout(() => {
+        timedOut = true;
+        console.error(
+          'Test suite inactivity watchdog expired; stopping the owned process tree.'
+        );
+        abort();
+      }, idleTimeoutMs);
+    };
+    child.stdout.on('data', (data) => {
+      process.stdout.write(data);
+      heartbeat();
     });
+    child.stderr.on('data', (data) => {
+      process.stderr.write(data);
+      heartbeat();
+    });
+    heartbeat();
+    signal.addEventListener('abort', abort, { once: true });
     scope.defer('test process', async () => {
       if (child.exitCode === null && child.signalCode === null) {
-        child.kill('SIGTERM');
-        const timer = setTimeout(() => child.kill('SIGKILL'), 5_000);
+        abort();
         await closed;
-        clearTimeout(timer);
       }
+      // Workers may outlive their parent even after the parent exits cleanly.
+      killTree('SIGKILL');
+      await Promise.allSettled([...treeCleanup]);
+      clearTimeout(escalation);
+      clearTimeout(watchdog);
+      signal.removeEventListener('abort', abort);
     });
-    const code = await closed;
+    const code = (await closed) || (timedOut ? 1 : 0);
+    clearTimeout(escalation);
+    clearTimeout(watchdog);
+    signal.removeEventListener('abort', abort);
+    killTree('SIGKILL');
     const leftovers = await readdir(directory);
     // Runtime/compiler caches belong to this runner's TMPDIR, not to a test
     // fixture. Remove them explicitly; unexpected test residue still fails.

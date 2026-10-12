@@ -390,9 +390,42 @@ export class MtcuteTelegramProvider {
   async history(source, { resume, since, signal, retry = {} } = {}) {
     const client = await this.#connect();
     const peer = sourcePeer(source);
-    await client.resolvePeer(peer, true);
+    try {
+      await retryTelegramOperation(() => client.resolvePeer(peer, true), {
+        logger: this.logger,
+        operationName: 'source-resolution',
+        sourceId: source.id,
+        transport: this.transport,
+        maxAttempts: 3,
+        maxElapsedMs: 15000,
+        ...retry,
+        signal,
+        idempotent: true,
+      });
+    } catch (error) {
+      error.qaPhase = 'source-resolution';
+      error.qaSourceId = source.id;
+      throw error;
+    }
     if (source.access === 'public-preview' || source.public === true) {
-      const chat = await client.getChat(peer);
+      let chat;
+      try {
+        chat = await retryTelegramOperation(() => client.getChat(peer), {
+          logger: this.logger,
+          operationName: 'source-resolution',
+          sourceId: source.id,
+          transport: this.transport,
+          maxAttempts: 3,
+          maxElapsedMs: 15000,
+          ...retry,
+          signal,
+          idempotent: true,
+        });
+      } catch (error) {
+        error.qaPhase = 'source-resolution';
+        error.qaSourceId = source.id;
+        throw error;
+      }
       if (
         chat.type !== 'chat' ||
         !['channel', 'supergroup'].includes(chat.chatType) ||
@@ -402,6 +435,8 @@ export class MtcuteTelegramProvider {
           'Declared public Telegram source does not resolve to a public community.'
         );
         error.code = 'PUBLIC_SOURCE_NOT_COMMUNITY';
+        error.qaPhase = 'source-resolution';
+        error.qaSourceId = source.id;
         throw error;
       }
     }
@@ -554,12 +589,12 @@ export class MtcuteTelegramProvider {
     return (await this.#connect()).sendText(destination, message, sendOptions);
   }
 
-  async liveUpdates(handler, { sources = [] } = {}) {
+  async liveUpdates(handler, { sources = [], signal } = {}) {
     if (this.destroying) {
       await this.destroying;
-      return this.liveUpdates(handler, { sources });
+      return this.liveUpdates(handler, { sources, signal });
     }
-    const registration = this.#registerLiveUpdates(handler, sources);
+    const registration = this.#registerLiveUpdates(handler, sources, signal);
     this.registrations.add(registration);
     try {
       return await registration;
@@ -568,13 +603,32 @@ export class MtcuteTelegramProvider {
     }
   }
 
-  async #registerLiveUpdates(handler, sources) {
+  async #registerLiveUpdates(handler, sources, signal) {
     const client = await this.#connect();
     const sourcesByHandle = new Map();
     const sourcesByPeer = new Map();
     for (const source of sources) {
       sourcesByHandle.set(sourceHandle(source), source);
-      const resolved = await client.resolvePeer(sourcePeer(source), true);
+      let resolved;
+      try {
+        resolved = await retryTelegramOperation(
+          () => client.resolvePeer(sourcePeer(source), true),
+          {
+            logger: this.logger,
+            operationName: 'source-resolution',
+            sourceId: source.id,
+            transport: this.transport,
+            maxAttempts: 3,
+            maxElapsedMs: 15000,
+            signal,
+            idempotent: true,
+          }
+        );
+      } catch (error) {
+        error.qaPhase = 'source-resolution';
+        error.qaSourceId = source.id;
+        throw error;
+      }
       const id = peerId(resolved);
       if (id !== undefined) {
         sourcesByPeer.set(String(id), source);

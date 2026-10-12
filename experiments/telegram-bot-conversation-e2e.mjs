@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { configurePrivateOwner } from '../src/telegram-operator.js';
 
 /**
  * Manual local-only Telegram conversation E2E. A real MTProto user drives the
@@ -29,7 +30,13 @@ import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import { withQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
-import { resolveVerifiedQaBotPeer } from './qa-telegram-peer.mjs';
+import {
+  assertQaDriverAccess,
+  resolveVerifiedQaBotPeer,
+} from './qa-telegram-peer.mjs';
+import { connectNativeDriver } from './qa-native-driver.mjs';
+import { withDeadline } from './qa-deadline.mjs';
+export { withDeadline } from './qa-deadline.mjs';
 
 import {
   DEFAULT_NHA_TRANG_TELEGRAM_SOURCES,
@@ -61,23 +68,6 @@ function progress(stage) {
   process.stderr.write(`telegram-e2e stage=${stage}\n`);
 }
 
-export async function withDeadline(action, timeoutMs, label) {
-  let timer;
-  try {
-    return await Promise.race([
-      Promise.resolve().then(action),
-      new Promise((resolvePromise, reject) => {
-        timer = globalThis.setTimeout(
-          () => reject(new Error(`Timed out during ${label}.`)),
-          timeoutMs
-        );
-      }),
-    ]);
-  } finally {
-    globalThis.clearTimeout(timer);
-  }
-}
-
 export function driverDeadline(timeoutMs) {
   return Math.min(timeoutMs, DRIVER_OPERATION_TIMEOUT_MS);
 }
@@ -91,7 +81,7 @@ function usage() {
     '  --user-env PATH          MTProto test-user environment file',
     '',
     'Options:',
-    '  --mode bot-only|both|degraded',
+    '  --mode bot-only|both|both-owner|degraded',
     '                           Runtime capability mode (default: bot-only);',
     '                           degraded configures an incomplete runtime user',
     '  --runtime-user-env PATH  Native mtcute runtime credentials for both mode',
@@ -128,6 +118,10 @@ export function parseConversationArguments(values) {
     const value = values[index];
     if (value === '--help') {
       options.help = true;
+      continue;
+    }
+    if (value === '--configure-original-owner') {
+      options.configureOriginalOwner = true;
       continue;
     }
     if (value === '--keep-data') {
@@ -542,6 +536,14 @@ async function sendAndExpect(state, command, predicate) {
       ),
     timeoutMs: state.timeoutMs,
   });
+  if (
+    state.ledger &&
+    !messageText(reply).startsWith(`${state.ledger.marker}\n`)
+  ) {
+    throw new Error(
+      'Real bot API marker boundary was not installed; recovery evidence retained.'
+    );
+  }
   state.messageIds.add(messageId(reply));
   await state.ledger?.record(reply);
   return { reply, sent };
@@ -589,13 +591,13 @@ async function seedSyntheticCache(directory, marker) {
   return title;
 }
 
-function runtimeEnvironment({
+export function runtimeEnvironment({
   bot,
+  originalEnvironment,
   dataDirectory,
   mode,
   port,
   runtimeUser,
-  userId,
 }) {
   const environment = {
     ...withoutTelegramSecrets(process.env),
@@ -603,13 +605,13 @@ function runtimeEnvironment({
     HEALTH_HOST: '127.0.0.1',
     HEALTH_PORT: String(port),
     LINKS_BINARY_MIRROR: '1',
-    TELEGRAM_ACCESS_MODE: 'private',
-    TELEGRAM_ALLOWED_CHAT_IDS: userId,
-    TELEGRAM_ALLOWED_USER_IDS: userId,
+    TELEGRAM_ACCESS_MODE: originalEnvironment.TELEGRAM_ACCESS_MODE || 'private',
+    TELEGRAM_ALLOWED_CHAT_IDS: originalEnvironment.TELEGRAM_ALLOWED_CHAT_IDS,
+    TELEGRAM_ALLOWED_USER_IDS: originalEnvironment.TELEGRAM_ALLOWED_USER_IDS,
     TELEGRAM_BOT_TOKEN: bot.token,
     TELEGRAM_EXPECTED_BOT_ID: bot.identity.id,
   };
-  if (mode === 'both') {
+  if (['both', 'both-owner'].includes(mode)) {
     Object.assign(environment, {
       TELEGRAM_API_HASH: runtimeUser.apiHash,
       TELEGRAM_API_ID: String(runtimeUser.apiId),
@@ -762,12 +764,11 @@ export function runConversationE2E(options, environment = process.env) {
 // eslint-disable-next-line max-lines-per-function, max-statements, complexity -- The conversation transaction retains its assertion ordering and attempts every owned teardown phase.
 async function runOwnedConversation(options, environment, signal) {
   assertConversationBoundary(environment);
-  const botEnvironment = await environmentFile(options.botEnv);
+  let botEnvironment = await environmentFile(options.botEnv);
   const driverEnvironment = await environmentFile(options.userEnv);
-  const runtimeUserEnvironment =
-    options.mode === 'both'
-      ? await environmentFile(options.runtimeUserEnv)
-      : undefined;
+  const runtimeUserEnvironment = ['both', 'both-owner'].includes(options.mode)
+    ? await environmentFile(options.runtimeUserEnv || options.userEnv)
+    : undefined;
   const pins = requireIdentityPins({
     bot: botEnvironment,
     driver: driverEnvironment,
@@ -779,10 +780,16 @@ async function runOwnedConversation(options, environment, signal) {
     botSecret.token,
     botSecret.expectedId
   );
-  const driver = await connectDriver(
-    await userCredentials(driverEnvironment, pins.driver),
-    options.timeoutMs
-  );
+  const driver =
+    options.mode === 'both-owner'
+      ? await connectNativeDriver(
+          await nativeRuntimeCredentials(driverEnvironment, pins.driver),
+          { signal, timeoutMs: driverDeadline(options.timeoutMs) }
+        )
+      : await connectDriver(
+          await userCredentials(driverEnvironment, pins.driver),
+          options.timeoutMs
+        );
   progress('test-user-authorized');
   const temporary = !options.dataDirectory;
   let dataDirectory;
@@ -794,9 +801,22 @@ async function runOwnedConversation(options, environment, signal) {
   let staleMessagesDeleted = 0;
   let runError;
   try {
+    if (options.configureOriginalOwner && !options.cleanupOnly) {
+      await configurePrivateOwner({
+        envFile: options.botEnv,
+        identityProvider: () => ({ id: driver.id }),
+      });
+      botEnvironment = await environmentFile(options.botEnv);
+    }
+    if (!options.cleanupOnly) {
+      assertQaDriverAccess(botEnvironment, driver.id);
+    }
     if (options.cleanupOnly) {
       const target = await withDeadline(
-        () => resolveVerifiedQaBotPeer(driver.client, botIdentity, pins.bot),
+        () =>
+          driver.client.native
+            ? driver.client.resolveBot(botIdentity, pins.bot)
+            : resolveVerifiedQaBotPeer(driver.client, botIdentity, pins.bot),
         driverDeadline(options.timeoutMs),
         'bot entity resolution'
       );
@@ -852,7 +872,10 @@ async function runOwnedConversation(options, environment, signal) {
     const offerTitle = await seedSyntheticCache(dataDirectory, marker);
     progress('synthetic-cache-ready');
     const target = await withDeadline(
-      () => resolveVerifiedQaBotPeer(driver.client, botIdentity, pins.bot),
+      () =>
+        driver.client.native
+          ? driver.client.resolveBot(botIdentity, pins.bot)
+          : resolveVerifiedQaBotPeer(driver.client, botIdentity, pins.bot),
       driverDeadline(options.timeoutMs),
       'bot entity resolution'
     );
@@ -881,16 +904,21 @@ async function runOwnedConversation(options, environment, signal) {
     const port = await availablePort();
     const childEnvironment = runtimeEnvironment({
       bot: { identity: botIdentity, token: botSecret.token },
+      originalEnvironment: botEnvironment,
       dataDirectory,
       mode: options.mode,
       port,
       runtimeUser,
-      userId: driver.id,
     });
     Object.assign(childEnvironment, {
       TELEGRAM_CONVERSATION_E2E: '1',
       VAC_QA_MARKER: marker,
       VAC_QA_OWNER: driver.id,
+      VAC_QA_COMBINED_PROBES: options.mode === 'both-owner' ? '1' : '',
+      VAC_QA_TRANSPORT_LEDGER: join(
+        FAILURE_LOG_DIRECTORY,
+        `${marker}-transport.json`
+      ),
       VAC_QA_JOURNAL: join(FAILURE_LOG_DIRECTORY, `${marker}-bot.json`),
     });
     const start = async (phase) => {
@@ -901,6 +929,14 @@ async function runOwnedConversation(options, environment, signal) {
         port,
         timeoutMs: options.timeoutMs,
       });
+      if (
+        ['both', 'both-owner'].includes(options.mode) &&
+        /continuing in bot-only mode/u.test(await readFile(logPath, 'utf8'))
+      ) {
+        throw new Error(
+          'Combined runtime degraded before the transport probe.'
+        );
+      }
       if (options.mode === 'degraded') {
         state.bot = instance;
         degradedToBotOnly = assertDegradedToBotOnly(
@@ -910,6 +946,36 @@ async function runOwnedConversation(options, environment, signal) {
       return instance;
     };
     scenario = await runScenario(state, marker, offerTitle, start);
+    if (options.mode === 'both-owner') {
+      await sendAndExpect(state, `/qa_transport_${marker}`, (text) =>
+        text.includes('Scoped transport probe recorded.')
+      );
+      const proof = JSON.parse(
+        await readFile(childEnvironment.VAC_QA_TRANSPORT_LEDGER, 'utf8')
+      );
+      if (
+        !proof.nativeIdentity ||
+        !proof.nativeHistory ||
+        !proof.nativeEgress
+      ) {
+        throw new Error('Scoped native probes are incomplete.');
+      }
+      const nativeObserved = (await messagesAfterBoundary(state)).some(
+        (message) => messageText(message).includes(`native-probe:${marker}`)
+      );
+      if (!nativeObserved) {
+        throw new Error('Independent history did not observe native egress.');
+      }
+      state.transportProof = {
+        nativeIdentity: true,
+        nativeHistory: true,
+        nativeEgress: true,
+        botApiIngress: true,
+        botApiEgress: true,
+        nativeSelfUpdate: proof.nativeSelfUpdate === true,
+        independentHistory: true,
+      };
+    }
     const unexpected = (await messagesAfterBoundary(state)).filter(
       (message) => !message.out && isFailureReply(messageText(message))
     );
@@ -1002,7 +1068,18 @@ async function runOwnedConversation(options, environment, signal) {
   return {
     botIdentityVerified: true,
     botRestarted: true,
-    combinedRuntime: options.mode === 'both',
+    combinedRuntime: ['both', 'both-owner'].includes(options.mode),
+    independentActor: options.mode === 'both',
+    crossAccountAcceptance: options.mode === 'both',
+    scopedOwnerAcceptance: options.mode === 'both-owner',
+    transportProof: state?.transportProof,
+    acceptanceLimits:
+      options.mode === 'both-owner'
+        ? [
+            'independent-user-actor-not-exercised',
+            'native-self-update-routing-not-attested',
+          ]
+        : [],
     degradedToBotOnly,
     duplicateAfterRestart: scenario.duplicateAfterRestart,
     identityPins: Object.keys(pins),

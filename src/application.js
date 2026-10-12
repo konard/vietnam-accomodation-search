@@ -91,6 +91,7 @@ export function createApplication(options = {}) {
     new BrowserCollector({
       browserLaunchOptions,
       browserRuntime: options.browserRuntime,
+      now: options.now,
       budgetMs: positiveSetting(environment.SEARCH_BUDGET_MS, 3 * 60 * 1000),
       concurrency: browserConcurrency,
       historyDays: Number(environment.TELEGRAM_HISTORY_DAYS || 90),
@@ -119,6 +120,7 @@ export function createApplication(options = {}) {
     new BrowserSourceDiscoverer({
       browserLaunchOptions,
       browserRuntime: options.browserRuntime,
+      now: options.now,
       logger: options.logger,
       scheduler:
         options.discoveryBrowserScheduler ||
@@ -256,7 +258,7 @@ export function createApplication(options = {}) {
     createBot: async (token, credentials = {}) => {
       const bot = await createTelegramBot(token, {
         accessPolicy,
-        createAvailabilityService: (api) => {
+        createAvailabilityService: (api, qaBot) => {
           const configuredUser =
             credentials.apiHash && credentials.apiId && credentials.session;
           const user = configuredUser
@@ -273,6 +275,10 @@ export function createApplication(options = {}) {
             bot: new BotApiTelegramProvider(api, { token }),
             mode: user ? 'both' : 'bot-only',
             store,
+            user,
+          });
+          globalThis[Symbol.for('vac.qa.capabilityBoundary')]?.(qaBot, {
+            router,
             user,
           });
           return new TelegramAvailabilityService({ router, store });
@@ -306,6 +312,7 @@ export function createApplication(options = {}) {
         logger: options.logger,
       });
       return new TelegramIngestionService({
+        now: options.now,
         logger: options.logger,
         mediaCache,
         provider,

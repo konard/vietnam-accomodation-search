@@ -3,7 +3,12 @@
  * Errors name the role only; a numeric identity is never included.
  */
 
-export const CONVERSATION_MODES = ['bot-only', 'both', 'degraded'];
+export const CONVERSATION_MODES = [
+  'bot-only',
+  'both',
+  'both-owner',
+  'degraded',
+];
 
 const NUMERIC_ID = /^[1-9]\d{0,19}$/u;
 
@@ -50,7 +55,7 @@ export function requireIdentityPins({ bot, driver, mode, runtimeUser }) {
   const environments = { bot, driver, runtimeUser };
   const pins = {};
   for (const { names, role, source } of ROLES) {
-    if (source === 'runtimeUser' && mode !== 'both') {
+    if (source === 'runtimeUser' && !['both', 'both-owner'].includes(mode)) {
       continue;
     }
     const pin = pinFrom(environments[source], names);
@@ -65,12 +70,24 @@ export function requireIdentityPins({ bot, driver, mode, runtimeUser }) {
       );
     }
     const shared = Object.entries(pins).find(([, value]) => value === pin);
-    if (shared) {
+    if (
+      shared &&
+      !(
+        mode === 'both-owner' &&
+        source === 'runtimeUser' &&
+        shared[0] === 'driver'
+      )
+    ) {
       throw new Error(
         `The ${role} and ${shared[0]} identity pins must name different accounts.`
       );
     }
     pins[role] = pin;
+  }
+  if (mode === 'both-owner' && pins['runtime user'] !== pins.driver) {
+    throw new Error(
+      'The scoped owner mode requires the same verified owner for native runtime and driver.'
+    );
   }
   return pins;
 }
