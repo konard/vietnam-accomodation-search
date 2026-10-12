@@ -806,7 +806,11 @@ export class BrowserCollector {
                 cards: 1,
               });
               if (
-                ['challenge', 'login', 'consent'].includes(classification) ||
+                [
+                  PAGE_CLASSIFICATIONS.CHALLENGE,
+                  PAGE_CLASSIFICATIONS.LOGIN,
+                  PAGE_CLASSIFICATIONS.CONSENT,
+                ].includes(classification) ||
                 classification.startsWith('http-')
               ) {
                 throw new BrowserPageError(classification, offer.url);
@@ -1068,7 +1072,11 @@ export class BrowserCollector {
           const state = await commander.evaluate(extractPageState);
           const classification = classifyListingPage({ ...state, cards: 1 });
           if (
-            ['challenge', 'login', 'consent'].includes(classification) ||
+            [
+              PAGE_CLASSIFICATIONS.CHALLENGE,
+              PAGE_CLASSIFICATIONS.LOGIN,
+              PAGE_CLASSIFICATIONS.CONSENT,
+            ].includes(classification) ||
             classification.startsWith('http-')
           ) {
             throw new BrowserPageError(classification, url);

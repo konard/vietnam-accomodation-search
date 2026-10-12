@@ -14,6 +14,18 @@ const INDEX = 'offers.index.json';
 const CHUNKS = 'offers.chunks';
 const METADATA_BYTES = 8 * 1024 * 1024;
 
+function validateBudgets({ maxBytes, maxShardBytes, maxIndexBytes }) {
+  if (
+    ![maxShardBytes, maxIndexBytes].every(
+      (value) => Number.isSafeInteger(value) && value > 0
+    ) ||
+    !Number.isFinite(maxBytes) ||
+    maxBytes < 1
+  ) {
+    throw new RangeError('Offer stream budgets must be positive finite bytes.');
+  }
+}
+
 async function boundedText(path, maximum) {
   if ((await stat(path)).size > maximum) {
     throw new Error('Offer stream input exceeds its configured memory bound.');
@@ -31,12 +43,13 @@ export async function* iterateOffers({
   directory,
   mirror,
   maxShardBytes = 16 * 1024 * 1024,
+  maxIndexBytes = METADATA_BYTES,
   signal,
 }) {
   let index;
   try {
     index = JSON.parse(
-      await boundedText(join(directory, INDEX), METADATA_BYTES)
+      await boundedText(join(directory, INDEX), maxIndexBytes)
     );
   } catch (error) {
     if (error.code !== 'ENOENT') {
@@ -73,7 +86,7 @@ export async function* iterateOffers({
     !Number.isSafeInteger(index.count) ||
     !Number.isSafeInteger(index.bytes) ||
     index.count < 0 ||
-    index.count * 128 > METADATA_BYTES
+    index.count * 128 > maxIndexBytes
   ) {
     throw new Error('Invalid or oversized offer stream index.');
   }
@@ -126,7 +139,9 @@ export async function* iterateOffers({
     count !== index.count ||
     bytes !== index.bytes ||
     (index.order &&
-      (index.order.length !== count || index.order.some((id) => !seen.has(id))))
+      (index.order.length !== count ||
+        new Set(index.order).size !== count ||
+        index.order.some((id) => !seen.has(id))))
   ) {
     throw new Error('Offer stream totals or order mismatch.');
   }
@@ -139,17 +154,11 @@ export async function writeOfferStream({
   mirror,
   maxBytes,
   maxShardBytes = 1024 * 1024,
+  maxIndexBytes = METADATA_BYTES,
   signal,
   check = async () => {},
 }) {
-  if (
-    !Number.isSafeInteger(maxShardBytes) ||
-    maxShardBytes < 1 ||
-    !Number.isFinite(maxBytes) ||
-    maxBytes < 1
-  ) {
-    throw new RangeError('Offer stream budgets must be positive finite bytes.');
-  }
+  validateBudgets({ maxBytes, maxShardBytes, maxIndexBytes });
   const index = { version: 1, shards: [], order: [], count: 0, bytes: 0 };
   const ids = new Set();
   let batch = [];
@@ -191,7 +200,7 @@ export async function writeOfferStream({
     if (ids.has(id)) {
       throw new Error('Offer stream must be reconciled before publication.');
     }
-    if ((index.order.length + 1) * 128 > METADATA_BYTES) {
+    if ((index.order.length + 1) * 128 > maxIndexBytes) {
       throw new Error(
         'Offer stream metadata budget exceeded; staged data retained.'
       );
@@ -209,7 +218,7 @@ export async function writeOfferStream({
   signal?.throwIfAborted();
   await check();
   const notation = JSON.stringify(index);
-  if (Buffer.byteLength(notation) > METADATA_BYTES) {
+  if (Buffer.byteLength(`${notation}\n`) > maxIndexBytes) {
     throw new Error('Offer stream metadata budget exceeded.');
   }
   await mkdir(directory, { recursive: true, mode: 0o700 });

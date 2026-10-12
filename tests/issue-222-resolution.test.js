@@ -95,3 +95,40 @@ it('persists an incomplete source checkpoint before a resolution failure without
   assert.equal(checkpoint.oldestMessageId, 7);
   assert.equal(checkpoint.failure.phase, 'source-resolution');
 });
+
+it('retains source resolution evidence from public chat and live subscription failures', async () => {
+  const client = {
+    start: async () => {},
+    destroy: async () => {},
+    getMe: async () => ({ id: 1 }),
+    resolvePeer: async () => ({ userId: 2 }),
+    getChat: async () => {
+      throw Object.assign(new Error('private membership'), {
+        code: 'CHANNEL_PRIVATE',
+      });
+    },
+  };
+  const provider = new MtcuteTelegramProvider({
+    apiId: 1,
+    apiHash: 'synthetic',
+    session: 'synthetic',
+    clientFactory: async () => client,
+  });
+  const source = { id: 'telegram:synthetic', public: true };
+  const failure = (error) => {
+    assert.equal(error.qaSourceId, source.id);
+    assert.equal(error.qaPhase, 'source-resolution');
+    assert.equal(error.code, 'CHANNEL_PRIVATE');
+    return true;
+  };
+  try {
+    await assert.rejects(provider.history(source), failure);
+    client.resolvePeer = client.getChat;
+    await assert.rejects(
+      provider.liveUpdates(() => {}, { sources: [source] }),
+      failure
+    );
+  } finally {
+    await provider.destroy();
+  }
+});

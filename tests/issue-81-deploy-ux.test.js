@@ -162,7 +162,7 @@ describe('deploy failure output', () => {
         await main(['bogus'], { log: (line) => printed.push(line), logPath })
       ).toBe(1);
       expect(printed).toEqual([
-        'Deploy failed during reading options: Usage: deploy.mjs deploy|status|logs|stop|rollback [--restore-snapshot] [options]',
+        'Deploy failed during reading options: Usage: deploy.mjs deploy|status|logs|stop|rollback|recover-lock [--restore-snapshot] [options]',
         `Full details: ${logPath}`,
       ]);
       expect(JSON.parse(await readFile(logPath, 'utf8')).step).toBe(
