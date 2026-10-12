@@ -19,7 +19,11 @@ import {
   userCredentials,
   withDeadline,
 } from './telegram-bot-conversation-e2e.mjs';
-import { qaTemporaryDirectory, withQaCleanup } from './qa-cleanup.mjs';
+import {
+  qaRecoveryDirectory,
+  qaTemporaryDirectory,
+  withQaCleanup,
+} from './qa-cleanup.mjs';
 import { resolveVerifiedQaBotPeer } from './qa-telegram-peer.mjs';
 import {
   QaOwnedMessages,
@@ -151,7 +155,10 @@ try {
     const ledger = new QaOwnedMessages({
       marker,
       baseline,
-      journal: join(directory, 'owned.json'),
+      journal: join(
+        await qaRecoveryDirectory(scope, 'vac-live-message-recovery-'),
+        'owned.json'
+      ),
     });
     await ledger.save();
     scope.defer('owned messages', async () => {

@@ -4,10 +4,8 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { withQaCleanup } from './qa-cleanup.mjs';
+import { qaRecoveryDirectory, withQaCleanup } from './qa-cleanup.mjs';
 import {
   dockerCommand,
   dockerInventory,
@@ -61,13 +59,10 @@ await withQaCleanup(
     });
     signal = guard.signal;
     const baseline = await dockerInventory();
-    const directory = await mkdtemp(join(tmpdir(), 'vac-docker-acceptance-'));
-    let clean = false;
-    scope.defer('private Docker recovery directory', async () => {
-      if (clean) {
-        await rm(directory, { recursive: true, force: true });
-      }
-    });
+    const directory = await qaRecoveryDirectory(
+      scope,
+      'vac-docker-acceptance-'
+    );
     const runId = `vac-qa-image-${randomBytes(8).toString('hex')}`;
     const tag = `${runId}:fixture`;
     const builder = `${runId}-builder`;
@@ -90,7 +85,6 @@ await withQaCleanup(
     });
     scope.defer('production acceptance Docker resources', async () => {
       const result = await owned.cleanup();
-      clean = result.pass;
       console.log(JSON.stringify({ dockerCleanup: result }));
       assert(result.pass);
     });

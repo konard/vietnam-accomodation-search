@@ -1,7 +1,7 @@
 // QA-only resource ownership. Every disposer is attempted, even if another
 // fails. Callers must stop producers before message/resource deletion.
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, rm, rmdir } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // A grouped teardown can be reached by both an action's finally block and
@@ -119,6 +119,67 @@ export async function qaTemporaryDirectory(scope, prefix = 'vac-qa-') {
   } catch (error) {
     // SIGTERM can arrive while asynchronous acquisition is completing.
     await rm(directory, { force: true, recursive: true });
+    throw error;
+  }
+  return directory;
+}
+
+function recoveryParent(environment) {
+  return (
+    environment.VAC_QA_RECOVERY_DIRECTORY ||
+    join(homedir(), '.cache', 'vietnam-accomodation-search', 'qa-recovery')
+  );
+}
+
+// Recovery journals must outlive every enclosing disposable TMPDIR. The
+// outer runner owns a namespace; nested runners inherit it without deleting it.
+export async function qaRecoveryNamespace(scope, environment = process.env) {
+  const parent = recoveryParent(environment);
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  if (environment.VAC_QA_RECOVERY_DIRECTORY) {
+    return parent;
+  }
+  const directory = await mkdtemp(join(parent, 'vac-suite-recovery-'));
+  try {
+    scope.defer('recovery namespace', async () => {
+      try {
+        // Never recursively delete a namespace: interrupted children can leave
+        // exact journals even without finishing their retention callback.
+        await rmdir(directory);
+      } catch (error) {
+        if (!['ENOTEMPTY', 'EEXIST'].includes(error.code)) {
+          throw error;
+        }
+      }
+    });
+  } catch (error) {
+    await rmdir(directory);
+    throw error;
+  }
+  return directory;
+}
+
+// Use only for explicitly owned external-resource evidence. Ordinary runtime
+// data still belongs in qaTemporaryDirectory and always gets removed.
+export async function qaRecoveryDirectory(
+  scope,
+  prefix = 'vac-recovery-',
+  { retain = () => scope.cleanupFailed, environment = process.env } = {}
+) {
+  if (!/^[a-zA-Z0-9_-]+$/u.test(prefix)) {
+    throw new Error('A recovery directory prefix must be a basename.');
+  }
+  const parent = recoveryParent(environment);
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  const directory = await mkdtemp(join(parent, prefix));
+  try {
+    scope.defer('protected recovery directory', async () => {
+      if (!retain()) {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
     throw error;
   }
   return directory;

@@ -1,31 +1,33 @@
-// Self-authored control for the observed original-host cutover preflight.
-// No Docker, Telegram, credentials or external writes.
+// Self-authored no-network control of the actual cutover preflight ordering.
 import assert from 'node:assert/strict';
-import { assertQaSharedTokenBoundary } from './deploy-cutover-drill-lib.mjs';
+import { acquireDrillStorageGuard } from './qa-cutover-preflight.mjs';
+import { withQaCleanup } from './qa-cleanup.mjs';
 
-const options = { allowSharedToken: true };
-assertQaSharedTokenBoundary(options, { containers: [] });
-let helperMistakenForPreexistingContainer = false;
-try {
-  // The guard's owned helper is present in the post-acquisition baseline.
-  assertQaSharedTokenBoundary(options, {
-    containers: ['self-authored-run-owned-capacity-helper'],
-  });
-} catch (error) {
-  assert.equal(
-    error.message,
-    'QA shared-token override requires an empty container inventory.'
+const containers = [];
+const inventory = () => Promise.resolve({ containers: [...containers] });
+await withQaCleanup(async (scope, signal) => {
+  const { boundary } = await acquireDrillStorageGuard(
+    { allowSharedToken: true },
+    scope,
+    signal,
+    {
+      inventory,
+      storagePaths: () => Promise.resolve([]),
+      acquireGuard: (scope) => {
+        containers.push('self-authored-run-owned-capacity-helper');
+        scope.defer('owned capacity helper', () => containers.pop());
+        return { signal };
+      },
+    }
   );
-  helperMistakenForPreexistingContainer = true;
-}
+  assert.deepEqual(boundary.containers, []);
+  assert.equal(containers.length, 1);
+});
+assert.deepEqual(containers, []);
 console.log(
   JSON.stringify({
     selfAuthoredOnly: true,
-    helperMistakenForPreexistingContainer,
+    helperMistakenForPreexistingContainer: false,
+    independentBaselineRestored: true,
   })
-);
-assert.equal(
-  helperMistakenForPreexistingContainer,
-  false,
-  'Run-owned capacity acquisition must not invalidate the independent pre-acquisition poller boundary.'
 );

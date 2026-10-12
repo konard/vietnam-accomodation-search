@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // Run all automatic tests inside an owned TMPDIR. Leftovers fail acceptance;
 // the wrapper removes that exact directory even after a failed/interrupted run.
+// Explicit external-resource journals live in a separate inherited namespace.
 import { spawn } from 'node:child_process';
 import { readdir, rm, access } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import {
   qaTemporaryDirectory,
+  qaRecoveryNamespace,
   withQaCleanup,
 } from '../experiments/qa-cleanup.mjs';
 
@@ -14,6 +16,7 @@ export function runCleanTests(args = process.argv.slice(2)) {
     if (Number(process.versions.node.split('.')[0]) < 22) {
       throw new Error('The QA runner requires supported Node.js 22 or newer.');
     }
+    const recovery = await qaRecoveryNamespace(scope);
     const directory = await qaTemporaryDirectory(scope, 'vac-suite-');
     const coverage = args.includes('--coverage');
     const external = args.filter(
@@ -43,6 +46,7 @@ export function runCleanTests(args = process.argv.slice(2)) {
         TMPDIR: directory,
         TMP: directory,
         TEMP: directory,
+        VAC_QA_RECOVERY_DIRECTORY: recovery,
       },
       stdio: 'inherit',
       signal,
@@ -50,6 +54,15 @@ export function runCleanTests(args = process.argv.slice(2)) {
     const closed = new Promise((done) => {
       child.once('error', () => {});
       child.once('close', (code) => done(code ?? 1));
+    });
+    let escalation;
+    const abort = () => {
+      escalation = setTimeout(() => child.kill('SIGKILL'), 5_000);
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    closed.then(() => {
+      clearTimeout(escalation);
+      signal.removeEventListener('abort', abort);
     });
     scope.defer('test process', async () => {
       if (child.exitCode === null && child.signalCode === null) {
@@ -75,12 +88,14 @@ export function runCleanTests(args = process.argv.slice(2)) {
       await rm(`${directory}/${name}`, { force: true, recursive: true });
     }
     const testResidue = leftovers.filter((name) => !caches.has(name));
+    const recoveryResidue = await readdir(recovery);
     // Names only: never report contents of a generated fixture.
     console.log(
       JSON.stringify({
         cleanupAudit: true,
         leftoverNames: testResidue,
         ownedRuntimeCachesRemoved: leftovers.filter((name) => caches.has(name)),
+        retainedRecoveryDirectories: recoveryResidue.length,
       })
     );
     const cleanup = await scope.close();
@@ -89,10 +104,23 @@ export function runCleanTests(args = process.argv.slice(2)) {
       () => true
     );
     console.log(
-      JSON.stringify({ teardownVerified: cleanup.pass && directoryGone })
+      JSON.stringify({
+        teardownVerified: cleanup.pass && directoryGone,
+        temporaryTeardownVerified: cleanup.pass && directoryGone,
+        // A runner cannot independently certify external teardown. A retained
+        // journal proves recovery is required; no journal is not that proof.
+        externalTeardownVerified: recoveryResidue.length ? false : null,
+        recoveryRequired: recoveryResidue.length > 0,
+      })
     );
     return (
-      code || (testResidue.length || !cleanup.pass || !directoryGone ? 1 : 0)
+      code ||
+      (testResidue.length ||
+      recoveryResidue.length ||
+      !cleanup.pass ||
+      !directoryGone
+        ? 1
+        : 0)
     );
   });
 }

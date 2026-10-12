@@ -9,7 +9,7 @@ import { Api } from 'grammy';
 import { writeStringSession } from '@mtcute/core/utils.js';
 import { MtcuteTelegramProvider, TelegramAuthService } from '../src/index.js';
 import { createMtcuteClient } from '../src/telegram-user.js';
-import { qaTemporaryDirectory, withQaCleanup } from './qa-cleanup.mjs';
+import { qaRecoveryDirectory, withQaCleanup } from './qa-cleanup.mjs';
 import { QaOwnedMessages } from './qa-owned-messages.mjs';
 import { safeAcceptanceFailure } from './qa-acceptance-diagnostics.mjs';
 import { resolveVerifiedNativeQaBotPeer } from './qa-telegram-peer.mjs';
@@ -202,7 +202,7 @@ async function run(scope, signal, result) {
       'independent owner readback'
     );
   const before = await read();
-  const directory = await qaTemporaryDirectory(
+  const directory = await qaRecoveryDirectory(
     scope,
     'vac-native-update-sharing-'
   );

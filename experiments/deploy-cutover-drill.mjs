@@ -19,7 +19,6 @@ import { redactTelegramValue } from '../src/index.js';
 import { validateDataDirectory } from '../scripts/data-directory.mjs';
 import {
   analyzeMarkers,
-  assertQaSharedTokenBoundary,
   compareFingerprints,
   countDuplicateDeliveries,
   countRunningContainers,
@@ -49,6 +48,7 @@ import {
 import { requireIdentityPins } from './telegram-e2e-identities.mjs';
 
 import { withQaCleanup, onceQaCleanup } from './qa-cleanup.mjs';
+import { acquireDrillStorageGuard } from './qa-cutover-preflight.mjs';
 import { QaOwnedMessages, readQaHistory } from './qa-owned-messages.mjs';
 import {
   assertQaDriverAccess,
@@ -483,12 +483,7 @@ export function runDeployDrill(options, environment = process.env) {
 // eslint-disable-next-line max-lines-per-function, max-statements -- The drill owns one deployment and teardown transaction across setup and every transition.
 async function runOwnedDrill(options, environment, scope, signal) {
   assertDrillBoundary(environment);
-  const { acquireQaStorageGuard, qaDockerStoragePaths } =
-    await import('./qa-storage-guard.mjs');
-  const guard = await acquireQaStorageGuard(scope, {
-    signal,
-    paths: await qaDockerStoragePaths(dockerCommand),
-  });
+  const { guard } = await acquireDrillStorageGuard(options, scope, signal);
   signal = guard.signal;
   const botEnvironment = await environmentFile(options.botEnv);
   const driverEnvironment = await environmentFile(options.userEnv);
@@ -538,7 +533,6 @@ async function runOwnedDrill(options, environment, scope, signal) {
     baseline: await dockerInventory(),
     journal: join(projectDirectory, 'docker-ownership.json'),
   });
-  assertQaSharedTokenBoundary(options, owned.baseline);
   const builder = `${runId}-builder`;
   owned.ownBuilder(builder);
   if (
