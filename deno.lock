@@ -4,15 +4,15 @@
     "npm:@changesets/cli@^3.0.3": "3.0.3",
     "npm:@eslint/js@^10.0.1": "10.0.1_eslint@10.12.0",
     "npm:@mtcute/node@~0.32.4": "0.32.4",
-    "npm:browser-commander@0.31.1": "0.31.1_playwright@1.64.0",
-    "npm:command-stream@2.3.0": "2.3.0",
+    "npm:browser-commander@0.31.2": "0.31.2_playwright@1.64.0",
+    "npm:command-stream@2.4.0": "2.4.0",
     "npm:eslint-config-prettier@^10.1.8": "10.1.8_eslint@10.12.0",
     "npm:eslint-plugin-prettier@^5.5.6": "5.5.6_eslint@10.12.0_eslint-config-prettier@10.1.8_prettier@3.9.10",
     "npm:eslint@^10.12.0": "10.12.0",
     "npm:grammy@^1.46.0": "1.46.0",
     "npm:husky@^9.1.7": "9.1.7",
     "npm:jscpd@^5.4.1": "5.4.1",
-    "npm:links-notation@0.25.2": "0.25.2",
+    "npm:links-notation@0.26.0": "0.26.0",
     "npm:lino-arguments@0.3.0": "0.3.0",
     "npm:lint-staged@^17.6.0": "17.6.0",
     "npm:log-lazy@1.0.4": "1.0.4",
@@ -579,8 +579,8 @@
         "balanced-match"
       ]
     },
-    "browser-commander@0.31.1_playwright@1.64.0": {
-      "integrity": "sha512-zcgdslwv1S+lD8K28zfoMTCmqE8mNKMVmPqERhZ8n1d4JlJ3inhJOnU9P2jhI5ilvFvHg/zoLq8blmS9augxqg==",
+    "browser-commander@0.31.2_playwright@1.64.0": {
+      "integrity": "sha512-4Ezk5jpNP3pD8/q7hPZ/4Wmb44u+wstUR9oMvLKpEiyHp0bS7lsN3U8kTMDdD1d64vLMtHnx0ZTCmLgiZ0bn9A==",
       "dependencies": [
         "bplist-parser",
         "command-stream",
@@ -645,8 +645,8 @@
     "color-name@1.1.4": {
       "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="
     },
-    "command-stream@2.3.0": {
-      "integrity": "sha512-NJqfkOI7aGq/rohrHYqj30WUWre/dqPQg6GSyDKjvUt2beMP237qo1STKGngVqNBCDCirIWwxO5+rBCUV1TXSw==",
+    "command-stream@2.4.0": {
+      "integrity": "sha512-9V9ulfTKHYAM9GukhtRJeGyaDIQSi9g6nVAOL+9YPtWp4sjvykeHgnjxHup3NqXS3Iy0gwGWPweBv36n9/bP/A==",
       "dependencies": [
         "@resvg/resvg-js",
         "@xterm/headless",
@@ -1096,6 +1096,9 @@
     "links-notation@0.25.2": {
       "integrity": "sha512-f8h1QZieLXAA6yIx3CiAAgWksGgPQ0y6NQ1vRdKQUGSjIVYpHoVSwd13xVLSFDhUPVJn+pcZMOoQVZViV4ohpg=="
     },
+    "links-notation@0.26.0": {
+      "integrity": "sha512-rB3Zfp+ncZJXFkj/3zoR2vtQKb85M0sPLI9KVdWBGXdcyjrqDYRviYSdK3RlCb5a+QqNEkYyEoUyA11RzB+I/g=="
+    },
     "lino-arguments@0.3.0": {
       "integrity": "sha512-46RbNaq0kpDxjyzBqhiCjPypHy9tuL0ITC9LgEolFH65PKtwl0/kRxryleG+5HnqS1JLnUUypZ2GoHWhLWH/PQ==",
       "dependencies": [
@@ -1483,15 +1486,15 @@
         "npm:@changesets/cli@^3.0.3",
         "npm:@eslint/js@^10.0.1",
         "npm:@mtcute/node@~0.32.4",
-        "npm:browser-commander@0.31.1",
-        "npm:command-stream@2.3.0",
+        "npm:browser-commander@0.31.2",
+        "npm:command-stream@2.4.0",
         "npm:eslint-config-prettier@^10.1.8",
         "npm:eslint-plugin-prettier@^5.5.6",
         "npm:eslint@^10.12.0",
         "npm:grammy@^1.46.0",
         "npm:husky@^9.1.7",
         "npm:jscpd@^5.4.1",
-        "npm:links-notation@0.25.2",
+        "npm:links-notation@0.26.0",
         "npm:lino-arguments@0.3.0",
         "npm:lint-staged@^17.6.0",
         "npm:log-lazy@1.0.4",
@@ -1503,7 +1506,7 @@
       ],
       "overrides": {
         "browser-commander": {
-          "command-stream": "2.3.0"
+          "command-stream": "2.4.0"
         },
         "@mtcute/node": {
           "better-sqlite3": "13.0.3"
