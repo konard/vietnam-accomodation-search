@@ -240,6 +240,13 @@ found in this PR”; line 15096 identifies `changeset-check` as the failed job.
 A patch changeset now supplies the release trigger. Final CI is checked against
 the final commit timestamp and SHA, not this stale placeholder run.
 
+The first implementation run at `de688dd` exposed the repository's stricter
+one-changeset-per-PR requirement. Its job log is saved at
+`ci-logs/changeset-38207784488.log`: line 259 reports “Multiple changesets found
+in this PR (2).” The two valid patch descriptions were combined into one
+changeset, and the exact `scripts/validate-changeset.mjs` gate was rerun locally
+before pushing the correction.
+
 ## Original-host execution handoff and remaining gates
 
 The checkout has no original bot/user environment, original deployment records,
