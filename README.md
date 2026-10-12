@@ -107,6 +107,9 @@ private and writes only the selected environment file. Verify a privileged
 command after restarting with that configuration. The
 [acceptance workflow](docs/case-studies/issue-195/README.md) documents independent
 source review and the read-only helper for an existing legacy session.
+The [current recovery and acceptance requirements](docs/case-studies/issue-218/README.md)
+cover protected QA journals and independent positive/negative review of all eight
+offer, bedroom, bed, room, billing-scope, quote-basis, period and currency fields.
 
 The default cache directory is `.vietnam-accomodation-search/` in the current
 working directory. It contains `offers.lino`, `sources.lino`, and downloaded
