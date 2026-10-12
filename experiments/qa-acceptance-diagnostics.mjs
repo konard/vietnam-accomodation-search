@@ -128,11 +128,15 @@ function safeCode(error) {
 
 function nestedCauses(error) {
   const errors = field(error, 'errors');
-  if (Array.isArray(errors)) {
-    return Array.from(
-      { length: Math.min(field(errors, 'length'), 4) },
-      (_, index) => field(errors, index)
-    );
+  try {
+    if (Array.isArray(errors)) {
+      return Array.from(
+        { length: Math.min(field(errors, 'length'), 4) },
+        (_, index) => field(errors, index)
+      );
+    }
+  } catch {
+    // Even Array.isArray can throw for a revoked proxy; ignore unsafe causes.
   }
   const cause = field(error, 'cause');
   return cause ? [cause] : [];

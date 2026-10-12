@@ -6,7 +6,7 @@ import {
   SlowModeWaitError,
   TwoFaConfirmWaitError,
 } from 'teleproto/errors/RPCErrorList.js';
-import { tl } from '@mtcute/core';
+import { tl } from '@mtcute/node';
 import { safeAcceptanceFailure } from '../experiments/qa-acceptance-diagnostics.mjs';
 import {
   classifyTelegramError,
@@ -80,8 +80,11 @@ it('never invokes custom getters or coercions and bounds cyclic cause metadata',
       throw new Error('private getter');
     },
   });
+  const revoked = Proxy.revocable([], {});
+  revoked.revoke();
   for (const error of [
     accessor,
+    { errors: revoked.proxy },
     { code: unsafe, message: unsafe, name: unsafe },
     new Proxy(
       {},
