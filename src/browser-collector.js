@@ -772,7 +772,8 @@ export class BrowserCollector {
           checkedAt: this.now().toISOString(),
         });
       }
-      for (let index = 0; index < Math.min(5, offers.length); index += 1) {
+      let detailChecks = 0;
+      for (let index = 0; index < offers.length; index += 1) {
         const offer = offers[index];
         if (
           !offer.url ||
@@ -785,6 +786,12 @@ export class BrowserCollector {
           const detail = await this.detailStatuses.inspect(
             offer.url,
             async () => {
+              if (detailChecks >= 5) {
+                throw new Error(
+                  'Detail verification request budget exhausted.'
+                );
+              }
+              detailChecks += 1;
               if (
                 !(await this.#navigatePage(commander, offer.url, {
                   deadline,

@@ -108,9 +108,17 @@ export function classifyTelegramPost(
       reason: 'service-advertisement',
     };
   }
-  if (
-    /сколько\s+стоит\s+аренд|хватит\s+сказок|миф[^\n]*студи|market\s+(?:guide|report)|rental\s+price\s+guide|how\s+to\s+(?:clean|rent)|hướng\s+dẫn\s+thuê/iu.test(
+  const informational =
+    /сколько\s+стоит\s+аренд|хватит\s+сказок|миф[^\n]*студи|market\s+(?:guide|report)|rental\s+price\s+guide|how\s+to\s+(?:clean|rent)|hướng\s+dẫn\s+thuê/iu.exec(
       text
+    );
+  const preceding = informational ? text.slice(0, informational.index) : '';
+  if (
+    informational &&
+    !(
+      PROPERTY.test(preceding) &&
+      RENTAL.test(preceding) &&
+      parsePrice(preceding)
     )
   ) {
     return {

@@ -502,6 +502,23 @@ function mergeIdentifiers(offers) {
   return Object.assign({}, ...offers.map((offer) => offer.identifiers || {}));
 }
 
+function sameQuoteContext(left, right) {
+  return (
+    left.sourceId === right.sourceId &&
+    Number.isFinite(left.priceVnd) &&
+    left.priceVnd === right.priceVnd &&
+    ['amount', 'currency', 'period'].every(
+      (key) => left.price?.[key] === right.price?.[key]
+    ) &&
+    left.priceBasis === right.priceBasis &&
+    ['bedrooms', 'rooms', 'beds', 'bedsRange'].every(
+      (key) =>
+        JSON.stringify(left.attributes?.[key]) ===
+        JSON.stringify(right.attributes?.[key])
+    )
+  );
+}
+
 // eslint-disable-next-line complexity -- Preserve the chosen variant and every historical source separately.
 function mergeOfferGroup(group) {
   const offers = [...group].sort(compareOfferChronology);
@@ -555,6 +572,11 @@ function mergeOfferGroup(group) {
       attributes[key] = selected.attributes[key];
     }
   }
+  const officialUrl =
+    selected.officialUrl ||
+    offers.findLast(
+      (offer) => offer.officialUrl && sameQuoteContext(offer, selected)
+    )?.officialUrl;
 
   return {
     ...newest,
@@ -563,12 +585,10 @@ function mergeOfferGroup(group) {
     sourceId: current?.sourceId || newest.sourceId,
     sourceIds,
     identityKeys,
-    officialUrl:
-      selected.officialUrl ||
-      offers.findLast((offer) => offer.officialUrl)?.officialUrl,
+    officialUrl,
     alternativeUrls: unique(
       variants.flatMap((variant) => [variant.url, variant.officialUrl])
-    ).filter((url) => url !== selected.url && url !== selected.officialUrl),
+    ).filter((url) => url !== selected.url && url !== officialUrl),
     ...optional('sourceTypes', sourceTypes.length ? sourceTypes : undefined),
     ...optional('attributes', attributes),
     ...optional('contacts', mergeContacts(offers)),
