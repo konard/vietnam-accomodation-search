@@ -139,6 +139,7 @@ export default [
       // Runtime data: the default data directory (which can hold a browser
       // profile with extension JavaScript), deploy state, and CI logs
       '.vietnam-accomodation-search/**',
+      'data/**',
       '.deploy/**',
       'ci-logs/**',
       '.playwright-mcp/**',

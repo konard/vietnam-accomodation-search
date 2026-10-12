@@ -85,7 +85,10 @@ no third identity, credential paste or manual test execution is requested.
 offer is available for notification acceptance.` No synthetic offer/cache is
   seeded to make it pass. Actual real-photo notification and its restart gate
   remain unfulfilled. Its producer/message/runtime teardown passes.
-- The final independent paged owner-chat audit passes with no known QA messages.
+- The original final paged owner-chat audit reports no known QA messages, but
+  its recognizer misses unprefixed cutover replies. The later user screenshot and
+  exact real recovery supersede this clean-chat conclusion; see
+  [#227](https://github.com/konard/vietnam-accomodation-search/issues/227).
 
 Only uniquely marked QA messages are written to the verified owner's bot chat.
 Public channels and sites are read-only; no join, landlord inquiry, account
@@ -136,9 +139,11 @@ Some marker commands lack a matched reply in their transition window; neither
 duplicate marker replies nor multiple simultaneous app pollers are observed.
 Late replies/backlog must be reconciled before calling these permanently lost.
 Preset/subscription cleanup commands fail to receive expected responses, but
-the entire disposable runtime data is subsequently removed. Chat/project cleanup
+the entire disposable runtime data is subsequently removed. Project cleanup
 passes, full Docker inventory is immediately restored, and the global operation
-lock is absent. New focused follow-up:
+lock is absent. Chat cleanup originally reported a pass but missed unprefixed
+cutover replies; that false negative and subsequent exact recovery are tracked
+in #227. New focused readiness follow-up:
 [#224](https://github.com/konard/vietnam-accomodation-search/issues/224).
 
 The live fingerprint comparison also produces a separately reproduced QA false
@@ -196,7 +201,10 @@ The final independent audit passes: original configuration digests are unchanged
 the entire Docker inventory matches baseline, no owned Docker or runtime workers
 remain, disposable runtime directories and automatic checkout traces are absent,
 the global deployment operation lock is absent, and successful recovery
-namespaces are empty. The final paged chat audit is clean. Read-only cache
+namespaces are empty. The original paged chat audit's clean result is invalidated
+by its incomplete recognizer. A subsequent exact-run recovery independently
+verifies deletion and preservation of unrelated messages; #227 remains open for
+the automatic cleanup/audit fix. Read-only cache
 inspection on the active and default Docker contexts finds only cache records
 created before this run. Last-use metadata is not claimed unchanged and shared
 cache is not pruned. Logical resource release does not promise immediate physical

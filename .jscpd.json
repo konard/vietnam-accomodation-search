@@ -13,6 +13,7 @@
     "**/docs/case-studies/**",
     "**/docs/case-studies/**/data/**",
     "**/.vietnam-accomodation-search/**",
+    "data/**",
     "**/.deploy/**",
     "**/ci-logs/**",
     "**/package-lock.json",

@@ -10,5 +10,6 @@ CLAUDE.md
 docs/case-studies/*/data/
 # Runtime data (also in .gitignore, which Prettier reads too)
 .vietnam-accomodation-search/
+/data/
 .deploy/
 ci-logs/
