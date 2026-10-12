@@ -1,7 +1,8 @@
 import { readFile, stat, writeFile, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { dockerInventory, QaDockerCleanup } from './qa-docker-cleanup.mjs';
 
 const unavailable = () =>
   Object.assign(new Error('QA_CAPACITY_UNAVAILABLE'), {
@@ -111,7 +112,10 @@ async function localProbeImage(run, configured) {
       return { id: image.Id, volumes };
     }
   }
-  throw unavailable();
+  if (configured) {
+    throw unavailable();
+  }
+  return undefined;
 }
 
 export async function recoverDockerCapacityProbe(run, journal) {
@@ -139,12 +143,54 @@ export async function recoverDockerCapacityProbe(run, journal) {
   if ((await run(list)).trim()) {
     throw unavailable();
   }
+  const imageJournal = join(dirname(journal), 'docker-capacity-image.json');
+  try {
+    await stat(imageJournal);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+    await rm(journal);
+    return;
+  }
+  const cleaner = await QaDockerCleanup.restore(imageJournal, { run });
+  if (
+    cleaner.runId !== `vac-qa-capacity-${token}` ||
+    cleaner.projectName ||
+    cleaner.builders.size ||
+    cleaner.imageRefs.size !== 1 ||
+    !cleaner.imageRefs.has('busybox:1.37.0')
+  ) {
+    throw unavailable();
+  }
+  if (!(await cleaner.cleanup()).pass) {
+    throw unavailable();
+  }
+  await rm(imageJournal);
   await rm(journal);
 }
 
-// Use a locally cached image only. This tiny read-only helper measures the
-// guest overlay filesystem; it mounts no Docker socket or source data. Its
-// reservation is journalled before creation and recovered by exact labels.
+async function bootstrapProbeImage(run, directory, token, signal) {
+  const cleaner = new QaDockerCleanup({
+    runId: `vac-qa-capacity-${token}`,
+    baseline: await dockerInventory(run),
+    journal: join(directory, 'docker-capacity-image.json'),
+    run,
+  });
+  const ref = 'busybox:1.37.0';
+  cleaner.ownImage(ref);
+  await cleaner.save();
+  // The small, explicit bootstrap precedes guest measurement. Its producer
+  // must settle before cleanup; ordinary Docker commands already bound pulls.
+  const deadline = AbortSignal.timeout(30_000);
+  const bounded = signal ? AbortSignal.any([signal, deadline]) : deadline;
+  await run(['pull', ref], { signal: bounded });
+  return localProbeImage(run, ref);
+}
+
+// Prefer supported cached images, otherwise acquire only the small owned
+// bootstrap. Host preflight and the exclusive lock must already be held.
+// The helper measures the guest overlay, with no socket or source mounts.
 export async function prepareDockerCapacityProbe(
   run,
   scope,
@@ -152,20 +198,19 @@ export async function prepareDockerCapacityProbe(
   signal,
   environment = process.env
 ) {
-  const image = await localProbeImage(
-    run,
-    environment.QA_DOCKER_CAPACITY_IMAGE
-  );
+  signal?.throwIfAborted();
+  let image = await localProbeImage(run, environment.QA_DOCKER_CAPACITY_IMAGE);
   const token = randomBytes(16).toString('hex');
   const name = `vac-qa-capacity-${token}`;
   const journal = join(lockDirectory, 'docker-capacity.json');
-  await writeFile(journal, JSON.stringify({ name, token, imageId: image.id }), {
+  await writeFile(journal, JSON.stringify({ name, token }), {
     mode: 0o600,
     flag: 'wx',
   });
   scope.defer('Docker capacity probe', () =>
     recoverDockerCapacityProbe(run, journal)
   );
+  image ||= await bootstrapProbeImage(run, lockDirectory, token, signal);
   await run(
     [
       'create',
