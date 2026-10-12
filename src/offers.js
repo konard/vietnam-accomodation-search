@@ -529,6 +529,8 @@ function mergeOfferGroup(group) {
   const selected =
     variants.findLast(
       (variant) =>
+        current?.sourceId &&
+        Number.isFinite(current.priceVnd) &&
         variant.sourceId === current?.sourceId &&
         variant.priceVnd === current?.priceVnd &&
         variant.price?.period === current?.period

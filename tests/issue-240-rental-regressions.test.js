@@ -109,6 +109,11 @@ describe('repository-wide rental regressions (#229–#238)', () => {
         'Apartment for rent in Nha Trang. Price: 3.5 million VND/month.\n• Water:120,000VND/person\n• Management:200,000VND/person'
       ).priceBasis
     ).toBe('property');
+    expect(
+      offer(
+        'Apartment for rent. Price: 3.5 million VND/month Water:120,000VND/person Management:200,000VND/person'
+      ).priceBasis
+    ).toBe('property');
     for (const basis of ['person', 'bed', 'room']) {
       expect(
         offer(`Room for rent. 3 million VND/month per ${basis}`).priceBasis

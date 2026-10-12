@@ -286,6 +286,22 @@ function optionContext(clause, tokens, index) {
   return clause.slice(start, end);
 }
 
+function billingContext(clause, tokens, index) {
+  const token = tokens[index];
+  const end = tokens[index + 1]?.start ?? clause.length;
+  const after = clause.slice(token.end, end);
+  const feeStart = after.search(FEE_LABEL);
+  const before =
+    clause
+      .slice(0, token.start)
+      .match(/(?:per|за|mỗi)\s+[\p{L}-]{1,20}[:\s]*$/iu)?.[0] || '';
+  return (
+    before +
+    clause.slice(token.start, token.end) +
+    (feeStart < 0 ? after : after.slice(0, feeStart))
+  );
+}
+
 function candidates(text) {
   let section = { fee: false, rent: false };
   const parts = clauses(text);
@@ -308,6 +324,7 @@ function candidates(text) {
       (candidate, tokenIndex) => ({
         ...candidate,
         context: optionContext(clause, tokens, tokenIndex),
+        billingContext: billingContext(clause, tokens, tokenIndex),
         preceding,
         clauseIndex: index,
         lexicalStart: clauseStart + candidate.start,

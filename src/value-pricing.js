@@ -10,7 +10,10 @@ export const VALUE_SORTS = Object.freeze([
 ]);
 
 export function quoteBasis(text = '', price) {
-  const options = rentalPriceOptions(text);
+  const parsed = rentalPriceOptions(text);
+  // A standalone unit quotation need not repeat a rent label. Fee labels
+  // still exclude utilities when the quotation is evaluated on its own.
+  const options = parsed.length ? parsed : rentalPriceOptions(`Rent: ${text}`);
   const selected = options.filter(
     (option) =>
       !price ||
@@ -18,7 +21,9 @@ export function quoteBasis(text = '', price) {
         option.currency === price.currency &&
         (option.period || 'month') === price.period)
   );
-  const bases = selected.map(({ context }) => basisInQuote(context));
+  const bases = selected.map(({ billingContext, context }) =>
+    basisInQuote(billingContext || context)
+  );
   return new Set(bases).size > 1 ? 'unknown' : bases[0] || 'property';
 }
 
