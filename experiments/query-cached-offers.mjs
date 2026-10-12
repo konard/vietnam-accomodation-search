@@ -46,13 +46,16 @@ globalThis.fetch = () => {
   throw new Error('Cached ranking must not make a source request.');
 };
 const store = new LinksStore({ directory: paths.directory });
-const cached = await store.listOffers();
 const available = (offer) =>
   offer.attributes?.reviewRequired !== true &&
   offer.attributes?.availableNow !== false &&
   offer.attributes?.availability !== 'unavailable';
-const candidates = cached.filter(
-  (offer) =>
+const candidates = await store.topOffers({
+  limit: paths.limit,
+  compare: (left, right) =>
+    left.priceVnd - right.priceVnd ||
+    String(left.id).localeCompare(String(right.id)),
+  filter: (offer) =>
     /nha[\s_-]?trang|ня[\s-]?чанг/iu.test(offer.location || '') &&
     (offer.sourceType !== 'telegram' || Date.parse(offer.postedAt) >= since) &&
     offer.price?.currency === 'VND' &&
@@ -60,8 +63,8 @@ const candidates = cached.filter(
     offer.priceBasis === 'property' &&
     offer.priceVnd >= paths.minimum &&
     !!offer.url &&
-    available(offer)
-);
+    available(offer),
+});
 const service = new SearchService({
   store: {
     listOffers: () => Promise.resolve(candidates),

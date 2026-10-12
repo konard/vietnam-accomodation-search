@@ -15,6 +15,7 @@ import {
   writeOfferCollection,
 } from './offer-chunks.js';
 import { boundStoredOffer } from './offer-bounds.js';
+import { iterateOffers, writeOfferStream } from './offer-stream.js';
 import {
   DEFAULT_RECORD_CHUNK_BYTES,
   appendIndexedRecords,
@@ -798,6 +799,59 @@ export class LinksStore {
       return offers;
     };
     return this.mirror ? this.#locked(load) : load();
+  }
+
+  async *iterOffers({
+    filter = () => true,
+    project = (offer) => offer,
+    signal,
+  } = {}) {
+    for await (const offer of iterateOffers({
+      directory: this.directory,
+      mirror: this.mirror,
+      maxShardBytes: this.maxOfferShardBytes,
+      signal,
+    })) {
+      if (await filter(offer)) {
+        yield project(offer);
+      }
+    }
+  }
+
+  async topOffers({
+    limit = 10,
+    compare = (left, right) => left.priceVnd - right.priceVnd,
+    filter,
+    project,
+    signal,
+  } = {}) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+      throw new RangeError('Top-k limit must be between 1 and 1000.');
+    }
+    const best = [];
+    for await (const offer of this.iterOffers({ filter, signal })) {
+      best.push(offer);
+      best.sort(compare);
+      if (best.length > limit) {
+        best.pop();
+      }
+    }
+    return project ? best.map(project) : best;
+  }
+
+  replaceOffersFromStream(offers, { signal, check } = {}) {
+    return this.#locked(async () => {
+      await writeOfferStream({
+        directory: this.directory,
+        offers,
+        mirror: this.mirror,
+        maxBytes: this.maxBytes,
+        maxShardBytes: this.maxOfferShardBytes,
+        signal,
+        check,
+      });
+      this.#parsedOffers.clear();
+    });
   }
 
   // Rewrites oversized stored offers to the bounded shape under the write

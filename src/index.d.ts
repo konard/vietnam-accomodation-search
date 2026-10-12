@@ -675,6 +675,24 @@ export declare class LinksStore {
     query: { path: string; value: unknown }
   ): Promise<T[]>;
   listOffers(): Promise<AccommodationOffer[]>;
+  /** Storage order; verifies each shard and releases it before reading the next. */
+  iterOffers<T = AccommodationOffer>(options?: {
+    filter?: (offer: AccommodationOffer) => boolean | Promise<boolean>;
+    project?: (offer: AccommodationOffer) => T;
+    signal?: AbortSignal;
+  }): AsyncGenerator<T>;
+  topOffers<T = AccommodationOffer>(options?: {
+    limit?: number;
+    compare?: (left: AccommodationOffer, right: AccommodationOffer) => number;
+    filter?: (offer: AccommodationOffer) => boolean;
+    project?: (offer: AccommodationOffer) => T;
+    signal?: AbortSignal;
+  }): Promise<T[]>;
+  /** Publishes a reconciled stream atomically without evicting retained evidence. */
+  replaceOffersFromStream(
+    offers: AsyncIterable<AccommodationOffer>,
+    options?: { signal?: AbortSignal; check?: () => Promise<void> }
+  ): Promise<void>;
   /** Rewrites stored offers to the bounded shape; returns the rewritten count. */
   migrateOffers(): Promise<number>;
   saveOffers(offers: AccommodationOffer[]): Promise<void>;
@@ -1326,7 +1344,7 @@ export declare function offerDenominator(
   offer: AccommodationOffer,
   field: string
 ): { count?: number; provenance: string };
-export declare function quoteBasis(text?: string): QuoteBasis;
+export declare function quoteBasis(text?: string, price?: Price): QuoteBasis;
 export declare function formatOfferValue(
   value?: OfferValue
 ): string | undefined;
