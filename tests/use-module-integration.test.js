@@ -9,84 +9,71 @@
  * callable. Without it the interop breakage only surfaces on `main`, inside a
  * job that pushes tags and publishes to npm.
  *
- * The test needs network access. When the fetch of use.js or the package
- * install fails, it logs the reason and passes, so offline development and
- * sandboxed runs are not blocked by an unreachable CDN.
- *
- * use-m 8.16.4 converts resolved paths with pathToFileURL, so Windows runs
- * exercise the same pinned loader instead of retaining the obsolete skip.
+ * Both packages are installed from the lockfile. The installed use.js must
+ * match the release loader's pinned CDN digest before evaluation. Resolving
+ * the installed alias avoids network retries and global npm installation in
+ * a timed test while retaining the real loader and CommonJS import boundary.
  */
 
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { URL } from 'node:url';
 import { describe, it, expect } from 'test-anywhere';
 
-import { loadCommandStream, USE_M_URL } from '../scripts/use-module.mjs';
+import { loadCommandStream, USE_M_SHA256 } from '../scripts/use-module.mjs';
 
-async function hasNetwork() {
-  try {
-    const response = await fetch(USE_M_URL, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(5000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
+// The read-only Deno matrix cannot import command-stream's environment-aware
+// dependencies or launch commands. Register those permission limits as skips;
+// Node/Bun and a permission-enabled Deno run always execute the real assertions.
+const canImport =
+  typeof Deno === 'undefined' ||
+  (await Deno.permissions.query({ name: 'env' })).state === 'granted';
+const canRun =
+  typeof Deno === 'undefined' ||
+  (await Deno.permissions.query({ name: 'run' })).state === 'granted';
+const importIt = canImport ? it : it.skip;
+const commandIt = canImport && canRun ? it : it.skip;
 
-/**
- * Load command-stream through the real use-m, or return null after logging
- * why the test environment cannot (offline or sandboxed fetch).
- * @returns {Promise<Record<string, unknown>|null>} command-stream exports
- */
-async function loadOrSkip() {
-  if (!(await hasNetwork())) {
-    console.log(
-      `Skipping: ${USE_M_URL} is unreachable, so use-m cannot be evaluated.`
-    );
-    return null;
-  }
-
-  try {
-    return await loadCommandStream();
-  } catch (error) {
-    if (/SHA-256|byte limit|callable/.test(error.cause?.message || '')) {
-      throw error;
-    }
-    if (
-      /fetch|network|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|registry/i.test(
-        error.message
-      )
-    ) {
-      console.log(`Skipping: ${error.message}`);
-      return null;
-    }
-    throw error;
-  }
+async function loadInstalled() {
+  const require = createRequire(import.meta.url);
+  const source = await readFile(
+    new URL('../node_modules/use-m/use.js', import.meta.url),
+    'utf8'
+  );
+  expect(createHash('sha256').update(source).digest('hex')).toBe(USE_M_SHA256);
+  const makeUse = await eval(source);
+  const use = await makeUse({
+    scriptPath: import.meta.url,
+    specifierResolver: (specifier) => {
+      expect(specifier).toBe('command-stream@2.0.2');
+      expect(require('command-stream-release/package.json').version).toBe(
+        '2.0.2'
+      );
+      return require.resolve('command-stream-release');
+    },
+  });
+  return loadCommandStream(use);
 }
 
 describe('use-m loads command-stream on this Node version', () => {
-  it('exposes a callable $ from command-stream', async () => {
-    const commandStream = await loadOrSkip();
-
-    if (!commandStream) {
-      return;
-    }
+  importIt('exposes a callable $ from command-stream', async () => {
+    const commandStream = await loadInstalled();
 
     console.log(`Loaded command-stream on ${process.version}`);
     expect(typeof commandStream.$).toBe('function');
   });
 
-  it('rejects when a command exits non-zero', async () => {
-    const { $ } = (await loadOrSkip()) ?? {};
-
-    if (!$) {
-      return;
-    }
+  commandIt('rejects when a command exits non-zero', async () => {
+    const { $ } = await loadInstalled();
+    const evalArgument = typeof Deno === 'undefined' ? '-e' : 'eval';
+    const exitScript =
+      typeof Deno === 'undefined' ? 'process.exit(3)' : 'Deno.exit(3)';
 
     let rejected = false;
 
     try {
-      await $`exit 3`;
+      await $`${process.execPath} ${evalArgument} ${exitScript}`;
     } catch (error) {
       rejected = true;
       expect(error.code).toBe(3);

@@ -40,7 +40,10 @@ export function runCleanTests(
       ? external.slice(1)
       : [
           '--test',
-          '--test-concurrency=1',
+          // Windows file operations and worker startup dominate wall time.
+          // Two isolated workers overlap those waits within the same budget;
+          // memory-constrained local Linux runs retain a single worker.
+          `--test-concurrency=${process.platform === 'win32' ? 2 : 1}`,
           '--test-timeout=30000',
           ...(coverage
             ? [
