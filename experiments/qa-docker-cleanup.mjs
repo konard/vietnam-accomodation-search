@@ -35,15 +35,26 @@ function networkKey(row) {
     : id;
 }
 
-export async function dockerCommand(args, { signal } = {}) {
+export async function dockerCommand(args, { signal, execute = exec } = {}) {
   // Populated production caches can outlive the ordinary command bound.
   // Give Buildx's explicit removal deadline time to report its result.
   const timeout = args[0] === 'buildx' && args[1] === 'rm' ? 70_000 : 30_000;
+  const operation = execute('docker', args, {
+    timeout,
+    signal,
+    maxBuffer: 4 * 1024 ** 2,
+  });
+  const stopped = new Promise((resolve) =>
+    operation.child.once('close', resolve)
+  );
   try {
-    return (
-      await exec('docker', args, { timeout, signal, maxBuffer: 4 * 1024 ** 2 })
-    ).stdout;
+    return (await operation).stdout;
   } catch (error) {
+    // Abort/error callbacks may precede child close. Do not let ownership
+    // cleanup race a still-running pull/create producer.
+    const escalation = setTimeout(() => operation.child.kill('SIGKILL'), 5000);
+    await stopped;
+    clearTimeout(escalation);
     throw annotateDockerFailure(error, args);
   }
 }

@@ -1,4 +1,5 @@
 import { setTimeout as wait } from 'node:timers/promises';
+import { sdkFloodWaitSeconds } from './telegram-error-fields.js';
 
 function errorText(error) {
   return [
@@ -23,6 +24,7 @@ export function classifyTelegramError(error) {
   const code = String(error?.code || '');
   const text = errorText(error);
   const flood = text.match(/FLOOD_WAIT_?(\d+)/iu);
+  const sdkWait = sdkFloodWaitSeconds(error);
   const retryAfter = Number(
     error?.parameters?.retry_after ??
       error?.seconds ??
@@ -32,6 +34,7 @@ export function classifyTelegramError(error) {
 
   if (
     status === 429 ||
+    sdkWait !== undefined ||
     flood ||
     (status === 420 && /FLOOD_WAIT/iu.test(text))
   ) {
