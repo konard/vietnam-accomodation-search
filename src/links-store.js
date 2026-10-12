@@ -419,11 +419,21 @@ export function validKind(kind) {
   return kind;
 }
 
-export async function staleLock(path, statPath = stat) {
+export async function staleLock(
+  path,
+  statPath = stat,
+  { readOwner = readFile, platform = globalThis.process.platform } = {}
+) {
   let owner;
   try {
-    owner = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8'));
+    owner = JSON.parse(await readOwner(join(path, 'owner.json'), 'utf8'));
   } catch (error) {
+    // Windows can deny opens while another writer removes its owner file.
+    // Unreadable ownership is occupied, never evidence for stale recovery;
+    // the caller retries within its existing bounded acquisition loop.
+    if (platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
+      return false;
+    }
     if (error.code === 'ENOENT' || error instanceof SyntaxError) {
       try {
         return Date.now() - (await statPath(path)).mtimeMs >= 1000;
