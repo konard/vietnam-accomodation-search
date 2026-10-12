@@ -230,6 +230,14 @@ it('removes the known Bun compiler cache but fails acceptance on a similarly nam
   const { runCleanTests } = await import('../scripts/test-with-cleanup.mjs');
   for (const [name, expected] of [
     ['bunx-1001-node-gyp@latest', 0],
+    ['.6e415a4c2f3d8da-1.node-gyp', 0],
+    ['.24cc2823a571dcba-1.node-gyp', 0],
+    ['.a-1.node-gyp', 0],
+    ['.a-ABC.node-gyp', 0],
+    ['.a-123456789ABCDEF01.node-gyp', 1],
+    ['.a-b.node-gyp', 1],
+    ['.a123456789abcdef0-1.node-gyp', 1],
+    ['.not-a-hash-1.node-gyp', 1],
     ['bunx-1001-owned-fixture', 1],
   ]) {
     const code = await runCleanTests([

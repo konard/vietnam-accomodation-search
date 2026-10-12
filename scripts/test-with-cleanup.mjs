@@ -147,7 +147,7 @@ export function runCleanTests(
       leftovers.filter(
         (name) =>
           ['node-compile-cache', 'xcrun_db'].includes(name) ||
-          /^\.[a-f\d]{16}-\d+\.node-gyp$/u.test(name) ||
+          /^\.[a-f\d]{1,16}-[A-F\d]{1,16}\.node-gyp$/u.test(name) ||
           /^bunx-\d+-node-gyp@latest$/u.test(name)
       )
     );
