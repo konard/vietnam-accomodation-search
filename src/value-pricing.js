@@ -1,3 +1,4 @@
+import { rentalPriceOptions } from './pricing.js';
 // Explicit billing conventions for optional stay comparisons. Quoted rent
 // remains intact; these arithmetic estimates do not imply bookable rates.
 const NIGHTS = Object.freeze({ night: 1, week: 7, month: 30, year: 365 });
@@ -8,31 +9,25 @@ export const VALUE_SORTS = Object.freeze([
   'pricePerBedVnd',
 ]);
 
-function currencyQuote(line) {
-  const digit = line.search(/\d/u);
-  // The first digit bounds one suffix scan, including long numeric lines
-  // without a currency token.
-  return (
-    (digit >= 0 &&
-      /(?:million|triệu|trieu|tr\b|k\b|млн|тыс|VND|VNĐ|USD|EUR|GBP|RUB|₫|đồng|доллар|руб|\$|€|£|₽|M\b)/iu.test(
-        line.slice(digit + 1)
-      )) ||
-    /(?:USD|EUR|GBP|RUB|VND|VNĐ|\$|€|£|₽|₫)\s*\d/iu.test(line)
+export function quoteBasis(text = '', price) {
+  const parsed = rentalPriceOptions(text);
+  // A standalone unit quotation need not repeat a rent label. Fee labels
+  // still exclude utilities when the quotation is evaluated on its own.
+  const options = parsed.length ? parsed : rentalPriceOptions(`Rent: ${text}`);
+  const selected = options.filter(
+    (option) =>
+      !price ||
+      (option.amount === price.amount &&
+        option.currency === price.currency &&
+        (option.period || 'month') === price.period)
   );
+  const bases = selected.map(({ billingContext, context }) =>
+    basisInQuote(billingContext || context)
+  );
+  return new Set(bases).size > 1 ? 'unknown' : bases[0] || 'property';
 }
 
-export function quoteBasis(text = '') {
-  // Currency-bearing rent lines exclude standalone utility quotes.
-  const quote = String(text)
-    .split(/\n|;/u)
-    .filter(
-      (line) =>
-        currencyQuote(line) &&
-        !/^\s*(?:electric\p{L}*|water|utility|utilities|điện|nước)\b/iu.test(
-          line
-        )
-    )
-    .join('\n');
+function basisInQuote(quote) {
   const unit = quote
     .match(
       /(?:\/|\bper\s+|за\s+|mỗi\s+)(bedroom|room|bed|person|pax|người|phòng|giường|человек|комнат|кровать|койк)(?:s|\p{L}*)(?!\p{L})/iu

@@ -6,6 +6,21 @@ import {
 } from '../experiments/qa-docker-diagnostics.mjs';
 
 describe('bounded Docker failure diagnostics', () => {
+  it('identifies image pull lease failures and start/exec without exposing arguments', () => {
+    for (const operation of ['pull', 'start', 'exec']) {
+      const error = annotateDockerFailure(
+        Object.assign(new Error('private image'), {
+          stderr: 'lease does not exist: not found',
+          code: 1,
+        }),
+        [operation, 'private-image-or-container']
+      );
+      const report = safeQaFailure(error);
+      assert.equal(report.operation, operation);
+      assert.equal(report.category, 'command-failure');
+      assert(!JSON.stringify(report).includes('private'));
+    }
+  });
   it('preserves operation and cause categories without raw resource or credential material', () => {
     const privateValue = 'private-resource-path-token';
     for (const [stderr, category] of [

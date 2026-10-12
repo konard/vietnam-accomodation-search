@@ -69,7 +69,7 @@ async function collectObservation(
     const ingestion = application.createTelegramIngestionService(credentials);
     scope.defer('source native session', () => ingestion.destroy());
     try {
-      await ingestion.start([source], { signal });
+      await ingestion.start([{ ...source, enabled: true }], { signal });
     } finally {
       await ingestion.destroy();
     }
@@ -102,9 +102,13 @@ async function collectObservation(
     materials = assembleTelegramAlbums([...latest.values()]);
     offers = await application.store.listOffers();
   } else {
-    const report = await application.collector.collectWithReport([source], '', {
-      signal,
-    });
+    const report = await application.collector.collectWithReport(
+      [{ ...source, enabled: true }],
+      '',
+      {
+        signal,
+      }
+    );
     outcome = report.outcomes[0];
     offers = report.offers;
     const requestedUrl = buildSearchUrl(source, '');
@@ -141,6 +145,7 @@ async function collectObservation(
   return { ...observation, reviewPack };
 }
 
+// eslint-disable-next-line complexity -- Collection and review modes share one private frozen-cohort boundary.
 async function main(scope, signal) {
   assertManualLocalRun(process.env);
   const output = resolve(option('--output') || '.deploy/source-acceptance');
@@ -188,7 +193,27 @@ async function main(scope, signal) {
     ])
   );
   const credentials = await resolveTelegramSecrets(secretEnvironment);
+  const frozenPath = join(output, 'frozen-cohort.json');
+  const frozen = await load(frozenPath).catch((error) => {
+    if (error.code === 'ENOENT') {
+      return {
+        version: 1,
+        frozenAt: new Date().toISOString(),
+        historyDays: 90,
+      };
+    }
+    throw error;
+  });
+  if (
+    !Number.isFinite(Date.parse(frozen.frozenAt)) ||
+    frozen.historyDays !== 90
+  ) {
+    throw new Error('Invalid frozen 90-day cohort checkpoint.');
+  }
+  await save(frozenPath, frozen);
+  environment.TELEGRAM_HISTORY_DAYS = '90';
   const application = createApplication({
+    now: () => new Date(frozen.frozenAt),
     environment,
     telegramCredentials: credentials,
     logger: { debug() {}, warn() {}, error() {} },
@@ -231,11 +256,9 @@ async function main(scope, signal) {
     const accepted = rows.filter(({ pass }) => pass).length;
     console.log(
       JSON.stringify({
-        inventory: rows.length,
-        accepted,
-        incomplete: rows.length - accepted,
-        excluded: rows.filter(({ capability }) => capability !== 'supported')
-          .length,
+        inventoryComplete: accepted === rows.length,
+        incomplete: accepted !== rows.length,
+        privateEvidenceRetained: true,
         globalOptimality: 'unverified',
       })
     );
@@ -275,8 +298,7 @@ async function collectSources(
     signal,
   });
   signal = guard.signal;
-  let collected = 0;
-  let excluded = 0;
+
   for (const source of sources) {
     context.phase = 'storage-guard';
     await guard.check();
@@ -304,7 +326,7 @@ async function collectSources(
         fetchComplete: false,
         parseComplete: false,
         paginationComplete: false,
-        failure: safeAcceptanceFailure(error, 'collection'),
+        failure: safeAcceptanceFailure(error, error.qaPhase || 'collection'),
       };
     }
     const { reviewPack = [], ...safeObservation } = observation;
@@ -320,13 +342,12 @@ async function collectSources(
       `${prefix}-acceptance.json`,
       evaluateSourceAcceptance(safeObservation)
     );
-    collected += 1;
-    excluded += Boolean(observation.exclusion);
+
     console.log(
       JSON.stringify({
-        collected,
-        excluded,
-        accepted: 0,
+        collectionAttempted: true,
+        exclusionPresent: Boolean(observation.exclusion),
+        accepted: false,
         reviewPending: true,
         globalOptimality: 'unverified',
       })

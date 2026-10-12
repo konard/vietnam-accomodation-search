@@ -7,7 +7,8 @@ import {
   boundedRaw,
   newestEntries,
 } from './offer-bounds.js';
-import { convertToVnd, parsePrice } from './pricing.js';
+import { convertToVnd, parsePrice, rentalQuoteIssues } from './pricing.js';
+import { classifyTelegramPost } from './telegram-pipeline.js';
 import { canonicalizeUrl, firstPresent, stableHash } from './utils.js';
 import {
   chronologyTimestamp,
@@ -116,6 +117,7 @@ function distinctiveTitle(value) {
   return title.split(' ').length >= 3 ? title : undefined;
 }
 
+// eslint-disable-next-line complexity -- Unit evidence and contact evidence are independently optional.
 function fingerprintKey(offer) {
   const location = normalizedIdentityValue(offer.location);
   if (!location) {
@@ -137,11 +139,12 @@ function fingerprintKey(offer) {
       ? `${area}:${bedrooms}`
       : undefined;
   const title = distinctiveTitle(offer.title);
-  const discriminator = contact
-    ? `${contact}\n${firstPresent(structure, title)}`
-    : structure && title
-      ? `${structure}\n${title}`
-      : undefined;
+  const discriminator =
+    contact && (structure || title)
+      ? `${contact}\n${firstPresent(structure, title)}`
+      : structure && title
+        ? `${structure}\n${title}`
+        : undefined;
   return discriminator
     ? `fingerprint:${stableHash(
         contact
@@ -253,6 +256,22 @@ export function normalizeOffer(input, options = {}) {
   )}`;
   const id = firstPresent(compact(input.id), generatedId);
   const attributes = mergeParsedAttributes(parsed.attributes, input.attributes);
+  const reviewReasons = rentalQuoteIssues(text, price);
+  const classification = classifyTelegramPost(text, { targetLocation: null });
+  if (
+    ['informational-market-content', 'service-advertisement'].includes(
+      classification.reason
+    )
+  ) {
+    reviewReasons.push(classification.reason);
+  }
+  if (reviewReasons.length) {
+    attributes.reviewRequired = true;
+    attributes.reviewReasons = unique([
+      ...(attributes.reviewReasons || []),
+      ...reviewReasons,
+    ]);
+  }
   const contacts = mergeParsedContacts(parsed.contacts, input.contacts);
 
   return {
@@ -280,7 +299,7 @@ export function normalizeOffer(input, options = {}) {
     ...optional('identifiers', input.identifiers),
     price,
     priceVnd: convertToVnd(price, rates),
-    priceBasis: input.priceBasis || price?.basis || quoteBasis(text),
+    priceBasis: input.priceBasis || price?.basis || quoteBasis(text, price),
     priceBasisProvenance:
       input.priceBasisProvenance ||
       (input.priceBasis || price?.basis ? 'declared' : 'inferred-from-quote'),
@@ -483,6 +502,24 @@ function mergeIdentifiers(offers) {
   return Object.assign({}, ...offers.map((offer) => offer.identifiers || {}));
 }
 
+function sameQuoteContext(left, right) {
+  return (
+    left.sourceId === right.sourceId &&
+    Number.isFinite(left.priceVnd) &&
+    left.priceVnd === right.priceVnd &&
+    ['amount', 'currency', 'period'].every(
+      (key) => left.price?.[key] === right.price?.[key]
+    ) &&
+    left.priceBasis === right.priceBasis &&
+    ['bedrooms', 'rooms', 'beds', 'bedsRange'].every(
+      (key) =>
+        JSON.stringify(left.attributes?.[key]) ===
+        JSON.stringify(right.attributes?.[key])
+    )
+  );
+}
+
+// eslint-disable-next-line complexity -- Preserve the chosen variant and every historical source separately.
 function mergeOfferGroup(group) {
   const offers = [...group].sort(compareOfferChronology);
   const oldest = offers[0];
@@ -505,19 +542,55 @@ function mergeOfferGroup(group) {
   ).filter(Boolean);
   const identifiers = mergeIdentifiers(offers);
   const identityKeys = unique(offers.flatMap(offerIdentityKeys)).sort();
-  const officialUrl = offers.findLast(
-    (offer) => offer.officialUrl
-  )?.officialUrl;
+
+  const selected =
+    variants.findLast(
+      (variant) =>
+        current?.sourceId &&
+        Number.isFinite(current.priceVnd) &&
+        variant.sourceId === current?.sourceId &&
+        variant.priceVnd === current?.priceVnd &&
+        variant.price?.period === current?.period
+    ) || newest;
+  const attributes = mergeAttributes(offers) || {};
+  // Denominators, availability and review evidence belong to the quote.
+  for (const key of [
+    'bedrooms',
+    'rooms',
+    'beds',
+    'bedsRange',
+    'availability',
+    'availableNow',
+    'reviewRequired',
+    'reviewReasons',
+    'amenities',
+    'absentAmenities',
+    'sharedAmenities',
+  ]) {
+    delete attributes[key];
+    if (selected.attributes?.[key] !== undefined) {
+      attributes[key] = selected.attributes[key];
+    }
+  }
+  const officialUrl =
+    selected.officialUrl ||
+    offers.findLast(
+      (offer) => offer.officialUrl && sameQuoteContext(offer, selected)
+    )?.officialUrl;
 
   return {
     ...newest,
+    ...selected,
     id: oldest.id,
     sourceId: current?.sourceId || newest.sourceId,
     sourceIds,
     identityKeys,
-    ...optional('officialUrl', officialUrl),
+    officialUrl,
+    alternativeUrls: unique(
+      variants.flatMap((variant) => [variant.url, variant.officialUrl])
+    ).filter((url) => url !== selected.url && url !== officialUrl),
     ...optional('sourceTypes', sourceTypes.length ? sourceTypes : undefined),
-    ...optional('attributes', mergeAttributes(offers)),
+    ...optional('attributes', attributes),
     ...optional('contacts', mergeContacts(offers)),
     ...optional(
       'identifiers',

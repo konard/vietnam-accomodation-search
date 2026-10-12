@@ -5,6 +5,7 @@
     "npm:@eslint/js@^10.0.1": "10.0.1_eslint@10.12.0",
     "npm:@mtcute/node@~0.32.4": "0.32.4",
     "npm:browser-commander@0.31.2": "0.31.2_playwright@1.64.0",
+    "npm:command-stream@2.0.2": "2.0.2",
     "npm:command-stream@2.4.0": "2.4.0",
     "npm:eslint-config-prettier@^10.1.8": "10.1.8_eslint@10.12.0",
     "npm:eslint-plugin-prettier@^5.5.6": "5.5.6_eslint@10.12.0_eslint-config-prettier@10.1.8_prettier@3.9.10",
@@ -583,7 +584,7 @@
       "integrity": "sha512-4Ezk5jpNP3pD8/q7hPZ/4Wmb44u+wstUR9oMvLKpEiyHp0bS7lsN3U8kTMDdD1d64vLMtHnx0ZTCmLgiZ0bn9A==",
       "dependencies": [
         "bplist-parser",
-        "command-stream",
+        "command-stream@2.4.0",
         "csv-parse",
         "gifenc",
         "links-notation@0.25.2",
@@ -644,6 +645,20 @@
     },
     "color-name@1.1.4": {
       "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="
+    },
+    "command-stream@2.0.2": {
+      "integrity": "sha512-90qiIb7EJ8N9u+YcXKvP0shMZAli0D1yC2i3F9TSzgr7KYaEfvob0Jfcl10SIBqTMggJVAA/39IP/hwju4tYYQ==",
+      "dependencies": [
+        "@resvg/resvg-js",
+        "@xterm/headless",
+        "cross-spawn",
+        "execa",
+        "gifenc"
+      ],
+      "optionalDependencies": [
+        "node-pty"
+      ],
+      "bin": true
     },
     "command-stream@2.4.0": {
       "integrity": "sha512-9V9ulfTKHYAM9GukhtRJeGyaDIQSi9g6nVAOL+9YPtWp4sjvykeHgnjxHup3NqXS3Iy0gwGWPweBv36n9/bP/A==",
@@ -1487,6 +1502,7 @@
         "npm:@eslint/js@^10.0.1",
         "npm:@mtcute/node@~0.32.4",
         "npm:browser-commander@0.31.2",
+        "npm:command-stream@2.0.2",
         "npm:command-stream@2.4.0",
         "npm:eslint-config-prettier@^10.1.8",
         "npm:eslint-plugin-prettier@^5.5.6",

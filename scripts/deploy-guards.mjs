@@ -259,10 +259,13 @@ export async function observeSettle({
   now = Date.now,
   sample,
   sleep = delay,
+  signal,
 }) {
+  signal?.throwIfAborted();
   const baseline = await sample();
   const deadline = now() + durationMs;
   for (let current = baseline; ;) {
+    signal?.throwIfAborted();
     const failure = settleFailure(baseline, current);
     if (failure) {
       throw new Error(
@@ -272,7 +275,11 @@ export async function observeSettle({
     if (now() >= deadline) {
       return current;
     }
-    await sleep(Math.min(intervalMs, Math.max(0, deadline - now())));
+    await sleep(
+      Math.min(intervalMs, Math.max(0, deadline - now())),
+      undefined,
+      { signal }
+    );
     current = await sample();
   }
 }
@@ -287,16 +294,28 @@ function truncate(text, limit) {
  */
 export function trackCommands(run, progress) {
   const wrap =
-    (target) =>
+    (target, configured = false) =>
     (first, ...rest) => {
       if (Array.isArray(first) && 'raw' in first) {
         progress.command = truncate(
           String.raw({ raw: first }, ...rest).replace(/\s+/gu, ' '),
           COMMAND_TEXT_LIMIT
         );
-        return target(first, ...rest);
+        progress.signal?.throwIfAborted();
+        const result = (
+          configured || !progress.signal
+            ? target
+            : target({ signal: progress.signal })
+        )(first, ...rest);
+        const pending = Promise.resolve(result);
+        progress.commands?.add(pending);
+        pending.then(
+          () => progress.commands?.delete(pending),
+          () => progress.commands?.delete(pending)
+        );
+        return result;
       }
-      return wrap(target(first, ...rest));
+      return wrap(target({ ...first, signal: progress.signal }, ...rest), true);
     };
   return wrap(run);
 }

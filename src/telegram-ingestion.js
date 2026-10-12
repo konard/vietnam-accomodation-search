@@ -1,3 +1,4 @@
+import { classifyTelegramError } from './telegram-errors.js';
 import { diagnosticLogger } from './diagnostic-log.js';
 import { telegramHistoryWindow } from './telegram-window.js';
 import {
@@ -688,6 +689,7 @@ export class TelegramIngestionService {
     if (this.subscription) {
       throw new Error('Telegram ingestion is already running.');
     }
+    let failedSource;
     try {
       const rates = this.rateProvider
         ? await this.rateProvider.getRates()
@@ -747,7 +749,20 @@ export class TelegramIngestionService {
           status: 'start',
           sourceId: source.id,
         });
+        failedSource = source.id;
         const checkpoint = checkpoints.get(source.id);
+        if (source.id) {
+          await this.#appendRecords('telegram-ingestion-checkpoints', [
+            {
+              ...checkpoint,
+              id: source.id,
+              complete: false,
+              state: 'collecting',
+              cutoff: cutoff.toISOString(),
+              windowNow: this.window.now.toISOString(),
+            },
+          ]);
+        }
         const resume =
           checkpoint?.complete === false &&
           checkpoint.oldestMessageId !== undefined &&
@@ -1022,6 +1037,7 @@ export class TelegramIngestionService {
       await this.#appendRecords('domain-records', graphRecords);
       await this.#persistRetentionLoss();
       await this.trace.persist();
+      failedSource = undefined;
       this.subscription = await this.provider.liveUpdates(
         (event) => {
           const operation = this.pending.then(() => this.#apply(event, rates));
@@ -1034,10 +1050,45 @@ export class TelegramIngestionService {
           );
           return operation;
         },
-        { sources: sources.filter((source) => source.enabled !== false) }
+        {
+          sources: sources.filter((source) => source.enabled !== false),
+          signal,
+        }
       );
       return { backfilled: backfill.length, sources: sources.length };
     } catch (error) {
+      failedSource ||= error.qaSourceId;
+      if (failedSource) {
+        try {
+          const existing = (
+            (await this.store.loadRecords('telegram-ingestion-checkpoints')) ||
+            []
+          ).find((record) => record.id === failedSource);
+          const category = classifyTelegramError(error).category;
+          await this.#appendRecords('telegram-ingestion-checkpoints', [
+            {
+              ...existing,
+              id: failedSource,
+              complete: false,
+              state: 'degraded',
+              failure: {
+                phase: ['source-resolution', 'history-page'].includes(
+                  error.qaPhase
+                )
+                  ? error.qaPhase
+                  : 'history-page',
+                category,
+              },
+              updatedAt: this.now().toISOString(),
+            },
+          ]);
+        } catch {
+          this.logger.debug?.(
+            'Incomplete source checkpoint could not be persisted',
+            { category: 'checkpoint-persistence-failed' }
+          );
+        }
+      }
       this.trace.record({
         runId: 'telegram-backfill:startup',
         stage: 'history',

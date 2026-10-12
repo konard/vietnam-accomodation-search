@@ -1,3 +1,9 @@
+import { URL } from 'node:url';
+import {
+  WebDetailStatusCache,
+  extractDetailStatus,
+  applyDetailStatus,
+} from './web-detail-status.js';
 import { telegramHistoryWindow } from './telegram-window.js';
 import { TelegramPreviewProgress } from './telegram-preview-progress.js';
 import {
@@ -431,6 +437,10 @@ export class BrowserCollector {
     this.maxTelegramPages = maxTelegramPages;
     this.previewProgress = new TelegramPreviewProgress(store);
     this.webProgress = new WebPaginationProgress(store);
+    this.detailStatuses = new WebDetailStatusCache({
+      store,
+      now: now || (() => new Date()),
+    });
     this.maxWebPages = maxWebPages;
     this.navigationTimeoutMs = navigationTimeoutMs;
     this.now = now || (() => new Date());
@@ -647,7 +657,7 @@ export class BrowserCollector {
     });
   }
 
-  // eslint-disable-next-line complexity -- Source collection keeps transport, paging, and parser failure boundaries together.
+  // eslint-disable-next-line complexity, max-lines-per-function -- Source collection keeps transport, paging, and parser failure boundaries together.
   async collectSource(
     commander,
     source,
@@ -750,6 +760,78 @@ export class BrowserCollector {
           transport: 'browser-preview',
         };
         offers.push(offer);
+      }
+    }
+    if (
+      source.type !== 'telegram' &&
+      /(?:homedy|batdongsan)\.com(?:\.vn)?/iu.test(requestedUrl)
+    ) {
+      for (let index = 0; index < offers.length; index += 1) {
+        offers[index] = applyDetailStatus(offers[index], {
+          status: 'unknown',
+          checkedAt: this.now().toISOString(),
+        });
+      }
+      let detailChecks = 0;
+      for (let index = 0; index < offers.length; index += 1) {
+        const offer = offers[index];
+        if (
+          !offer.url ||
+          !safeOfficialUrl(offer.url) ||
+          new URL(offer.url).hostname !== new URL(requestedUrl).hostname
+        ) {
+          continue;
+        }
+        try {
+          const detail = await this.detailStatuses.inspect(
+            offer.url,
+            async () => {
+              if (detailChecks >= 5) {
+                throw new Error(
+                  'Detail verification request budget exhausted.'
+                );
+              }
+              detailChecks += 1;
+              if (
+                !(await this.#navigatePage(commander, offer.url, {
+                  deadline,
+                  signal,
+                }))
+              ) {
+                throw new Error('Detail verification budget exhausted.');
+              }
+              const pageState = await commander.evaluate(extractPageState);
+              const classification = classifyListingPage({
+                ...pageState,
+                cards: 1,
+              });
+              if (
+                [
+                  PAGE_CLASSIFICATIONS.CHALLENGE,
+                  PAGE_CLASSIFICATIONS.LOGIN,
+                  PAGE_CLASSIFICATIONS.CONSENT,
+                ].includes(classification) ||
+                classification.startsWith('http-')
+              ) {
+                throw new BrowserPageError(classification, offer.url);
+              }
+              return commander.evaluate(extractDetailStatus);
+            },
+            { signal }
+          );
+          offers[index] = applyDetailStatus(offer, detail);
+        } catch (error) {
+          if (signal?.aborted) {
+            throw error;
+          }
+          offers[index] = applyDetailStatus(offer, {
+            status: 'unknown',
+            checkedAt: this.now().toISOString(),
+          });
+          this.logger.debug('Primary detail status could not be verified', {
+            category: 'detail-status-unverified',
+          });
+        }
       }
     }
     Object.defineProperty(offers, 'parseComplete', { value: true });
@@ -971,6 +1053,44 @@ export class BrowserCollector {
       launchSettings(this.browserLaunchOptions)
     );
     return { browser, page, runtime };
+  }
+
+  async inspectDetail(url, { signal } = {}) {
+    if (
+      !safeOfficialUrl(url) ||
+      !/(^|\.)(homedy\.com|batdongsan\.com\.vn)$/iu.test(new URL(url).hostname)
+    ) {
+      throw new Error('Use an official supported detail URL.');
+    }
+    const { browser, page, runtime } = await this.#launch();
+    const commander = openCommander(runtime, page);
+    try {
+      return await this.detailStatuses.inspect(
+        url,
+        async () => {
+          await this.navigate(commander, url, { signal });
+          const state = await commander.evaluate(extractPageState);
+          const classification = classifyListingPage({ ...state, cards: 1 });
+          if (
+            [
+              PAGE_CLASSIFICATIONS.CHALLENGE,
+              PAGE_CLASSIFICATIONS.LOGIN,
+              PAGE_CLASSIFICATIONS.CONSENT,
+            ].includes(classification) ||
+            classification.startsWith('http-')
+          ) {
+            throw new BrowserPageError(classification, url);
+          }
+          return commander.evaluate(extractDetailStatus);
+        },
+        { signal }
+      );
+    } finally {
+      await settleCleanup(
+        [() => commander.destroy(), () => browser.close()],
+        'Detail diagnostic cleanup was incomplete.'
+      );
+    }
   }
 
   // Launches the browser exactly as a search does, renders a `data:` page,

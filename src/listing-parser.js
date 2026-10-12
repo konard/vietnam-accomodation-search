@@ -131,10 +131,45 @@ function extractAmenities(text) {
     ['washing-machine', /washing\s*machine|стиральн|máy\s*giặt/iu],
     ['wifi', /wi-?fi|вай-?фай/iu],
   ];
-  return candidates
-    .filter(([, pattern]) => pattern.test(text))
-    .map(([name]) => name)
-    .sort();
+  const amenities = [],
+    absentAmenities = [],
+    sharedAmenities = [];
+  for (const [name, pattern] of candidates) {
+    const matches = [...text.matchAll(new RegExp(pattern, 'giu'))];
+    for (const match of matches) {
+      const before = text
+        .slice(Math.max(0, match.index - 45), match.index)
+        .split(/[.;\n]/u)
+        .at(-1);
+      const after = text.slice(
+        match.index + match[0].length,
+        match.index + match[0].length + 35
+      );
+      if (
+        /(?:không(?:\s+có)?|no|without|без|нет|не\s+имеется)\s*$/iu.test(
+          before
+        ) ||
+        /^(?:\p{L}*\s+)(?:absent|unavailable|нет)(?!\p{L})/iu.test(after)
+      ) {
+        absentAmenities.push(name);
+      } else if (
+        /shared|communal|общ\p{L}*|chung/iu.test(
+          before + after.split(/[.;\n]/u)[0]
+        )
+      ) {
+        sharedAmenities.push(name);
+      } else {
+        amenities.push(name);
+      }
+    }
+  }
+  return {
+    amenities: [...new Set(amenities)]
+      .filter((name) => !absentAmenities.includes(name))
+      .sort(),
+    absentAmenities: [...new Set(absentAmenities)].sort(),
+    sharedAmenities: [...new Set(sharedAmenities)].sort(),
+  };
 }
 
 function timeValue(text, label) {
@@ -284,10 +319,21 @@ function extractAttributes(
     /(?:bathrooms?|сануз\p{L}*|phòng\s*tắm)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
     countBefore('WC'),
   ]);
-  const beds = matchedNumber(text, [
-    /(?:\bbeds?(?!\p{L})|кроват\p{L}*|giường)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
-    countBefore('beds?|кроват\\p{L}*|giường'),
-  ]);
+  const bedAlternative = text.match(
+    /(?<!\d)(\d{1,2})[ \t]*(?:hoặc|or|или|[-–])[ \t]*(\d{1,2})[ \t]*(?:giường|beds?(?!room)|кроват\p{L}*)/iu
+  );
+  const bedsRange = bedAlternative
+    ? {
+        min: Math.min(Number(bedAlternative[1]), Number(bedAlternative[2])),
+        max: Math.max(Number(bedAlternative[1]), Number(bedAlternative[2])),
+      }
+    : undefined;
+  const beds = bedAlternative
+    ? undefined
+    : matchedNumber(text, [
+        /(?:\bbeds?(?!\p{L})|кроват\p{L}*|giường)\s{0,8}[:#-]?\s{0,8}(\d{1,2})/iu,
+        countBefore('beds?|кроват\\p{L}*|giường'),
+      ]);
   const guests = matchedNumber(text, [
     /(?:guests?|гост\p{L}*|khách)\s{0,8}[:#-]?\s{0,8}(\d{1,3})/iu,
     countBefore('guests?|гост\\p{L}*|khách', 3),
@@ -347,6 +393,7 @@ function extractAttributes(
     bedrooms,
     bathrooms,
     beds,
+    bedsRange,
     guests,
     areaM2,
     floor,
@@ -381,7 +428,7 @@ function extractAttributes(
     checkIn: timeValue(text, 'check[- ]?in|заезд|nhận\\s*phòng'),
     checkOut: timeValue(text, 'check[- ]?out|выезд|trả\\s*phòng'),
     ...coordinates(text),
-    amenities: extractAmenities(text),
+    ...extractAmenities(text),
     labeledFields: fields,
   });
 }

@@ -36,6 +36,13 @@ function headline(text) {
 }
 
 function advertisesService(text) {
+  if (
+    /visa|border[- ]?(?:run|service)|виз[аы]|визаран|cleaning\s+(?:advice|tips)|советы[^\n]*уборк/iu.test(
+      text.split('\n')[0]
+    )
+  ) {
+    return true;
+  }
   return (
     (SERVICE.test(text) || NON_HOUSING_SERVICE.test(text)) &&
     !RENTAL.test(headline(text))
@@ -99,6 +106,25 @@ export function classifyTelegramPost(
       eligible: false,
       label: 'service',
       reason: 'service-advertisement',
+    };
+  }
+  const informational =
+    /сколько\s+стоит\s+аренд|хватит\s+сказок|миф[^\n]*студи|market\s+(?:guide|report)|rental\s+price\s+guide|how\s+to\s+(?:clean|rent)|hướng\s+dẫn\s+thuê/iu.exec(
+      text
+    );
+  const preceding = informational ? text.slice(0, informational.index) : '';
+  if (
+    informational &&
+    !(
+      PROPERTY.test(preceding) &&
+      RENTAL.test(preceding) &&
+      parsePrice(preceding)
+    )
+  ) {
+    return {
+      eligible: false,
+      label: 'unrelated',
+      reason: 'informational-market-content',
     };
   }
   if (

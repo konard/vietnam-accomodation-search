@@ -5,6 +5,8 @@ export async function waitForReadiness({
   now = () => globalThis.performance.now(),
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   timeoutSeconds = 300,
+  signal,
+  observe = () => {},
 }) {
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
     throw new RangeError(
@@ -14,7 +16,9 @@ export async function waitForReadiness({
   const started = now();
   const timeoutMs = timeoutSeconds * 1000;
   while (now() - started < timeoutMs) {
+    signal?.throwIfAborted();
     const status = await inspect();
+    await observe({ status, elapsedMs: now() - started });
     if (status === 'healthy') {
       return { elapsedMs: now() - started };
     }

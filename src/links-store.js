@@ -15,6 +15,7 @@ import {
   writeOfferCollection,
 } from './offer-chunks.js';
 import { boundStoredOffer } from './offer-bounds.js';
+import { iterateOffers, writeOfferStream } from './offer-stream.js';
 import {
   DEFAULT_RECORD_CHUNK_BYTES,
   appendIndexedRecords,
@@ -418,11 +419,21 @@ export function validKind(kind) {
   return kind;
 }
 
-export async function staleLock(path, statPath = stat) {
+export async function staleLock(
+  path,
+  statPath = stat,
+  { readOwner = readFile, platform = globalThis.process.platform } = {}
+) {
   let owner;
   try {
-    owner = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8'));
+    owner = JSON.parse(await readOwner(join(path, 'owner.json'), 'utf8'));
   } catch (error) {
+    // Windows can deny opens while another writer removes its owner file.
+    // Unreadable ownership is occupied, never evidence for stale recovery;
+    // the caller retries within its existing bounded acquisition loop.
+    if (platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
+      return false;
+    }
     if (error.code === 'ENOENT' || error instanceof SyntaxError) {
       try {
         return Date.now() - (await statPath(path)).mtimeMs >= 1000;
@@ -798,6 +809,59 @@ export class LinksStore {
       return offers;
     };
     return this.mirror ? this.#locked(load) : load();
+  }
+
+  async *iterOffers({
+    filter = () => true,
+    project = (offer) => offer,
+    signal,
+  } = {}) {
+    for await (const offer of iterateOffers({
+      directory: this.directory,
+      mirror: this.mirror,
+      maxShardBytes: this.maxOfferShardBytes,
+      signal,
+    })) {
+      if (await filter(offer)) {
+        yield project(offer);
+      }
+    }
+  }
+
+  async topOffers({
+    limit = 10,
+    compare = (left, right) => left.priceVnd - right.priceVnd,
+    filter,
+    project,
+    signal,
+  } = {}) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+      throw new RangeError('Top-k limit must be between 1 and 1000.');
+    }
+    const best = [];
+    for await (const offer of this.iterOffers({ filter, signal })) {
+      best.push(offer);
+      best.sort(compare);
+      if (best.length > limit) {
+        best.pop();
+      }
+    }
+    return project ? best.map(project) : best;
+  }
+
+  replaceOffersFromStream(offers, { signal, check } = {}) {
+    return this.#locked(async () => {
+      await writeOfferStream({
+        directory: this.directory,
+        offers,
+        mirror: this.mirror,
+        maxBytes: this.maxBytes,
+        maxShardBytes: this.maxOfferShardBytes,
+        signal,
+        check,
+      });
+      this.#parsedOffers.clear();
+    });
   }
 
   // Rewrites oversized stored offers to the bounded shape under the write

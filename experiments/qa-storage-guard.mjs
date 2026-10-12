@@ -1,7 +1,7 @@
 // Participating storage-heavy acceptance commands share one per-host lock.
 // A crashed run's lock is never stolen: recovery must verify its exact journal.
 import { mkdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { homedir, tmpdir, hostname } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import {
@@ -116,6 +116,9 @@ export async function acquireQaStorageGuard(
     );
   }
   const owner = JSON.stringify({
+    version: 1,
+    host: hostname(),
+    purpose: 'storage-heavy-acceptance',
     token: randomBytes(16).toString('hex'),
     pid: process.pid,
     startedAt: new Date().toISOString(),
@@ -196,5 +199,5 @@ export async function acquireQaStorageGuard(
     await checking;
   });
   poll();
-  return { signal: combined, check };
+  return { signal: combined, check, owner: JSON.parse(owner), lockDirectory };
 }

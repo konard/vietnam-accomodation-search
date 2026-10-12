@@ -1,6 +1,9 @@
 // Public reports use only finite operation names and error categories. Raw
 // Docker output belongs in private logs, never in an acceptance row.
 const OPERATIONS = new Set([
+  'pull',
+  'start',
+  'exec',
   'network create',
   'network ls',
   'network rm',

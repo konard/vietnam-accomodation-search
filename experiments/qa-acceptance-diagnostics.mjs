@@ -182,7 +182,7 @@ export async function acceptancePhase(phase, operation) {
     return await operation();
   } catch (error) {
     if (error && typeof error === 'object') {
-      error.qaPhase = typeof phase === 'function' ? phase() : phase;
+      error.qaPhase ||= typeof phase === 'function' ? phase() : phase;
     }
     throw error;
   }

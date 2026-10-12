@@ -55,6 +55,7 @@ export interface AccommodationAttributes {
   floor?: number;
   district?: string;
   beds?: number;
+  bedsRange?: { min: number; max: number };
   guests?: number;
   availableFrom?: string;
   minimumStayMonths?: number;
@@ -63,8 +64,12 @@ export interface AccommodationAttributes {
   deposit?: Price;
   prepaymentMonths?: number;
   prepayment?: Price;
-  availability?: 'available' | 'unavailable';
+  availability?: 'available' | 'unavailable' | 'unknown';
   availableNow?: boolean;
+  detailStatus?: 'active' | 'expired' | 'rented' | 'unknown';
+  detailCheckedAt?: string;
+  detailPublishedAt?: string;
+  detailExpiresAt?: string;
   furnished?: boolean;
   petsAllowed?: boolean;
   utilitiesIncluded?: boolean;
@@ -76,6 +81,8 @@ export interface AccommodationAttributes {
   latitude?: number;
   longitude?: number;
   amenities?: string[];
+  absentAmenities?: string[];
+  sharedAmenities?: string[];
   utilityCharges?: string[];
   fees?: Array<{ label: string; price: Price }>;
   labeledFields?: Record<string, string[]>;
@@ -159,6 +166,7 @@ export interface AccommodationOffer {
   id: string;
   sourceId: string;
   sourceIds?: string[];
+  alternativeUrls?: string[];
   sourceType?: 'web' | 'official-web' | 'telegram';
   sourceTypes?: Array<'web' | 'official-web' | 'telegram'>;
   title: string;
@@ -675,6 +683,24 @@ export declare class LinksStore {
     query: { path: string; value: unknown }
   ): Promise<T[]>;
   listOffers(): Promise<AccommodationOffer[]>;
+  /** Storage order; verifies each shard and releases it before reading the next. */
+  iterOffers<T = AccommodationOffer>(options?: {
+    filter?: (offer: AccommodationOffer) => boolean | Promise<boolean>;
+    project?: (offer: AccommodationOffer) => T;
+    signal?: AbortSignal;
+  }): AsyncGenerator<T>;
+  topOffers<T = AccommodationOffer>(options?: {
+    limit?: number;
+    compare?: (left: AccommodationOffer, right: AccommodationOffer) => number;
+    filter?: (offer: AccommodationOffer) => boolean | Promise<boolean>;
+    project?: (offer: AccommodationOffer) => T;
+    signal?: AbortSignal;
+  }): Promise<T[]>;
+  /** Publishes a reconciled stream atomically without evicting retained evidence. */
+  replaceOffersFromStream(
+    offers: Iterable<AccommodationOffer> | AsyncIterable<AccommodationOffer>,
+    options?: { signal?: AbortSignal; check?: () => Promise<void> }
+  ): Promise<void>;
   /** Rewrites stored offers to the bounded shape; returns the rewritten count. */
   migrateOffers(): Promise<number>;
   saveOffers(offers: AccommodationOffer[]): Promise<void>;
@@ -867,6 +893,15 @@ export declare class SourceRegistry {
 
 export declare class BrowserCollector {
   constructor(options?: Record<string, unknown>);
+  inspectDetail(
+    url: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<{
+    status: 'active' | 'expired' | 'rented' | 'unknown';
+    checkedAt: string;
+    publishedAt?: string;
+    expiresAt?: string;
+  }>;
   collect(
     sources: AccommodationSource[],
     query?: string,
@@ -1326,7 +1361,7 @@ export declare function offerDenominator(
   offer: AccommodationOffer,
   field: string
 ): { count?: number; provenance: string };
-export declare function quoteBasis(text?: string): QuoteBasis;
+export declare function quoteBasis(text?: string, price?: Price): QuoteBasis;
 export declare function formatOfferValue(
   value?: OfferValue
 ): string | undefined;
